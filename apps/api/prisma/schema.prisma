@@ -1,0 +1,327 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPERADMIN
+  SUPERVISOR
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum BudgetCategory {
+  MATERIALS
+  LABOUR
+  TRANSPORT
+  OTHER
+}
+
+enum TaskStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  BLOCKED
+  DONE
+}
+
+enum WorkerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AttendanceMethod {
+  FINGERPRINT
+  MANUAL_OVERRIDE
+}
+
+enum AttendanceSource {
+  DEVICE_SYNC
+  API
+  IMPORT
+  MANUAL
+}
+
+enum StockMovementType {
+  IN
+  OUT
+  ADJUSTMENT
+}
+
+enum DocumentType {
+  CONTRACT
+  APPROVAL
+  CUSTOMER
+  RECEIPT
+  COMPLETION
+  PHOTO
+  OTHER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projects       Project[]        @relation("ProjectSupervisor")
+  expenses       Expense[]
+  stockMovements StockMovement[]
+  documents      Document[]
+  dailyReports   DailyReport[]
+  auditLogs      AuditLog[]
+  refreshTokens  RefreshToken[]
+  attendanceEdits AttendanceRecord[] @relation("AttendanceRecordedBy")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Project {
+  id                 String        @id @default(cuid())
+  name               String
+  clientName         String
+  location           String
+  contractValue      Decimal       @db.Decimal(14, 2)
+  startDate          DateTime
+  expectedCompletion DateTime
+  status             ProjectStatus @default(PLANNING)
+  progressPct        Int           @default(0)
+  supervisorId       String?
+  supervisor         User?         @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  budgetLines  BudgetLine[]
+  expenses     Expense[]
+  tasks        Task[]
+  assignments  WorkerAssignment[]
+  attendance   AttendanceRecord[]
+  stockItems   StockItem[]
+  documents    Document[]
+  dailyReports DailyReport[]
+
+  @@index([supervisorId])
+}
+
+model BudgetLine {
+  id        String         @id @default(cuid())
+  projectId String
+  project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category  BudgetCategory
+  allocated Decimal        @db.Decimal(14, 2)
+  updatedAt DateTime       @updatedAt
+
+  @@unique([projectId, category])
+}
+
+model Expense {
+  id            String         @id @default(cuid())
+  projectId     String
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category      BudgetCategory
+  amount        Decimal        @db.Decimal(14, 2)
+  description   String
+  receiptUrl    String?
+  expenseDate   DateTime
+  submittedById String
+  submittedBy   User           @relation(fields: [submittedById], references: [id])
+  createdAt     DateTime       @default(now())
+
+  @@index([projectId, expenseDate])
+  @@index([projectId, category])
+}
+
+model Task {
+  id            String     @id @default(cuid())
+  projectId     String
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  phase         String // e.g. "Painting", "Tiles"
+  name          String // e.g. "Primer", "Grouting"
+  status        TaskStatus @default(NOT_STARTED)
+  completionPct Int        @default(0)
+  notes         String?
+  sortOrder     Int        @default(0)
+  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
+
+  photos TaskPhoto[]
+
+  @@index([projectId, phase])
+}
+
+model TaskPhoto {
+  id         String   @id @default(cuid())
+  taskId     String
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileUrl    String
+  caption    String?
+  uploadedAt DateTime @default(now())
+}
+
+model Worker {
+  id          String       @id @default(cuid())
+  name        String
+  phone       String?
+  trade       String // e.g. Painter, Tiler, Mason
+  hourlyRate  Decimal      @db.Decimal(10, 2)
+  status      WorkerStatus @default(ACTIVE)
+  biometricId String?      @unique // template/enrolment ID on fingerprint device
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  assignments WorkerAssignment[]
+  attendance  AttendanceRecord[]
+}
+
+model WorkerAssignment {
+  id        String    @id @default(cuid())
+  workerId  String
+  worker    Worker    @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  startDate DateTime  @default(now())
+  endDate   DateTime? // null = currently assigned
+
+  @@index([projectId, endDate])
+  @@index([workerId, endDate])
+}
+
+model AttendanceRecord {
+  id           String           @id @default(cuid())
+  workerId     String
+  worker       Worker           @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  projectId    String
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date         DateTime         @db.Date
+  checkIn      DateTime
+  checkOut     DateTime?
+  deviceId     String?
+  method       AttendanceMethod @default(FINGERPRINT)
+  source       AttendanceSource @default(DEVICE_SYNC)
+  externalId   String?          @unique // device-side record id for idempotent sync
+  hoursWorked  Decimal?         @db.Decimal(6, 2)
+  labourCost   Decimal?         @db.Decimal(12, 2) // hoursWorked * worker rate at time of record
+  recordedById String? // set when MANUAL_OVERRIDE
+  recordedBy   User?            @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime         @default(now())
+
+  @@unique([workerId, projectId, date])
+  @@index([projectId, date])
+}
+
+model StockItem {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name      String
+  unit      String // bags, litres, pcs, m2
+  quantity  Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements StockMovement[]
+
+  @@unique([projectId, name])
+}
+
+model StockMovement {
+  id          String            @id @default(cuid())
+  stockItemId String
+  stockItem   StockItem         @relation(fields: [stockItemId], references: [id], onDelete: Cascade)
+  type        StockMovementType
+  quantity    Decimal           @db.Decimal(12, 2)
+  reason      String
+  userId      String
+  user        User              @relation(fields: [userId], references: [id])
+  date        DateTime          @default(now())
+
+  @@index([stockItemId, date])
+}
+
+model Document {
+  id           String       @id @default(cuid())
+  projectId    String
+  project      Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type         DocumentType
+  name         String
+  fileUrl      String
+  mimeType     String
+  sizeBytes    Int
+  uploadedById String
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime     @default(now())
+
+  @@index([projectId, type])
+}
+
+model DailyReport {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  date           DateTime @db.Date
+  workCompleted  String
+  workersPresent Int
+  materialsUsed  String?
+  challenges     String?
+  photoUrls      String[] @default([])
+  submittedById  String
+  submittedBy    User     @relation(fields: [submittedById], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@unique([projectId, date])
+  @@index([projectId, date])
+}
+
+model AttendanceDevice {
+  id         String   @id @default(cuid())
+  name       String
+  apiKeyHash String   @unique
+  active     Boolean  @default(true)
+  lastSyncAt DateTime?
+  createdAt  DateTime @default(now())
+}
+
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String // e.g. expense.create
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
