@@ -25,7 +25,8 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/expenses`, { formData }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['expenses', projectId] });
-      void qc.invalidateQueries({ queryKey: ['analytics'] });
+      void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
+      void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
       setOpen(false);
     },
   });
@@ -86,6 +87,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
         <form
+          key={String(open)} // remount on open: no stale values or stale file input
           onSubmit={(e) => {
             e.preventDefault();
             create.mutate(new FormData(e.currentTarget));

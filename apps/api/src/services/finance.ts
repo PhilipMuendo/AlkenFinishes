@@ -6,18 +6,43 @@ export interface Thresholds {
   redPct: number; // consumption % at which category turns red
 }
 
-export const DEFAULT_THRESHOLDS: Thresholds = { yellowPct: 80, redPct: 100 };
+/**
+ * How LABOUR actuals are computed. Wages flow into the system twice —
+ * biometric attendance accrues cost, and cash payouts get logged as LABOUR
+ * expenses. Counting both double-counts wages, so the owner picks one:
+ *  - ATTENDANCE: labour = attendance-accrued cost only (recommended once
+ *    devices are in use; record payouts under OTHER or as reconciliations)
+ *  - EXPENSES: labour = labour expense entries only
+ *  - BOTH: sum of both (legacy behavior; only correct if payouts are never
+ *    logged as expenses)
+ */
+export type LabourCostSource = 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
 
-export async function getThresholds(): Promise<Thresholds> {
-  const setting = await prisma.setting.findUnique({ where: { key: 'budgetThresholds' } });
-  if (setting && typeof setting.value === 'object' && setting.value !== null) {
-    const v = setting.value as Partial<Thresholds>;
-    return {
-      yellowPct: v.yellowPct ?? DEFAULT_THRESHOLDS.yellowPct,
-      redPct: v.redPct ?? DEFAULT_THRESHOLDS.redPct,
-    };
-  }
-  return DEFAULT_THRESHOLDS;
+// BOTH is the conservative default: it can only overstate costs (never
+// profit). Owners switch to ATTENDANCE in Settings once devices are live.
+export const DEFAULT_THRESHOLDS: Thresholds = { yellowPct: 80, redPct: 100 };
+export const DEFAULT_LABOUR_SOURCE: LabourCostSource = 'BOTH';
+
+export interface FinanceSettings {
+  thresholds: Thresholds;
+  labourCostSource: LabourCostSource;
+}
+
+export async function getFinanceSettings(): Promise<FinanceSettings> {
+  const [t, l] = await Promise.all([
+    prisma.setting.findUnique({ where: { key: 'budgetThresholds' } }),
+    prisma.setting.findUnique({ where: { key: 'labourCostSource' } }),
+  ]);
+  const tv = (t?.value ?? {}) as Partial<Thresholds>;
+  const lv = l?.value as LabourCostSource | undefined;
+  return {
+    thresholds: {
+      yellowPct: tv.yellowPct ?? DEFAULT_THRESHOLDS.yellowPct,
+      redPct: tv.redPct ?? DEFAULT_THRESHOLDS.redPct,
+    },
+    labourCostSource:
+      lv === 'ATTENDANCE' || lv === 'EXPENSES' || lv === 'BOTH' ? lv : DEFAULT_LABOUR_SOURCE,
+  };
 }
 
 export function health(consumedPct: number | null, t: Thresholds): 'GREEN' | 'YELLOW' | 'RED' | 'NONE' {
@@ -29,8 +54,41 @@ export function health(consumedPct: number | null, t: Thresholds): 'GREEN' | 'YE
 
 const num = (d: Prisma.Decimal | number | null | undefined) => Number(d ?? 0);
 
-export async function projectFinancials(projectId: string) {
-  const [project, budgetLines, expenseAgg, labourAgg, thresholds] = await Promise.all([
+export interface CategoryActuals {
+  expenseByCategory: Record<string, number>;
+  attendanceLabour: number;
+}
+
+export function buildCategories(
+  budgetLines: { category: string; allocated: Prisma.Decimal | number }[],
+  actuals: CategoryActuals,
+  settings: FinanceSettings,
+) {
+  const actualByCategory = { ...actuals.expenseByCategory };
+  if (settings.labourCostSource === 'ATTENDANCE') {
+    actualByCategory.LABOUR = actuals.attendanceLabour;
+  } else if (settings.labourCostSource === 'BOTH') {
+    actualByCategory.LABOUR = (actualByCategory.LABOUR ?? 0) + actuals.attendanceLabour;
+  } // EXPENSES: leave expense-derived labour as-is
+
+  return (['MATERIALS', 'LABOUR', 'TRANSPORT', 'OTHER'] as const).map((category) => {
+    const allocated = num(budgetLines.find((b) => b.category === category)?.allocated);
+    const actual = actualByCategory[category] ?? 0;
+    const consumedPct = allocated > 0 ? Math.round((actual / allocated) * 100) : null;
+    return {
+      category,
+      allocated,
+      actual,
+      remaining: allocated - actual,
+      consumedPct,
+      health: health(consumedPct, settings.thresholds),
+    };
+  });
+}
+
+export async function projectFinancials(projectId: string, settings?: FinanceSettings) {
+  const fin = settings ?? (await getFinanceSettings());
+  const [project, budgetLines, expenseAgg, labourAgg] = await Promise.all([
     prisma.project.findUniqueOrThrow({ where: { id: projectId } }),
     prisma.budgetLine.findMany({ where: { projectId } }),
     prisma.expense.groupBy({
@@ -42,28 +100,13 @@ export async function projectFinancials(projectId: string) {
       where: { projectId },
       _sum: { labourCost: true },
     }),
-    getThresholds(),
   ]);
 
-  const actualByCategory: Record<string, number> = {};
-  for (const row of expenseAgg) actualByCategory[row.category] = num(row._sum.amount);
-  // Biometric attendance labour cost counts as LABOUR actuals alongside labour expenses.
+  const expenseByCategory: Record<string, number> = {};
+  for (const row of expenseAgg) expenseByCategory[row.category] = num(row._sum.amount);
   const attendanceLabour = num(labourAgg._sum.labourCost);
-  actualByCategory.LABOUR = (actualByCategory.LABOUR ?? 0) + attendanceLabour;
 
-  const categories = (['MATERIALS', 'LABOUR', 'TRANSPORT', 'OTHER'] as const).map((category) => {
-    const allocated = num(budgetLines.find((b) => b.category === category)?.allocated);
-    const actual = actualByCategory[category] ?? 0;
-    const consumedPct = allocated > 0 ? Math.round((actual / allocated) * 100) : null;
-    return {
-      category,
-      allocated,
-      actual,
-      remaining: allocated - actual,
-      consumedPct,
-      health: health(consumedPct, thresholds),
-    };
-  });
+  const categories = buildCategories(budgetLines, { expenseByCategory, attendanceLabour }, fin);
 
   const totalBudget = categories.reduce((s, c) => s + c.allocated, 0);
   const totalActual = categories.reduce((s, c) => s + c.actual, 0);
@@ -78,9 +121,10 @@ export async function projectFinancials(projectId: string) {
     totalRemaining: totalBudget - totalActual,
     estimatedProfit: contractValue - totalActual,
     attendanceLabourCost: attendanceLabour,
+    labourCostSource: fin.labourCostSource,
     overallConsumedPct: overallPct,
-    overallHealth: health(overallPct, thresholds),
+    overallHealth: health(overallPct, fin.thresholds),
     categories,
-    thresholds,
+    thresholds: fin.thresholds,
   };
 }

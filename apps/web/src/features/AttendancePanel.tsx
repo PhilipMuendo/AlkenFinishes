@@ -30,7 +30,8 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['attendance', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics'] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
   };
 
   const override = useMutation({
@@ -134,6 +135,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           unavailable.
         </p>
         <form
+          key={String(overrideOpen)}
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);

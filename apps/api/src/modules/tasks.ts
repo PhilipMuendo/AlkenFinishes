@@ -5,7 +5,7 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, upload } from '../middleware/upload';
+import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -42,7 +42,12 @@ router.get(
       include: { photos: true },
       orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
-    res.json(tasks);
+    res.json(
+      tasks.map((t) => ({
+        ...t,
+        photos: t.photos.map((p) => ({ ...p, fileUrl: signFileUrl(p.fileUrl) })),
+      })),
+    );
   }),
 );
 
@@ -78,13 +83,14 @@ router.post(
   upload.single('photo'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw ApiError.badRequest('photo file is required');
+    await verifyUpload(req.file);
     const task = await prisma.task.findUnique({ where: { id: req.params.id } });
     if (!task || task.projectId !== req.params.projectId) throw ApiError.notFound();
     const photo = await prisma.taskPhoto.create({
       data: { taskId: task.id, fileUrl: fileUrl(req.file.filename), caption: req.body.caption },
     });
     audit(req, 'task.photo', 'Task', task.id);
-    res.status(201).json(photo);
+    res.status(201).json({ ...photo, fileUrl: signFileUrl(photo.fileUrl) });
   }),
 );
 
@@ -92,9 +98,13 @@ router.delete(
   '/:id',
   requireSuperadmin,
   asyncHandler(async (req, res) => {
-    const task = await prisma.task.findUnique({ where: { id: req.params.id } });
+    const task = await prisma.task.findUnique({
+      where: { id: req.params.id },
+      include: { photos: { select: { fileUrl: true } } },
+    });
     if (!task || task.projectId !== req.params.projectId) throw ApiError.notFound();
     await prisma.task.delete({ where: { id: task.id } });
+    for (const p of task.photos) removeUploadedFile(p.fileUrl);
     await syncProjectProgress(req.params.projectId);
     audit(req, 'task.delete', 'Task', task.id);
     res.json({ ok: true });

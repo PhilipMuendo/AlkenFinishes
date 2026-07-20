@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
@@ -7,8 +7,12 @@ import { env } from '../config/env';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth, signAccessToken } from '../middleware/auth';
 import { audit } from '../middleware/audit';
+import { loginLimiter } from '../middleware/rateLimit';
 
 const router = Router();
+
+// Constant-work compare for unknown emails — no timing oracle for enumeration.
+const DUMMY_HASH = bcrypt.hashSync('invalid-password-placeholder', 12);
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -30,10 +34,13 @@ async function issueRefreshToken(userId: string) {
 
 router.post(
   '/login',
+  loginLimiter,
   asyncHandler(async (req, res) => {
     const { email, password } = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    if (!user || !user.active || !(await bcrypt.compare(password, user.passwordHash))) {
+    const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+    if (!user || !user.active || !ok) {
+      audit(req, 'auth.login_failed', 'User', user?.id, { email: email.toLowerCase() });
       throw ApiError.unauthorized('Invalid credentials');
     }
     const authUser = { id: user.id, role: user.role, email: user.email, name: user.name };
@@ -52,7 +59,17 @@ router.post(
       where: { tokenHash: hashToken(refreshToken) },
       include: { user: true },
     });
-    if (!stored || stored.revokedAt || stored.expiresAt < new Date() || !stored.user.active) {
+    // Reuse of a rotated (revoked) token is the signature of token theft:
+    // kill every session for this user and raise an audit event.
+    if (stored?.revokedAt) {
+      await prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      audit(req, 'auth.refresh_reuse_detected', 'User', stored.userId);
+      throw ApiError.unauthorized('Invalid refresh token');
+    }
+    if (!stored || stored.expiresAt < new Date() || !stored.user.active) {
       throw ApiError.unauthorized('Invalid refresh token');
     }
     // Rotation: revoke old, issue new.

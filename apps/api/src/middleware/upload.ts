@@ -2,8 +2,10 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
 import { ApiError } from '../utils/http';
+import { logger } from '../lib/logger';
 
 const ALLOWED = new Set([
   'image/jpeg',
@@ -38,6 +40,108 @@ export const upload = multer({
   },
 });
 
+// ---- Content validation: never trust the client-declared MIME type ----
+
+const MAGIC: Record<string, (b: Buffer) => boolean> = {
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  'image/png': (b) => b.subarray(0, 8).equals(Buffer.from('\x89PNG\r\n\x1a\n', 'latin1')),
+  'image/webp': (b) =>
+    b.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    b.subarray(8, 12).toString('latin1') === 'WEBP',
+  'application/pdf': (b) => b.subarray(0, 5).toString('latin1') === '%PDF-',
+  // Legacy Office (OLE compound file)
+  'application/msword': (b) => b.readUInt32BE(0) === 0xd0cf11e0,
+  'application/vnd.ms-excel': (b) => b.readUInt32BE(0) === 0xd0cf11e0,
+  // OOXML (zip container)
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': (b) =>
+    b[0] === 0x50 && b[1] === 0x4b,
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': (b) =>
+    b[0] === 0x50 && b[1] === 0x4b,
+};
+
+/**
+ * Verifies the file's magic bytes match its declared MIME type. Deletes the
+ * file and throws on mismatch — call immediately after multer accepts it.
+ */
+export async function verifyUpload(file: Express.Multer.File | undefined): Promise<void> {
+  if (!file) return;
+  const check = MAGIC[file.mimetype];
+  let ok = false;
+  try {
+    const fd = await fs.promises.open(file.path, 'r');
+    const buf = Buffer.alloc(16);
+    await fd.read(buf, 0, 16, 0);
+    await fd.close();
+    ok = !!check && file.size >= 8 && check(buf);
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    await fs.promises.unlink(file.path).catch(() => undefined);
+    throw ApiError.badRequest('File content does not match its declared type');
+  }
+}
+
+export async function verifyUploads(files: Express.Multer.File[] | undefined): Promise<void> {
+  for (const f of files ?? []) await verifyUpload(f);
+}
+
 export function fileUrl(filename: string) {
   return `/uploads/${filename}`;
+}
+
+/** Best-effort removal of a stored upload when its DB record is deleted. */
+export function removeUploadedFile(url: string | null | undefined) {
+  if (!url) return;
+  const filename = path.basename(url.split('?')[0]);
+  fs.promises
+    .unlink(path.join(dir, filename))
+    .catch((e) => logger.warn({ filename, err: e.code }, 'upload cleanup skipped'));
+}
+
+// ---- Signed URLs: uploads are private; links expire ----
+
+function sig(payload: string) {
+  return crypto.createHmac('sha256', env.JWT_SECRET).update(payload).digest('hex').slice(0, 43);
+}
+
+export function signFileUrl<T extends string | null | undefined>(url: T): T {
+  if (!url) return url;
+  const clean = String(url).split('?')[0];
+  const exp = Math.floor(Date.now() / 1000) + env.FILE_URL_TTL_SECONDS;
+  return `${clean}?exp=${exp}&sig=${sig(`${clean}:${exp}`)}` as T;
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.pdf': 'application/pdf',
+};
+
+/** Validates the signature, then serves the file with safe headers. */
+export function serveUploads(req: Request, res: Response, next: NextFunction) {
+  const exp = Number(req.query.exp);
+  const provided = String(req.query.sig ?? '');
+  const clean = `/uploads/${path.basename(req.path)}`;
+  const expected = sig(`${clean}:${exp}`);
+  if (
+    !exp ||
+    exp < Date.now() / 1000 ||
+    provided.length !== expected.length ||
+    !crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(expected))
+  ) {
+    return next(ApiError.unauthorized('File link is invalid or has expired'));
+  }
+  const filePath = path.join(dir, path.basename(req.path));
+  const ext = path.extname(filePath).toLowerCase();
+  const type = CONTENT_TYPES[ext];
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  // Images/PDFs render inline; everything else downloads.
+  res.setHeader('Content-Disposition', type ? 'inline' : 'attachment');
+  res.sendFile(filePath, { headers: type ? { 'Content-Type': type } : undefined }, (err) => {
+    if (err) next(ApiError.notFound('File not found'));
+  });
 }

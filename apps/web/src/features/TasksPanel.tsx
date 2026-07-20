@@ -25,7 +25,8 @@ export function TasksPanel({ projectId }: { projectId: string }) {
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['tasks', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics'] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
     void qc.invalidateQueries({ queryKey: ['projects'] });
   };
 
@@ -109,6 +110,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title="Add task">
         <form
+          key={String(addOpen)}
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
@@ -140,6 +142,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
       >
         {editing && (
           <form
+            key={editing.id}
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
@@ -194,6 +197,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                     <img
                       src={p.fileUrl}
                       alt={p.caption ?? 'Task photo'}
+                      loading="lazy"
                       className="h-16 w-16 rounded-lg object-cover"
                     />
                   </a>

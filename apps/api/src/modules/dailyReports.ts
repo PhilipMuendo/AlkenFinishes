@@ -5,7 +5,7 @@ import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, upload } from '../middleware/upload';
+import { fileUrl, signFileUrl, upload, verifyUploads } from '../middleware/upload';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -21,14 +21,13 @@ const reportSchema = z.object({
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    res.json(
-      await prisma.dailyReport.findMany({
-        where: { projectId: req.params.projectId },
-        include: { submittedBy: { select: { id: true, name: true } } },
-        orderBy: { date: 'desc' },
-        take: 90,
-      }),
-    );
+    const reports = await prisma.dailyReport.findMany({
+      where: { projectId: req.params.projectId },
+      include: { submittedBy: { select: { id: true, name: true } } },
+      orderBy: { date: 'desc' },
+      take: 90,
+    });
+    res.json(reports.map((r) => ({ ...r, photoUrls: r.photoUrls.map((u) => signFileUrl(u)) })));
   }),
 );
 
@@ -38,6 +37,7 @@ router.post(
   upload.array('photos', 6),
   asyncHandler(async (req, res) => {
     const data = reportSchema.parse(req.body);
+    await verifyUploads(req.files as Express.Multer.File[]);
     const photoUrls = ((req.files as Express.Multer.File[]) ?? []).map((f) => fileUrl(f.filename));
     const report = await prisma.dailyReport.upsert({
       where: {
@@ -53,7 +53,7 @@ router.post(
       include: { submittedBy: { select: { id: true, name: true } } },
     });
     audit(req, 'dailyReport.submit', 'DailyReport', report.id, { date: data.date });
-    res.status(201).json(report);
+    res.status(201).json({ ...report, photoUrls: report.photoUrls.map((u) => signFileUrl(u)) });
   }),
 );
 

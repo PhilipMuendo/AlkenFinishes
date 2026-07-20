@@ -42,6 +42,7 @@ export interface ProjectFinancials {
   totalRemaining: number;
   estimatedProfit: number;
   attendanceLabourCost: number;
+  labourCostSource: 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
   overallConsumedPct: number | null;
   overallHealth: Health;
   categories: CategoryFinancials[];
@@ -162,6 +163,7 @@ export interface CompanyAnalytics {
     estimatedProfit: number;
     consumedPct: number | null;
     health: Health;
+    manualOverrides30d: number;
   }[];
   spendTrend: { month: string; total: number }[];
 }

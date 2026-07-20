@@ -72,4 +72,19 @@ One report per project per day (upsert).
 
 ## Settings (A)
 `GET/PUT /settings/thresholds` (`{yellowPct, redPct}`);
+`GET /settings/finance` (thresholds + labour source);
+`PUT /settings/labour-source` (`{labourCostSource: ATTENDANCE|EXPENSES|BOTH}`);
 `GET /settings/audit-log?page=`.
+
+## Files
+Upload responses and list endpoints return **HMAC-signed expiring URLs**
+(`/uploads/<name>?exp=…&sig=…`, TTL `FILE_URL_TTL_SECONDS`, default 1h).
+Unsigned or expired links return 401 — re-fetch the parent resource for a
+fresh link. Upload content is validated against magic bytes; a mismatch with
+the declared MIME type is rejected with 400.
+
+## Abuse controls
+`POST /auth/login`: 10 attempts / 15 min per IP+email → 429.
+`POST /attendance/device-sync`: 30 requests / min per device key → 429.
+Attendance hours are capped at `MAX_SHIFT_HOURS` (default 14) on all paths;
+check-out uses the server clock and closed records return 409.

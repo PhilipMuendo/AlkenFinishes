@@ -5,7 +5,7 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, upload } from '../middleware/upload';
+import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -20,13 +20,13 @@ router.get(
           .optional(),
       })
       .parse(req.query);
-    res.json(
-      await prisma.document.findMany({
-        where: { projectId: req.params.projectId, ...(type && { type }) },
-        include: { uploadedBy: { select: { id: true, name: true } } },
-        orderBy: { createdAt: 'desc' },
-      }),
-    );
+    const docs = await prisma.document.findMany({
+      where: { projectId: req.params.projectId, ...(type && { type }) },
+      include: { uploadedBy: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    res.json(docs.map((d) => ({ ...d, fileUrl: signFileUrl(d.fileUrl) })));
   }),
 );
 
@@ -35,6 +35,7 @@ router.post(
   upload.single('file'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw ApiError.badRequest('file is required');
+    await verifyUpload(req.file);
     const { type, name } = z
       .object({
         type: z.enum(['CONTRACT', 'APPROVAL', 'CUSTOMER', 'RECEIPT', 'COMPLETION', 'PHOTO', 'OTHER']),
@@ -54,7 +55,7 @@ router.post(
       include: { uploadedBy: { select: { id: true, name: true } } },
     });
     audit(req, 'document.upload', 'Document', doc.id, { type, name });
-    res.status(201).json(doc);
+    res.status(201).json({ ...doc, fileUrl: signFileUrl(doc.fileUrl) });
   }),
 );
 
@@ -65,6 +66,7 @@ router.delete(
     const doc = await prisma.document.findUnique({ where: { id: req.params.id } });
     if (!doc || doc.projectId !== req.params.projectId) throw ApiError.notFound();
     await prisma.document.delete({ where: { id: doc.id } });
+    removeUploadedFile(doc.fileUrl);
     audit(req, 'document.delete', 'Document', doc.id);
     res.json({ ok: true });
   }),

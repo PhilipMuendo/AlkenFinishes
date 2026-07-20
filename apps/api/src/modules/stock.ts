@@ -64,6 +64,7 @@ router.post(
     const newQty = Number(item.quantity) + delta;
     if (newQty < 0) throw ApiError.badRequest('Insufficient stock');
 
+    // Movement, quantity update, and audit commit atomically.
     const [movement] = await prisma.$transaction([
       prisma.stockMovement.create({
         data: {
@@ -80,12 +81,17 @@ router.post(
         where: { id: item.id },
         data: { quantity: new Prisma.Decimal(newQty) },
       }),
+      prisma.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'stock.movement',
+          entity: 'StockItem',
+          entityId: item.id,
+          meta: { type: data.type, quantity: data.quantity, reason: data.reason },
+          ip: req.ip,
+        },
+      }),
     ]);
-    audit(req, 'stock.movement', 'StockItem', item.id, {
-      type: data.type,
-      quantity: data.quantity,
-      reason: data.reason,
-    });
     res.status(201).json({ movement, newQuantity: newQty });
   }),
 );
@@ -100,6 +106,7 @@ router.get(
         where: { stockItemId: item.id },
         include: { user: { select: { id: true, name: true } } },
         orderBy: { date: 'desc' },
+        take: 500,
       }),
     );
   }),

@@ -5,7 +5,7 @@ import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { getThresholds } from '../services/finance';
+import { getFinanceSettings } from '../services/finance';
 
 const router = Router();
 router.use(requireAuth, requireSuperadmin);
@@ -13,7 +13,30 @@ router.use(requireAuth, requireSuperadmin);
 router.get(
   '/thresholds',
   asyncHandler(async (_req, res) => {
-    res.json(await getThresholds());
+    res.json((await getFinanceSettings()).thresholds);
+  }),
+);
+
+router.get(
+  '/finance',
+  asyncHandler(async (_req, res) => {
+    res.json(await getFinanceSettings());
+  }),
+);
+
+router.put(
+  '/labour-source',
+  asyncHandler(async (req, res) => {
+    const { labourCostSource } = z
+      .object({ labourCostSource: z.enum(['ATTENDANCE', 'EXPENSES', 'BOTH']) })
+      .parse(req.body);
+    await prisma.setting.upsert({
+      where: { key: 'labourCostSource' },
+      create: { key: 'labourCostSource', value: labourCostSource },
+      update: { value: labourCostSource },
+    });
+    audit(req, 'settings.labourSource', 'Setting', 'labourCostSource', { labourCostSource });
+    res.json({ labourCostSource });
   }),
 );
 

@@ -75,7 +75,12 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
               <div className="mt-3 flex gap-2 overflow-x-auto">
                 {r.photoUrls.map((url) => (
                   <a key={url} href={url} target="_blank" rel="noreferrer">
-                    <img src={url} alt="Site progress" className="h-20 w-20 rounded-lg object-cover" />
+                    <img
+                      src={url}
+                      alt="Site progress"
+                      loading="lazy"
+                      className="h-20 w-20 rounded-lg object-cover"
+                    />
                   </a>
                 ))}
               </div>
@@ -86,6 +91,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Daily site report">
         <form
+          key={String(open)}
           onSubmit={(e) => {
             e.preventDefault();
             submit.mutate(new FormData(e.currentTarget));

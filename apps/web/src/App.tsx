@@ -1,16 +1,38 @@
+import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './lib/auth';
-import { AdminLayout } from './components/layout/AdminLayout';
-import { SupervisorLayout } from './components/layout/SupervisorLayout';
 import { LoginPage } from './pages/Login';
-import { CompanyDashboard } from './pages/admin/CompanyDashboard';
-import { ProjectsPage } from './pages/admin/Projects';
-import { ProjectDetailPage } from './pages/admin/ProjectDetail';
-import { WorkersPage } from './pages/admin/Workers';
-import { UsersPage } from './pages/admin/Users';
-import { SettingsPage } from './pages/admin/Settings';
-import { MySitesPage } from './pages/supervisor/MySites';
-import { SiteDetailPage } from './pages/supervisor/SiteDetail';
+
+// Route-level code splitting: supervisors never download the admin bundle
+// (recharts included), and vice versa.
+const AdminLayout = lazy(() =>
+  import('./components/layout/AdminLayout').then((m) => ({ default: m.AdminLayout })),
+);
+const SupervisorLayout = lazy(() =>
+  import('./components/layout/SupervisorLayout').then((m) => ({ default: m.SupervisorLayout })),
+);
+const CompanyDashboard = lazy(() =>
+  import('./pages/admin/CompanyDashboard').then((m) => ({ default: m.CompanyDashboard })),
+);
+const ProjectsPage = lazy(() =>
+  import('./pages/admin/Projects').then((m) => ({ default: m.ProjectsPage })),
+);
+const ProjectDetailPage = lazy(() =>
+  import('./pages/admin/ProjectDetail').then((m) => ({ default: m.ProjectDetailPage })),
+);
+const WorkersPage = lazy(() =>
+  import('./pages/admin/Workers').then((m) => ({ default: m.WorkersPage })),
+);
+const UsersPage = lazy(() => import('./pages/admin/Users').then((m) => ({ default: m.UsersPage })));
+const SettingsPage = lazy(() =>
+  import('./pages/admin/Settings').then((m) => ({ default: m.SettingsPage })),
+);
+const MySitesPage = lazy(() =>
+  import('./pages/supervisor/MySites').then((m) => ({ default: m.MySitesPage })),
+);
+const SiteDetailPage = lazy(() =>
+  import('./pages/supervisor/SiteDetail').then((m) => ({ default: m.SiteDetailPage })),
+);
 
 function Loading() {
   return (
@@ -33,29 +55,29 @@ export default function App() {
     );
   }
 
-  if (user.role === 'SUPERADMIN') {
-    return (
-      <Routes>
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<CompanyDashboard />} />
-          <Route path="projects" element={<ProjectsPage />} />
-          <Route path="projects/:projectId" element={<ProjectDetailPage />} />
-          <Route path="workers" element={<WorkersPage />} />
-          <Route path="users" element={<UsersPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/admin" replace />} />
-      </Routes>
-    );
-  }
-
   return (
-    <Routes>
-      <Route element={<SupervisorLayout />}>
-        <Route path="/sites" element={<MySitesPage />} />
-        <Route path="/sites/:projectId" element={<SiteDetailPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/sites" replace />} />
-    </Routes>
+    <Suspense fallback={<Loading />}>
+      {user.role === 'SUPERADMIN' ? (
+        <Routes>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<CompanyDashboard />} />
+            <Route path="projects" element={<ProjectsPage />} />
+            <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+            <Route path="workers" element={<WorkersPage />} />
+            <Route path="users" element={<UsersPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/admin" replace />} />
+        </Routes>
+      ) : (
+        <Routes>
+          <Route element={<SupervisorLayout />}>
+            <Route path="/sites" element={<MySitesPage />} />
+            <Route path="/sites/:projectId" element={<SiteDetailPage />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/sites" replace />} />
+        </Routes>
+      )}
+    </Suspense>
   );
 }

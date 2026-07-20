@@ -14,7 +14,7 @@ import { Empty } from '@/components/ui/table';
 export function StockPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
-  const [moveItem, setMoveItem] = useState<StockItem | null>(null);
+  const [movement, setMovement] = useState<{ item: StockItem; type: 'IN' | 'OUT' } | null>(null);
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
 
   const { data: items } = useQuery({
@@ -42,7 +42,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
       api(`/projects/${projectId}/stock/${itemId}/movements`, { body }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['stock', projectId] });
-      setMoveItem(null);
+      setMovement(null);
     },
   });
 
@@ -81,14 +81,14 @@ export function StockPanel({ projectId }: { projectId: string }) {
               <Button
                 size="lg"
                 variant="secondary"
-                onClick={() => setMoveItem({ ...item, quantity: 'IN' as never })}
+                onClick={() => setMovement({ item, type: 'IN' })}
               >
                 <ArrowDownToLine size={18} /> Received
               </Button>
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => setMoveItem({ ...item, quantity: 'OUT' as never })}
+                onClick={() => setMovement({ item, type: 'OUT' })}
               >
                 <ArrowUpFromLine size={18} /> Used
               </Button>
@@ -99,6 +99,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title="New material">
         <form
+          key={String(addOpen)}
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
@@ -119,17 +120,18 @@ export function StockPanel({ projectId }: { projectId: string }) {
       </Dialog>
 
       <Dialog
-        open={!!moveItem}
-        onClose={() => setMoveItem(null)}
-        title={moveItem ? `${moveItem.name} — record movement` : ''}
+        open={!!movement}
+        onClose={() => setMovement(null)}
+        title={movement ? `${movement.item.name} — record movement` : ''}
       >
-        {moveItem && (
+        {movement && (
           <form
+            key={movement.item.id + movement.type}
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               move.mutate({
-                itemId: moveItem.id,
+                itemId: movement.item.id,
                 body: {
                   type: fd.get('type'),
                   quantity: Number(fd.get('quantity')),
@@ -140,10 +142,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
             className="space-y-3"
           >
             <Field label="Movement type">
-              <Select
-                name="type"
-                defaultValue={(moveItem.quantity as unknown as string) === 'OUT' ? 'OUT' : 'IN'}
-              >
+              <Select name="type" defaultValue={movement.type}>
                 <option value="IN">Received (stock in)</option>
                 <option value="OUT">Used (stock out)</option>
                 <option value="ADJUSTMENT">Adjustment (set count)</option>

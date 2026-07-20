@@ -44,7 +44,8 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['budget', projectId] });
-      void qc.invalidateQueries({ queryKey: ['analytics'] });
+      void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
+      void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
     },
   });
 

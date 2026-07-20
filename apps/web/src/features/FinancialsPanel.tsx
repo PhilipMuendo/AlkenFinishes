@@ -15,10 +15,11 @@ import { Progress } from '@/components/ui/progress';
 import { Empty } from '@/components/ui/table';
 
 export function FinancialsPanel({ projectId }: { projectId: string }) {
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ['analytics', 'project', projectId],
     queryFn: () => api<ProjectAnalytics>(`/analytics/projects/${projectId}`),
   });
+  if (isError) return <p className="text-sm text-red-600">Failed to load financials.</p>;
   if (!data) return <p className="text-sm text-slate-500">Loading financials…</p>;
   const { financials: fin, expenseSeries } = data;
 
@@ -63,7 +64,13 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
           ))}
           <p className="text-xs text-slate-400">
             Thresholds: Watch at {fin.thresholds.yellowPct}%, At-risk at {fin.thresholds.redPct}%.
-            Labour includes biometric attendance cost ({fmtMoney(fin.attendanceLabourCost)}).
+            Labour source:{' '}
+            {fin.labourCostSource === 'ATTENDANCE'
+              ? `biometric attendance only (${fmtMoney(fin.attendanceLabourCost)})`
+              : fin.labourCostSource === 'EXPENSES'
+                ? 'labour expenses only'
+                : `labour expenses + biometric attendance (${fmtMoney(fin.attendanceLabourCost)})`}{' '}
+            — configurable in Settings.
           </p>
         </CardContent>
       </Card>

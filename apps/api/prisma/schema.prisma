@@ -222,7 +222,7 @@ model AttendanceRecord {
   deviceId     String?
   method       AttendanceMethod @default(FINGERPRINT)
   source       AttendanceSource @default(DEVICE_SYNC)
-  externalId   String?          @unique // device-side record id for idempotent sync
+  externalId   String? // device-side record id; idempotency is scoped per device
   hoursWorked  Decimal?         @db.Decimal(6, 2)
   labourCost   Decimal?         @db.Decimal(12, 2) // hoursWorked * worker rate at time of record
   recordedById String? // set when MANUAL_OVERRIDE
@@ -230,6 +230,7 @@ model AttendanceRecord {
   createdAt    DateTime         @default(now())
 
   @@unique([workerId, projectId, date])
+  @@unique([deviceId, externalId])
   @@index([projectId, date])
 }
 
@@ -297,12 +298,13 @@ model DailyReport {
 }
 
 model AttendanceDevice {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   name       String
-  apiKeyHash String   @unique
-  active     Boolean  @default(true)
+  apiKeyHash String    @unique
+  active     Boolean   @default(true)
+  projectId  String? // when set, the device may only submit records for this site
   lastSyncAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 }
 
 model Setting {

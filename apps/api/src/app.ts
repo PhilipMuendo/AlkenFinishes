@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import path from 'path';
 import pinoHttp from 'pino-http';
 import { env } from './config/env';
 import { logger } from './lib/logger';
@@ -18,6 +17,7 @@ import documentsRouter from './modules/documents';
 import dailyReportsRouter from './modules/dailyReports';
 import analyticsRouter from './modules/analytics';
 import settingsRouter from './modules/settings';
+import { serveUploads } from './middleware/upload';
 
 export function createApp() {
   const app = express();
@@ -28,7 +28,8 @@ export function createApp() {
   app.use(pinoHttp({ logger, autoLogging: env.NODE_ENV === 'production' }));
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
-  app.use('/uploads', express.static(path.resolve(env.UPLOAD_DIR)));
+  // Uploads are private: HMAC-signed, expiring links only.
+  app.use('/uploads', serveUploads);
 
   const v1 = express.Router();
   v1.use('/auth', authRouter);

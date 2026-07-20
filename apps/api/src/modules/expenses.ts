@@ -5,7 +5,7 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, upload } from '../middleware/upload';
+import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -26,8 +26,9 @@ router.get(
       where: { projectId: req.params.projectId },
       include,
       orderBy: { expenseDate: 'desc' },
+      take: 500,
     });
-    res.json(expenses);
+    res.json(expenses.map((e) => ({ ...e, receiptUrl: signFileUrl(e.receiptUrl) })));
   }),
 );
 
@@ -37,20 +38,31 @@ router.post(
   upload.single('receipt'),
   asyncHandler(async (req, res) => {
     const data = expenseSchema.parse(req.body);
-    const expense = await prisma.expense.create({
-      data: {
-        ...data,
-        projectId: req.params.projectId,
-        submittedById: req.user!.id,
-        receiptUrl: req.file ? fileUrl(req.file.filename) : undefined,
-      },
-      include,
+    await verifyUpload(req.file);
+    // Money mutation: the audit row commits atomically with the expense.
+    const expense = await prisma.$transaction(async (tx) => {
+      const created = await tx.expense.create({
+        data: {
+          ...data,
+          projectId: req.params.projectId,
+          submittedById: req.user!.id,
+          receiptUrl: req.file ? fileUrl(req.file.filename) : undefined,
+        },
+        include,
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'expense.create',
+          entity: 'Expense',
+          entityId: created.id,
+          meta: { amount: data.amount, category: data.category },
+          ip: req.ip,
+        },
+      });
+      return created;
     });
-    audit(req, 'expense.create', 'Expense', expense.id, {
-      amount: data.amount,
-      category: data.category,
-    });
-    res.status(201).json(expense);
+    res.status(201).json({ ...expense, receiptUrl: signFileUrl(expense.receiptUrl) });
   }),
 );
 
@@ -61,6 +73,7 @@ router.delete(
     const expense = await prisma.expense.findUnique({ where: { id: req.params.id } });
     if (!expense || expense.projectId !== req.params.projectId) throw ApiError.notFound();
     await prisma.expense.delete({ where: { id: expense.id } });
+    removeUploadedFile(expense.receiptUrl);
     audit(req, 'expense.delete', 'Expense', expense.id, { amount: Number(expense.amount) });
     res.json({ ok: true });
   }),

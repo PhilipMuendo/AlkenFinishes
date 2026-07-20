@@ -6,17 +6,27 @@ import { fmtMoney } from '@/lib/format';
 import { StatTile } from '@/components/charts/StatTile';
 import { ProgressVsCostChart, SpendTrendChart } from '@/components/charts/Charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { HealthBadge, StatusBadge } from '@/components/ui/badge';
+import { Badge, HealthBadge, StatusBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 
 export function CompanyDashboard() {
-  const { data, isLoading } = useQuery({
+  const { data, isError, refetch } = useQuery({
     queryKey: ['analytics', 'company'],
     queryFn: () => api<CompanyAnalytics>('/analytics/company'),
   });
 
-  if (isLoading || !data) return <p className="text-sm text-slate-500">Loading dashboard…</p>;
+  if (isError) {
+    return (
+      <p className="text-sm text-red-600">
+        Failed to load the dashboard.{' '}
+        <button className="underline" onClick={() => void refetch()}>
+          Retry
+        </button>
+      </p>
+    );
+  }
+  if (!data) return <p className="text-sm text-slate-500">Loading dashboard…</p>;
   const { totals, projects, spendTrend } = data;
 
   return (
@@ -90,6 +100,7 @@ export function CompanyDashboard() {
                   <Th className="text-right">Spent</Th>
                   <Th className="text-right">Est. profit</Th>
                   <Th>Budget health</Th>
+                  <Th>Manual attendance</Th>
                 </tr>
               </thead>
               <tbody>
@@ -124,6 +135,13 @@ export function CompanyDashboard() {
                     </Td>
                     <Td>
                       <HealthBadge health={p.health} pct={p.consumedPct} />
+                    </Td>
+                    <Td>
+                      {p.manualOverrides30d > 0 ? (
+                        <Badge tone="yellow">▲ {p.manualOverrides30d} in 30d</Badge>
+                      ) : (
+                        <span className="text-xs text-slate-400">None</span>
+                      )}
                     </Td>
                   </tr>
                 ))}

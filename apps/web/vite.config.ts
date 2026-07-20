@@ -23,6 +23,21 @@ export default defineConfig({
       },
       workbox: {
         navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
+        // Field connectivity is poor: last-known API data beats a spinner.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url, request }) =>
+              url.pathname.startsWith('/api/v1') &&
+              !url.pathname.startsWith('/api/v1/auth') &&
+              request.method === 'GET',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 4,
+              expiration: { maxEntries: 200, maxAgeSeconds: 24 * 3600 },
+            },
+          },
+        ],
       },
     }),
   ],

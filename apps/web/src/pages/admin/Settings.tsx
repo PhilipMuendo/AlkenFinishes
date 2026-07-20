@@ -2,19 +2,23 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fingerprint, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
+import type { Project } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input } from '@/components/ui/input';
+import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
 interface Device {
   id: string;
   name: string;
   active: boolean;
+  projectId: string | null;
   lastSyncAt: string | null;
 }
+
+type LabourSource = 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
 
 export function SettingsPage() {
   const qc = useQueryClient();
@@ -23,21 +27,28 @@ export function SettingsPage() {
   const [yellowPct, setYellowPct] = useState('80');
   const [redPct, setRedPct] = useState('100');
 
-  const { data: thresholds } = useQuery({
-    queryKey: ['thresholds'],
-    queryFn: () => api<{ yellowPct: number; redPct: number }>('/settings/thresholds'),
+  const { data: finance } = useQuery({
+    queryKey: ['finance-settings'],
+    queryFn: () =>
+      api<{ thresholds: { yellowPct: number; redPct: number }; labourCostSource: LabourSource }>(
+        '/settings/finance',
+      ),
   });
   const { data: devices } = useQuery({
     queryKey: ['devices'],
     queryFn: () => api<Device[]>('/devices'),
   });
+  const { data: projects } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => api<Project[]>('/projects'),
+  });
 
   useEffect(() => {
-    if (thresholds) {
-      setYellowPct(String(thresholds.yellowPct));
-      setRedPct(String(thresholds.redPct));
+    if (finance) {
+      setYellowPct(String(finance.thresholds.yellowPct));
+      setRedPct(String(finance.thresholds.redPct));
     }
-  }, [thresholds]);
+  }, [finance]);
 
   const saveThresholds = useMutation({
     mutationFn: () =>
@@ -46,9 +57,24 @@ export function SettingsPage() {
         body: { yellowPct: Number(yellowPct), redPct: Number(redPct) },
       }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['thresholds'] });
+      void qc.invalidateQueries({ queryKey: ['finance-settings'] });
       void qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+  });
+
+  const saveLabourSource = useMutation({
+    mutationFn: (labourCostSource: LabourSource) =>
+      api('/settings/labour-source', { method: 'PUT', body: { labourCostSource } }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['finance-settings'] });
+      void qc.invalidateQueries({ queryKey: ['analytics'] });
+    },
+  });
+
+  const bindDevice = useMutation({
+    mutationFn: ({ id, projectId }: { id: string; projectId: string | null }) =>
+      api(`/devices/${id}`, { method: 'PATCH', body: { projectId } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
   });
 
   const createDevice = useMutation({
@@ -111,6 +137,30 @@ export function SettingsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Labour cost source</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-500">
+            Prevents double-counting wages. Choose where LABOUR actuals come from: biometric
+            attendance (recommended once devices are live), labour expense entries, or both
+            (conservative — may overstate costs if wages appear in both places).
+          </p>
+          <Select
+            value={finance?.labourCostSource ?? 'BOTH'}
+            onChange={(e) => saveLabourSource.mutate(e.target.value as LabourSource)}
+            className="max-w-sm"
+            aria-label="Labour cost source"
+          >
+            <option value="ATTENDANCE">Biometric attendance only</option>
+            <option value="EXPENSES">Labour expenses only</option>
+            <option value="BOTH">Both (may double-count)</option>
+          </Select>
+          {saveLabourSource.isSuccess && <p className="text-sm text-green-700">Saved</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Fingerprint attendance devices</CardTitle>
             <Button size="sm" variant="outline" onClick={() => setDeviceOpen(true)}>
@@ -139,6 +189,21 @@ export function SettingsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <Select
+                  value={d.projectId ?? ''}
+                  onChange={(e) =>
+                    bindDevice.mutate({ id: d.id, projectId: e.target.value || null })
+                  }
+                  className="h-9 w-40 text-xs"
+                  aria-label={`Site binding for ${d.name}`}
+                >
+                  <option value="">Any site</option>
+                  {projects?.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </Select>
                 <Badge tone={d.active ? 'green' : 'red'}>{d.active ? 'Active' : 'Disabled'}</Badge>
                 <Button
                   size="sm"

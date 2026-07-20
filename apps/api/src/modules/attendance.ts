@@ -3,26 +3,28 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { env } from '../config/env';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
+import { deviceSyncLimiter } from '../middleware/rateLimit';
 
 /**
  * Attendance design:
- * - Primary source is portable fingerprint devices. Devices (or a bridge app)
- *   push batches to POST /api/v1/attendance/device-sync authenticated with a
- *   per-device API key. Records carry an externalId making the sync idempotent
- *   and safe for offline devices that re-upload after reconnecting.
- * - Supervisors cannot create ordinary records. A MANUAL_OVERRIDE endpoint
- *   exists for exceptional cases (device failure); it is flagged, attributed,
- *   and audit-logged so the owner can review every manual entry.
- * - Labour cost is computed at check-out: hours × the worker's rate at that time.
+ * - Primary source is portable fingerprint devices pushing idempotent batches
+ *   (idempotency scoped per device: unique (deviceId, externalId)). A device
+ *   may be bound to one site; its records cannot land elsewhere.
+ * - Supervisors cannot create ordinary records. MANUAL_OVERRIDE is restricted
+ *   to workers currently assigned to the site, flagged, and audit-logged.
+ * - Hours are capped (MAX_SHIFT_HOURS) and check-out uses the server clock —
+ *   timestamps that inflate labour cost are rejected everywhere.
  */
 
 function computeCost(checkIn: Date, checkOut: Date | null, hourlyRate: Prisma.Decimal) {
   if (!checkOut) return { hoursWorked: null, labourCost: null };
-  const hours = Math.max(0, (checkOut.getTime() - checkIn.getTime()) / 3_600_000);
+  const raw = (checkOut.getTime() - checkIn.getTime()) / 3_600_000;
+  const hours = Math.min(Math.max(0, raw), env.MAX_SHIFT_HOURS);
   const rounded = Math.round(hours * 100) / 100;
   return {
     hoursWorked: rounded,
@@ -49,6 +51,7 @@ export const deviceRouter = Router();
 // Device-facing endpoint: API-key auth, not user JWT.
 deviceRouter.post(
   '/device-sync',
+  deviceSyncLimiter,
   asyncHandler(async (req, res) => {
     const apiKey = req.headers['x-device-key'];
     if (typeof apiKey !== 'string' || !apiKey) throw ApiError.unauthorized('Missing device key');
@@ -59,49 +62,106 @@ deviceRouter.post(
     const { deviceId, records } = syncSchema.parse(req.body);
     const results: { externalId: string; status: string }[] = [];
 
-    for (const rec of records) {
-      const worker = await prisma.worker.findUnique({
-        where: { biometricId: rec.biometricId },
+    // Batch-fetch everything the loop needs: workers, existing sync records,
+    // and existing same-day records — three queries instead of N per record.
+    const [workers, existing] = await Promise.all([
+      prisma.worker.findMany({
+        where: { biometricId: { in: records.map((r) => r.biometricId) } },
         include: { assignments: { where: { endDate: null }, take: 1 } },
-      });
+      }),
+      prisma.attendanceRecord.findMany({
+        where: { deviceId, externalId: { in: records.map((r) => r.externalId) } },
+        select: { id: true, externalId: true, checkOut: true, workerId: true },
+      }),
+    ]);
+    const workerByBio = new Map(workers.map((w) => [w.biometricId!, w]));
+    const existingByExt = new Map(existing.map((e) => [e.externalId!, e]));
+
+    const sameDay = await prisma.attendanceRecord.findMany({
+      where: {
+        workerId: { in: workers.map((w) => w.id) },
+        date: { in: records.map((r) => r.date) },
+      },
+      select: { workerId: true, projectId: true, date: true, externalId: true, deviceId: true },
+    });
+    const dayKey = (workerId: string, projectId: string, date: Date) =>
+      `${workerId}:${projectId}:${date.toISOString().slice(0, 10)}`;
+    const sameDaySet = new Map(sameDay.map((r) => [dayKey(r.workerId, r.projectId, r.date), r]));
+
+    const creates: Prisma.AttendanceRecordCreateManyInput[] = [];
+    const updates: { id: string; data: Prisma.AttendanceRecordUpdateInput }[] = [];
+
+    for (const rec of records) {
+      const worker = workerByBio.get(rec.biometricId);
       if (!worker) {
         results.push({ externalId: rec.externalId, status: 'unknown_worker' });
         continue;
       }
-      const projectId = rec.projectId ?? worker.assignments[0]?.projectId;
+      const projectId = rec.projectId ?? device.projectId ?? worker.assignments[0]?.projectId;
       if (!projectId) {
         results.push({ externalId: rec.externalId, status: 'no_assignment' });
         continue;
       }
-      const checkOut = rec.checkOut ?? null;
-      const cost = computeCost(rec.checkIn, checkOut, worker.hourlyRate);
-      try {
-        await prisma.attendanceRecord.upsert({
-          where: { externalId: rec.externalId },
-          create: {
-            workerId: worker.id,
-            projectId,
-            date: rec.date,
-            checkIn: rec.checkIn,
-            checkOut,
-            deviceId,
-            method: 'FINGERPRINT',
-            source: 'DEVICE_SYNC',
-            externalId: rec.externalId,
-            ...cost,
-          },
-          update: { checkOut, ...cost },
-        });
-        results.push({ externalId: rec.externalId, status: 'ok' });
-      } catch {
-        results.push({ externalId: rec.externalId, status: 'duplicate_day' });
+      if (device.projectId && projectId !== device.projectId) {
+        results.push({ externalId: rec.externalId, status: 'wrong_site_for_device' });
+        continue;
       }
+      const checkOut = rec.checkOut ?? null;
+      if (checkOut && checkOut <= rec.checkIn) {
+        results.push({ externalId: rec.externalId, status: 'invalid_times' });
+        continue;
+      }
+      const cost = computeCost(rec.checkIn, checkOut, worker.hourlyRate);
+
+      const prior = existingByExt.get(rec.externalId);
+      if (prior) {
+        // Idempotent re-upload; only fill in a missing check-out.
+        if (!prior.checkOut && checkOut) {
+          updates.push({ id: prior.id, data: { checkOut, ...cost } });
+          results.push({ externalId: rec.externalId, status: 'updated' });
+        } else {
+          results.push({ externalId: rec.externalId, status: 'ok' });
+        }
+        continue;
+      }
+      const clash = sameDaySet.get(dayKey(worker.id, projectId, rec.date));
+      if (clash) {
+        results.push({ externalId: rec.externalId, status: 'duplicate_day' });
+        continue;
+      }
+      sameDaySet.set(dayKey(worker.id, projectId, rec.date), {
+        workerId: worker.id,
+        projectId,
+        date: rec.date,
+        externalId: rec.externalId,
+        deviceId,
+      });
+      creates.push({
+        workerId: worker.id,
+        projectId,
+        date: rec.date,
+        checkIn: rec.checkIn,
+        checkOut,
+        deviceId,
+        method: 'FINGERPRINT',
+        source: 'DEVICE_SYNC',
+        externalId: rec.externalId,
+        ...cost,
+      });
+      results.push({ externalId: rec.externalId, status: 'ok' });
     }
 
-    await prisma.attendanceDevice.update({
-      where: { id: device.id },
-      data: { lastSyncAt: new Date() },
-    });
+    await prisma.$transaction([
+      ...(creates.length
+        ? [prisma.attendanceRecord.createMany({ data: creates, skipDuplicates: true })]
+        : []),
+      ...updates.map((u) => prisma.attendanceRecord.update({ where: { id: u.id }, data: u.data })),
+      prisma.attendanceDevice.update({
+        where: { id: device.id },
+        data: { lastSyncAt: new Date() },
+      }),
+    ]);
+
     res.json({ received: records.length, results });
   }),
 );
@@ -116,17 +176,23 @@ router.get(
     const { from, to } = z
       .object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() })
       .parse(req.query);
+    // Default window keeps the payload bounded as history grows.
+    const effectiveFrom = from ?? (to ? undefined : new Date(Date.now() - 31 * 86400_000));
     res.json(
       await prisma.attendanceRecord.findMany({
         where: {
           projectId: req.params.projectId,
-          ...(from || to ? { date: { ...(from && { gte: from }), ...(to && { lte: to }) } } : {}),
+          date: {
+            ...(effectiveFrom && { gte: effectiveFrom }),
+            ...(to && { lte: to }),
+          },
         },
         include: {
           worker: { select: { id: true, name: true, trade: true, hourlyRate: true } },
           recordedBy: { select: { id: true, name: true } },
         },
         orderBy: [{ date: 'desc' }, { checkIn: 'asc' }],
+        take: 1000,
       }),
     );
   }),
@@ -145,7 +211,18 @@ router.post(
   '/manual-override',
   asyncHandler(async (req, res) => {
     const data = overrideSchema.parse(req.body);
-    const worker = await prisma.worker.findUniqueOrThrow({ where: { id: data.workerId } });
+    if (data.checkOut && data.checkOut <= data.checkIn) {
+      throw ApiError.badRequest('Check-out must be after check-in');
+    }
+    const worker = await prisma.worker.findUniqueOrThrow({
+      where: { id: data.workerId },
+      include: {
+        assignments: { where: { endDate: null, projectId: req.params.projectId }, take: 1 },
+      },
+    });
+    if (worker.assignments.length === 0) {
+      throw ApiError.badRequest('Worker is not currently assigned to this site');
+    }
     const cost = computeCost(data.checkIn, data.checkOut ?? null, worker.hourlyRate);
     const record = await prisma.attendanceRecord.create({
       data: {
@@ -168,16 +245,18 @@ router.post(
   }),
 );
 
-// Close an open record (checkout).
+// Close an open record. Server clock only — clients cannot choose the time.
 router.post(
   '/:id/checkout',
   asyncHandler(async (req, res) => {
-    const { checkOut } = z.object({ checkOut: z.coerce.date() }).parse(req.body);
     const record = await prisma.attendanceRecord.findUnique({
       where: { id: req.params.id },
       include: { worker: true },
     });
     if (!record || record.projectId !== req.params.projectId) throw ApiError.notFound();
+    if (record.checkOut) throw ApiError.conflict('Record is already checked out');
+    const checkOut = new Date();
+    if (checkOut <= record.checkIn) throw ApiError.badRequest('Check-out precedes check-in');
     const cost = computeCost(record.checkIn, checkOut, record.worker.hourlyRate);
     const updated = await prisma.attendanceRecord.update({
       where: { id: record.id },
@@ -197,7 +276,14 @@ adminDeviceRouter.get(
   asyncHandler(async (_req, res) => {
     res.json(
       await prisma.attendanceDevice.findMany({
-        select: { id: true, name: true, active: true, lastSyncAt: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+          projectId: true,
+          lastSyncAt: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
     );
@@ -207,12 +293,18 @@ adminDeviceRouter.get(
 adminDeviceRouter.post(
   '/',
   asyncHandler(async (req, res) => {
-    const { name } = z.object({ name: z.string().min(1) }).parse(req.body);
+    const { name, projectId } = z
+      .object({ name: z.string().min(1), projectId: z.string().nullable().optional() })
+      .parse(req.body);
     const apiKey = crypto.randomBytes(32).toString('hex');
     const device = await prisma.attendanceDevice.create({
-      data: { name, apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex') },
+      data: {
+        name,
+        projectId: projectId ?? null,
+        apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex'),
+      },
     });
-    audit(req, 'device.create', 'AttendanceDevice', device.id, { name });
+    audit(req, 'device.create', 'AttendanceDevice', device.id, { name, projectId });
     // The plaintext key is returned exactly once.
     res.status(201).json({ id: device.id, name: device.name, apiKey });
   }),
@@ -221,13 +313,15 @@ adminDeviceRouter.post(
 adminDeviceRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const { active } = z.object({ active: z.boolean() }).parse(req.body);
+    const data = z
+      .object({ active: z.boolean().optional(), projectId: z.string().nullable().optional() })
+      .parse(req.body);
     const device = await prisma.attendanceDevice.update({
       where: { id: req.params.id },
-      data: { active },
-      select: { id: true, name: true, active: true },
+      data,
+      select: { id: true, name: true, active: true, projectId: true },
     });
-    audit(req, 'device.update', 'AttendanceDevice', device.id, { active });
+    audit(req, 'device.update', 'AttendanceDevice', device.id, data);
     res.json(device);
   }),
 );

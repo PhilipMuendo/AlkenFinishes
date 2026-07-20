@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
+import { prisma } from '../lib/prisma';
 import { ApiError } from '../utils/http';
 import type { Role } from '@prisma/client';
 
@@ -28,19 +29,22 @@ export function signAccessToken(user: AuthUser): string {
   );
 }
 
-export function requireAuth(req: Request, _res: Response, next: NextFunction) {
+export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return next(ApiError.unauthorized());
+  let payload: jwt.JwtPayload;
   try {
-    const payload = jwt.verify(header.slice(7), env.JWT_SECRET) as jwt.JwtPayload;
-    req.user = {
-      id: payload.sub as string,
-      role: payload.role as Role,
-      email: payload.email as string,
-      name: payload.name as string,
-    };
-    next();
+    payload = jwt.verify(header.slice(7), env.JWT_SECRET) as jwt.JwtPayload;
   } catch {
-    next(ApiError.unauthorized('Invalid or expired token'));
+    return next(ApiError.unauthorized('Invalid or expired token'));
   }
+  // Live check: deactivation and role changes take effect immediately,
+  // not at token expiry. PK lookup — negligible cost at this scale.
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub as string },
+    select: { id: true, role: true, email: true, name: true, active: true },
+  });
+  if (!user || !user.active) return next(ApiError.unauthorized('Account is disabled'));
+  req.user = { id: user.id, role: user.role as Role, email: user.email, name: user.name };
+  next();
 }
