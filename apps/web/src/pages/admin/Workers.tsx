@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
@@ -10,9 +10,37 @@ import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 
+const IMPORT_TEMPLATE_CSV =
+  'Name,Phone,Trade,Hourly Rate,Biometric ID\nJohn Mwangi,0712345678,Painter,300,\nPeter Otieno,0723456789,Tiler,350,\n';
+
+function downloadImportTemplate() {
+  const blob = new Blob([IMPORT_TEMPLATE_CSV], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'fundi-import-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+interface ImportRowResult {
+  row: number;
+  name?: string;
+  status: 'created' | 'error';
+  warning?: string;
+  error?: string;
+}
+interface ImportResponse {
+  totalRows: number;
+  created: number;
+  results: ImportRowResult[];
+}
+
 export function WorkersPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [assigning, setAssigning] = useState<Worker | null>(null);
 
   const { data: workers } = useQuery({
@@ -48,6 +76,14 @@ export function WorkersPage() {
     onSuccess: invalidate,
   });
 
+  const importWorkers = useMutation({
+    mutationFn: (formData: FormData) => api<ImportResponse>('/workers/import', { formData }),
+    onSuccess: (data) => {
+      invalidate();
+      setImportResult(data);
+    },
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -55,9 +91,14 @@ export function WorkersPage() {
           <h1 className="text-xl font-semibold text-slate-900">Workers</h1>
           <p className="text-sm text-slate-500">Fundis and site workers across all projects</p>
         </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus size={16} /> Add worker
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload size={16} /> Import
+          </Button>
+          <Button onClick={() => setOpen(true)}>
+            <Plus size={16} /> Add worker
+          </Button>
+        </div>
       </div>
 
       {workers?.length === 0 ? (
@@ -147,6 +188,83 @@ export function WorkersPage() {
             Add worker
           </Button>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={importOpen}
+        onClose={() => {
+          setImportOpen(false);
+          setImportResult(null);
+        }}
+        title="Import fundis"
+      >
+        {importResult ? (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-700">
+              Imported <span className="font-medium">{importResult.created}</span> of{' '}
+              {importResult.totalRows} rows.
+            </p>
+            {importResult.results.some((r) => r.status === 'error' || r.warning) && (
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 text-xs">
+                {importResult.results
+                  .filter((r) => r.status === 'error' || r.warning)
+                  .map((r) => (
+                    <p key={r.row} className={r.status === 'error' ? 'text-red-600' : 'text-amber-700'}>
+                      Row {r.row}
+                      {r.name ? ` (${r.name})` : ''}: {r.error ?? r.warning}
+                    </p>
+                  ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportResult(null)} className="flex-1">
+                Import another file
+              </Button>
+              <Button
+                onClick={() => {
+                  setImportOpen(false);
+                  setImportResult(null);
+                }}
+                className="flex-1"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form
+            key={String(importOpen)}
+            onSubmit={(e) => {
+              e.preventDefault();
+              importWorkers.mutate(new FormData(e.currentTarget));
+            }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-slate-600">
+              Upload a CSV or Excel file with your fundi list — columns: Name, Phone, Trade,
+              Hourly Rate, and optionally Biometric ID.{' '}
+              <button
+                type="button"
+                onClick={downloadImportTemplate}
+                className="text-brand-700 underline"
+              >
+                Download a template
+              </button>
+              .
+            </p>
+            <Field label="File">
+              <Input name="file" type="file" accept=".csv,.xlsx,.xls" required />
+            </Field>
+            {importWorkers.isError && (
+              <p className="text-sm text-red-600">
+                Import failed — check the file is a valid spreadsheet under 500 rows.
+              </p>
+            )}
+            <Button type="submit" className="w-full" disabled={importWorkers.isPending}>
+              {importWorkers.isPending ? 'Importing…' : 'Import'}
+            </Button>
+          </form>
+        )}
       </Dialog>
 
       <Dialog

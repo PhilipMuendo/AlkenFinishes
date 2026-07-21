@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import multer from 'multer';
+import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
@@ -58,6 +60,142 @@ router.patch(
     });
     audit(req, 'worker.update', 'Worker', worker.id);
     res.json(worker);
+  }),
+);
+
+// ---- Bulk import from CSV/Excel — the fundi list usually already exists there ----
+
+// In-memory only: the file is parsed and discarded, never persisted or
+// linked, so it doesn't need the shared disk-based upload/signing pipeline.
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok =
+      /\.(csv|xlsx|xls)$/i.test(file.originalname) ||
+      [
+        'text/csv',
+        'application/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ].includes(file.mimetype);
+    if (!ok) return cb(ApiError.badRequest('File must be a .csv, .xls, or .xlsx spreadsheet'));
+    cb(null, true);
+  },
+});
+
+const HEADER_ALIASES: Record<string, string[]> = {
+  name: ['name', 'full name', 'fundi name', 'worker name'],
+  phone: ['phone', 'phone number', 'mobile', 'mobile number', 'contact'],
+  trade: ['trade', 'occupation', 'skill', 'role'],
+  hourlyRate: ['hourly rate', 'hourlyrate', 'rate', 'hourly rate (kes)', 'rate (kes)'],
+  biometricId: ['biometric id', 'biometricid', 'fingerprint id', 'device id'],
+};
+
+function normalizeRow(raw: Record<string, unknown>): Record<string, string> {
+  const lowerEntries = Object.entries(raw).map(([k, v]) => [k.trim().toLowerCase(), v] as const);
+  const out: Record<string, string> = {};
+  for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+    const hit = lowerEntries.find(([k]) => aliases.includes(k));
+    if (hit && hit[1] != null) out[field] = String(hit[1]).trim();
+  }
+  return out;
+}
+
+const importRowSchema = z.object({
+  name: z.string().min(1, 'name is required'),
+  phone: z.string().optional(),
+  trade: z.string().min(1, 'trade is required'),
+  // positive (not nonnegative): an empty cell coerces to 0, which must be
+  // rejected rather than silently imported as a free worker.
+  hourlyRate: z.coerce.number().positive('hourly rate is required and must be greater than 0'),
+  biometricId: z.string().optional(),
+});
+
+interface ImportRowResult {
+  row: number;
+  name?: string;
+  status: 'created' | 'error';
+  warning?: string;
+  error?: string;
+}
+
+router.post(
+  '/import',
+  requireSuperadmin,
+  importUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    if (!req.file) throw ApiError.badRequest('file is required');
+
+    let sheetRows: Record<string, unknown>[];
+    try {
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      sheetRows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    } catch {
+      throw ApiError.badRequest('Could not read the file — is it a valid CSV/Excel spreadsheet?');
+    }
+    if (sheetRows.length === 0) throw ApiError.badRequest('The file has no data rows');
+    if (sheetRows.length > 500) {
+      throw ApiError.badRequest('Import is limited to 500 rows at a time');
+    }
+
+    const existingBiometricIds = new Set(
+      (
+        await prisma.worker.findMany({
+          where: { biometricId: { not: null } },
+          select: { biometricId: true },
+        })
+      ).map((w) => w.biometricId!),
+    );
+    const seenInFile = new Set<string>();
+
+    const results: ImportRowResult[] = [];
+    for (const [i, raw] of sheetRows.entries()) {
+      const rowNum = i + 2; // header is row 1
+      const normalized = normalizeRow(raw);
+      const parsed = importRowSchema.safeParse(normalized);
+      if (!parsed.success) {
+        results.push({
+          row: rowNum,
+          name: normalized.name,
+          status: 'error',
+          error: parsed.error.issues.map((iss) => iss.message).join('; '),
+        });
+        continue;
+      }
+      const data = parsed.data;
+      let biometricId: string | null = data.biometricId?.trim() || null;
+      let warning: string | undefined;
+      if (biometricId && (existingBiometricIds.has(biometricId) || seenInFile.has(biometricId))) {
+        warning = `Biometric ID "${biometricId}" is already in use — worker created without it`;
+        biometricId = null;
+      }
+      if (biometricId) seenInFile.add(biometricId);
+
+      try {
+        const worker = await prisma.worker.create({
+          data: {
+            name: data.name,
+            phone: data.phone || null,
+            trade: data.trade,
+            hourlyRate: data.hourlyRate,
+            biometricId,
+          },
+        });
+        results.push({ row: rowNum, name: worker.name, status: 'created', warning });
+      } catch {
+        results.push({ row: rowNum, name: data.name, status: 'error', error: 'Could not save this row' });
+      }
+    }
+
+    const created = results.filter((r) => r.status === 'created').length;
+    audit(req, 'worker.import', 'Worker', undefined, {
+      totalRows: sheetRows.length,
+      created,
+      failed: sheetRows.length - created,
+    });
+    res.status(201).json({ totalRows: sheetRows.length, created, results });
   }),
 );
 
