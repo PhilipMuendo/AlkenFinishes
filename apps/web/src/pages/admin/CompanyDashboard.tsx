@@ -1,14 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { api } from '@/lib/api';
-import type { CompanyAnalytics } from '@/lib/types';
+import type { CompanyAnalytics, ProjectStatus } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { StatTile } from '@/components/charts/StatTile';
 import { ProgressVsCostChart, SpendTrendChart } from '@/components/charts/Charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge, HealthBadge, StatusBadge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { Badge, HealthBadge } from '@/components/ui/badge';
+import { Empty } from '@/components/ui/table';
+import { ProjectCard } from '@/components/ProjectCard';
+
+const SECTIONS: { key: ProjectStatus; label: string }[] = [
+  { key: 'PLANNING', label: 'About to start' },
+  { key: 'ACTIVE', label: 'Ongoing' },
+  { key: 'ON_HOLD', label: 'On hold' },
+  { key: 'COMPLETED', label: 'Completed' },
+];
 
 export function CompanyDashboard() {
   const { data, isError, refetch } = useQuery({
@@ -33,7 +39,7 @@ export function CompanyDashboard() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Company Dashboard</h1>
-        <p className="text-sm text-slate-500">All active projects at a glance</p>
+        <p className="text-sm text-slate-500">Your portfolio at a glance</p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -53,6 +59,11 @@ export function CompanyDashboard() {
           }
           sub={<HealthBadge health={totals.overallHealth} />}
         />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile label="Total collected" value={fmtMoney(totals.totalCollected)} />
+        <StatTile label="Total pending balance" value={fmtMoney(totals.totalPendingBalance)} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -82,74 +93,51 @@ export function CompanyDashboard() {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Project comparison</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {projects.length === 0 ? (
+      {projects.length === 0 ? (
+        <Card>
+          <CardContent className="pt-5">
             <Empty>No projects yet — create one under Projects</Empty>
-          ) : (
-            <Table>
-              <thead>
-                <tr>
-                  <Th>Project</Th>
-                  <Th>Status</Th>
-                  <Th>Progress</Th>
-                  <Th className="text-right">Contract</Th>
-                  <Th className="text-right">Spent</Th>
-                  <Th className="text-right">Est. profit</Th>
-                  <Th>Budget health</Th>
-                  <Th>Manual attendance</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {projects.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50">
-                    <Td>
-                      <Link
-                        to={`/admin/projects/${p.id}`}
-                        className="font-medium text-brand-700 hover:underline"
-                      >
-                        {p.name}
-                      </Link>
-                      <p className="text-xs text-slate-500">{p.supervisor?.name ?? 'Unassigned'}</p>
-                    </Td>
-                    <Td>
-                      <StatusBadge status={p.status} />
-                    </Td>
-                    <Td className="min-w-[120px]">
-                      <div className="flex items-center gap-2">
-                        <Progress value={p.progressPct} health="GREEN" className="w-20" />
-                        <span className="text-xs tabular-nums">{p.progressPct}%</span>
-                      </div>
-                    </Td>
-                    <Td className="text-right tabular-nums">{fmtMoney(p.contractValue)}</Td>
-                    <Td className="text-right tabular-nums">{fmtMoney(p.totalActual)}</Td>
-                    <Td
-                      className={`text-right font-medium tabular-nums ${
-                        p.estimatedProfit >= 0 ? 'text-green-700' : 'text-red-700'
-                      }`}
-                    >
-                      {fmtMoney(p.estimatedProfit)}
-                    </Td>
-                    <Td>
-                      <HealthBadge health={p.health} pct={p.consumedPct} />
-                    </Td>
-                    <Td>
-                      {p.manualOverrides30d > 0 ? (
-                        <Badge tone="yellow">▲ {p.manualOverrides30d} in 30d</Badge>
-                      ) : (
-                        <span className="text-xs text-slate-400">None</span>
-                      )}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : (
+        SECTIONS.map(({ key, label }) => {
+          const group = projects.filter((p) => p.status === key);
+          return (
+            <Card key={key}>
+              <CardHeader>
+                <CardTitle>
+                  {label} ({group.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {group.length === 0 ? (
+                  <Empty>No projects in this stage</Empty>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.map((p) => (
+                      <ProjectCard
+                        key={p.id}
+                        project={p}
+                        extra={
+                          <div className="mt-2 space-y-1 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span>Collected: {fmtMoney(p.totalCollected)}</span>
+                              <HealthBadge health={p.health} pct={p.consumedPct} />
+                            </div>
+                            {p.manualOverrides30d > 0 && (
+                              <Badge tone="yellow">▲ {p.manualOverrides30d} manual in 30d</Badge>
+                            )}
+                          </div>
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })
+      )}
     </div>
   );
 }

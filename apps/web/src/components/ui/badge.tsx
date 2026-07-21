@@ -47,7 +47,7 @@ export function HealthBadge({ health, pct }: { health: Health; pct?: number | nu
 
 export function StatusBadge({ status }: { status: string }) {
   const tone =
-    status === 'ACTIVE' || status === 'DONE'
+    status === 'ACTIVE' || status === 'DONE' || status === 'COMPLETED'
       ? 'green'
       : status === 'ON_HOLD' || status === 'BLOCKED'
         ? 'yellow'

@@ -21,6 +21,7 @@ export interface Project {
   expectedCompletion: string;
   status: ProjectStatus;
   progressPct: number;
+  balanceDueDate: string | null;
   supervisorId: string | null;
   supervisor: { id: string; name: string; email: string; phone?: string | null } | null;
 }
@@ -68,6 +69,31 @@ export interface Expense {
   expenseDate: string;
   submittedBy: { id: string; name: string };
   createdAt: string;
+}
+
+export type PaymentType = 'DEPOSIT' | 'INSTALLMENT';
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MPESA' | 'CHEQUE' | 'OTHER';
+
+export interface Payment {
+  id: string;
+  type: PaymentType;
+  amount: string;
+  method: PaymentMethod;
+  paymentDate: string;
+  notes: string | null;
+  receiptUrl: string | null;
+  submittedBy: { id: string; name: string };
+  createdAt: string;
+}
+
+export interface PaymentsSummary {
+  contractValue: number;
+  totalPaid: number;
+  pendingBalance: number;
+  balanceDueDate: string | null;
+  dueDateHealth: Health;
+  deposit: Payment | null;
+  installments: Payment[];
 }
 
 export interface Task {
@@ -149,13 +175,20 @@ export interface CompanyAnalytics {
     totalActual: number;
     estimatedProfit: number;
     totalBudget: number;
+    totalCollected: number;
+    totalPendingBalance: number;
     overallHealth: Health;
   };
   projects: {
     id: string;
     name: string;
+    clientName: string;
+    location: string;
+    startDate: string;
+    expectedCompletion: string;
     status: ProjectStatus;
     progressPct: number;
+    supervisorId: string | null;
     supervisor: { id: string; name: string } | null;
     contractValue: number;
     totalBudget: number;
@@ -164,6 +197,8 @@ export interface CompanyAnalytics {
     consumedPct: number | null;
     health: Health;
     manualOverrides30d: number;
+    totalCollected: number;
+    pendingBalance: number;
   }[];
   spendTrend: { month: string; total: number }[];
 }

@@ -9,6 +9,7 @@ import authRouter from './modules/auth';
 import usersRouter from './modules/users';
 import projectsRouter from './modules/projects';
 import expensesRouter from './modules/expenses';
+import paymentsRouter from './modules/payments';
 import tasksRouter from './modules/tasks';
 import workersRouter from './modules/workers';
 import attendanceRouter, { deviceRouter, adminDeviceRouter } from './modules/attendance';
@@ -36,6 +37,7 @@ export function createApp() {
   v1.use('/users', usersRouter);
   v1.use('/projects', projectsRouter);
   v1.use('/projects/:projectId/expenses', expensesRouter);
+  v1.use('/projects/:projectId/payments', paymentsRouter);
   v1.use('/projects/:projectId/tasks', tasksRouter);
   v1.use('/projects/:projectId/attendance', attendanceRouter);
   v1.use('/projects/:projectId/stock', stockRouter);

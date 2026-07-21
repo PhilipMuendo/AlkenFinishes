@@ -109,26 +109,28 @@ router.get(
   asyncHandler(async (_req, res) => {
     const settings = await getFinanceSettings();
     const since30d = new Date(Date.now() - 30 * 86400_000);
-    const [projects, budgetLines, expenseAgg, labourAgg, overrideAgg, months] = await Promise.all([
-      prisma.project.findMany({
-        where: { status: { notIn: ['CANCELLED'] } },
-        include: { supervisor: { select: { id: true, name: true } } },
-        orderBy: { createdAt: 'asc' },
-      }),
-      prisma.budgetLine.findMany(),
-      prisma.expense.groupBy({ by: ['projectId', 'category'], _sum: { amount: true } }),
-      prisma.attendanceRecord.groupBy({
-        by: ['projectId'],
-        where: { labourCost: { not: null } },
-        _sum: { labourCost: true },
-      }),
-      prisma.attendanceRecord.groupBy({
-        by: ['projectId'],
-        where: { method: 'MANUAL_OVERRIDE', date: { gte: since30d } },
-        _count: true,
-      }),
-      monthlyTotals(settings.labourCostSource),
-    ]);
+    const [projects, budgetLines, expenseAgg, labourAgg, overrideAgg, paymentAgg, months] =
+      await Promise.all([
+        prisma.project.findMany({
+          where: { status: { notIn: ['CANCELLED'] } },
+          include: { supervisor: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.budgetLine.findMany(),
+        prisma.expense.groupBy({ by: ['projectId', 'category'], _sum: { amount: true } }),
+        prisma.attendanceRecord.groupBy({
+          by: ['projectId'],
+          where: { labourCost: { not: null } },
+          _sum: { labourCost: true },
+        }),
+        prisma.attendanceRecord.groupBy({
+          by: ['projectId'],
+          where: { method: 'MANUAL_OVERRIDE', date: { gte: since30d } },
+          _count: true,
+        }),
+        prisma.payment.groupBy({ by: ['projectId'], _sum: { amount: true } }),
+        monthlyTotals(settings.labourCostSource),
+      ]);
 
     const perProject = projects.map((p) => {
       const expenseByCategory: Record<string, number> = {};
@@ -147,11 +149,19 @@ router.get(
       const totalActual = categories.reduce((s, c) => s + c.actual, 0);
       const contractValue = Number(p.contractValue);
       const consumedPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : null;
+      const totalCollected = Number(
+        paymentAgg.find((a) => a.projectId === p.id)?._sum.amount ?? 0,
+      );
       return {
         id: p.id,
         name: p.name,
+        clientName: p.clientName,
+        location: p.location,
+        startDate: p.startDate,
+        expectedCompletion: p.expectedCompletion,
         status: p.status,
         progressPct: p.progressPct,
+        supervisorId: p.supervisorId,
         supervisor: p.supervisor,
         contractValue,
         totalBudget,
@@ -160,6 +170,8 @@ router.get(
         consumedPct,
         health: health(consumedPct, settings.thresholds),
         manualOverrides30d: overrideAgg.find((o) => o.projectId === p.id)?._count ?? 0,
+        totalCollected,
+        pendingBalance: contractValue - totalCollected,
       };
     });
 
@@ -169,15 +181,20 @@ router.get(
         totalActual: acc.totalActual + p.totalActual,
         estimatedProfit: acc.estimatedProfit + p.estimatedProfit,
         totalBudget: acc.totalBudget + p.totalBudget,
+        totalCollected: acc.totalCollected + p.totalCollected,
       }),
-      { contractValue: 0, totalActual: 0, estimatedProfit: 0, totalBudget: 0 },
+      { contractValue: 0, totalActual: 0, estimatedProfit: 0, totalBudget: 0, totalCollected: 0 },
     );
     const overallPct =
       totals.totalBudget > 0 ? Math.round((totals.totalActual / totals.totalBudget) * 100) : null;
 
     const spendTrend = toSeries(months).map(({ month, total }) => ({ month, total }));
     res.json({
-      totals: { ...totals, overallHealth: health(overallPct, settings.thresholds) },
+      totals: {
+        ...totals,
+        totalPendingBalance: totals.contractValue - totals.totalCollected,
+        overallHealth: health(overallPct, settings.thresholds),
+      },
       projects: perProject,
       spendTrend,
     });

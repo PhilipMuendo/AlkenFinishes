@@ -27,6 +27,19 @@ enum BudgetCategory {
   OTHER
 }
 
+enum PaymentType {
+  DEPOSIT
+  INSTALLMENT
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MPESA
+  CHEQUE
+  OTHER
+}
+
 enum TaskStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -80,6 +93,7 @@ model User {
 
   projects       Project[]        @relation("ProjectSupervisor")
   expenses       Expense[]
+  payments       Payment[]
   stockMovements StockMovement[]
   documents      Document[]
   dailyReports   DailyReport[]
@@ -110,6 +124,7 @@ model Project {
   expectedCompletion DateTime
   status             ProjectStatus @default(PLANNING)
   progressPct        Int           @default(0)
+  balanceDueDate     DateTime? // contractual due date for the pending balance; independent of individual Payment rows
   supervisorId       String?
   supervisor         User?         @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
   createdAt          DateTime      @default(now())
@@ -117,6 +132,7 @@ model Project {
 
   budgetLines  BudgetLine[]
   expenses     Expense[]
+  payments     Payment[]
   tasks        Task[]
   assignments  WorkerAssignment[]
   attendance   AttendanceRecord[]
@@ -153,6 +169,28 @@ model Expense {
 
   @@index([projectId, expenseDate])
   @@index([projectId, category])
+}
+
+// Exactly one DEPOSIT payment per project is expected; this is enforced in
+// the API layer (existence check inside the create transaction -> 409), not
+// as a DB constraint, since Prisma's schema has no clean way to express a
+// partial unique index ("unique projectId where type = DEPOSIT").
+model Payment {
+  id            String        @id @default(cuid())
+  projectId     String
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type          PaymentType
+  amount        Decimal       @db.Decimal(14, 2)
+  method        PaymentMethod
+  paymentDate   DateTime
+  notes         String?
+  receiptUrl    String?
+  submittedById String
+  submittedBy   User          @relation(fields: [submittedById], references: [id])
+  createdAt     DateTime      @default(now())
+
+  @@index([projectId, paymentDate])
+  @@index([projectId, type])
 }
 
 model Task {

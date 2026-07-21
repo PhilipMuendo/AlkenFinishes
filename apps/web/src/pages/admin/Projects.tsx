@@ -1,17 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AppUser, Project } from '@/lib/types';
-import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
-import { StatusBadge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Empty } from '@/components/ui/table';
+import { ProjectCard } from '@/components/ProjectCard';
 
 export function ProjectsPage() {
   const qc = useQueryClient();
@@ -45,7 +42,7 @@ export function ProjectsPage() {
       startDate: fd.get('startDate'),
       expectedCompletion: fd.get('expectedCompletion'),
       supervisorId: fd.get('supervisorId') || null,
-      status: 'ACTIVE',
+      status: fd.get('status'),
     });
   }
 
@@ -71,30 +68,7 @@ export function ProjectsPage() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {projects?.map((p) => (
-          <Link key={p.id} to={`/admin/projects/${p.id}`}>
-            <Card className="h-full p-4 transition-shadow hover:shadow-md">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-slate-900">{p.name}</p>
-                  <p className="text-xs text-slate-500">
-                    {p.clientName} · {p.location}
-                  </p>
-                </div>
-                <StatusBadge status={p.status} />
-              </div>
-              <p className="mt-3 text-lg font-semibold tabular-nums text-slate-900">
-                {fmtMoney(Number(p.contractValue))}
-              </p>
-              <div className="mt-3 flex items-center gap-2">
-                <Progress value={p.progressPct} health="GREEN" />
-                <span className="text-xs tabular-nums text-slate-600">{p.progressPct}%</span>
-              </div>
-              <p className="mt-2 text-xs text-slate-500">
-                {fmtDate(p.startDate)} → {fmtDate(p.expectedCompletion)} ·{' '}
-                {p.supervisor?.name ?? 'No supervisor'}
-              </p>
-            </Card>
-          </Link>
+          <ProjectCard key={p.id} project={p} />
         ))}
       </div>
 
@@ -120,6 +94,12 @@ export function ProjectsPage() {
               <Input name="expectedCompletion" type="date" required />
             </Field>
           </div>
+          <Field label="Initial status">
+            <Select name="status" defaultValue="PLANNING">
+              <option value="PLANNING">Planning</option>
+              <option value="ACTIVE">Active</option>
+            </Select>
+          </Field>
           <Field label="Supervisor">
             <Select name="supervisorId" defaultValue="">
               <option value="">Unassigned</option>
