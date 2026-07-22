@@ -12,6 +12,7 @@ import expensesRouter from './modules/expenses';
 import paymentsRouter from './modules/payments';
 import tasksRouter from './modules/tasks';
 import workersRouter from './modules/workers';
+import toolsRouter from './modules/tools';
 import attendanceRouter, { deviceRouter, adminDeviceRouter } from './modules/attendance';
 import stockRouter from './modules/stock';
 import documentsRouter from './modules/documents';
@@ -44,6 +45,7 @@ export function createApp() {
   v1.use('/projects/:projectId/documents', documentsRouter);
   v1.use('/projects/:projectId/daily-reports', dailyReportsRouter);
   v1.use('/workers', workersRouter);
+  v1.use('/tools', toolsRouter);
   v1.use('/attendance', deviceRouter); // POST /attendance/device-sync (API-key auth)
   v1.use('/devices', adminDeviceRouter);
   v1.use('/analytics', analyticsRouter);

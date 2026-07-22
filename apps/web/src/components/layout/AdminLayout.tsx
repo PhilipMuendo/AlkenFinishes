@@ -7,6 +7,7 @@ import {
   Menu,
   Settings,
   Users,
+  Wrench,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
@@ -16,6 +17,7 @@ const nav = [
   { to: '/admin', label: 'Dashboard', icon: BarChart3, end: true },
   { to: '/admin/projects', label: 'Projects', icon: Building2 },
   { to: '/admin/workers', label: 'Workers', icon: HardHat },
+  { to: '/admin/tools', label: 'Tools', icon: Wrench },
   { to: '/admin/users', label: 'Team', icon: Users },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];

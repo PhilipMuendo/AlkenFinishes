@@ -23,6 +23,7 @@ const ProjectDetailPage = lazy(() =>
 const WorkersPage = lazy(() =>
   import('./pages/admin/Workers').then((m) => ({ default: m.WorkersPage })),
 );
+const ToolsPage = lazy(() => import('./pages/admin/Tools').then((m) => ({ default: m.ToolsPage })));
 const UsersPage = lazy(() => import('./pages/admin/Users').then((m) => ({ default: m.UsersPage })));
 const SettingsPage = lazy(() =>
   import('./pages/admin/Settings').then((m) => ({ default: m.SettingsPage })),
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="workers" element={<WorkersPage />} />
+            <Route path="tools" element={<ToolsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

@@ -94,6 +94,7 @@ model User {
   projects       Project[]        @relation("ProjectSupervisor")
   expenses       Expense[]
   payments       Payment[]
+  toolTransfers  ToolTransfer[]
   stockMovements StockMovement[]
   documents      Document[]
   dailyReports   DailyReport[]
@@ -139,6 +140,9 @@ model Project {
   stockItems   StockItem[]
   documents    Document[]
   dailyReports DailyReport[]
+  toolsHere         Tool[]
+  toolTransfersFrom ToolTransfer[] @relation("ToolTransferFrom")
+  toolTransfersTo   ToolTransfer[] @relation("ToolTransferTo")
 
   @@index([supervisorId])
 }
@@ -299,6 +303,52 @@ model StockMovement {
   date        DateTime          @default(now())
 
   @@index([stockItemId, date])
+}
+
+// Company-owned durable equipment (paint brushes, drills, ladders, etc.),
+// distinct from StockItem: tools aren't consumed, they circulate between
+// sites. One row per catalog item with a single current location/quantity —
+// deliberately no simultaneous multi-site split; a batch that needs to live
+// in two places at once should be registered as two separate catalog rows
+// (e.g. "Paint brushes (Batch A)" / "(Batch B)").
+model Tool {
+  id               String   @id @default(cuid())
+  name             String
+  category         String? // e.g. "Power tools", "Hand tools" — free text, not an enum
+  unit             String   @default("pcs")
+  quantity         Decimal  @default(0) @db.Decimal(12, 2)
+  currentProjectId String? // null = central store / unassigned
+  currentProject   Project? @relation(fields: [currentProjectId], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transfers ToolTransfer[]
+
+  @@index([currentProjectId])
+}
+
+// Immutable transfer ledger — every location change is a logged, photo-
+// evidenced event. Transfers move a tool's entire current quantity in one
+// step (all-or-nothing); quantity is frozen here at transfer time.
+model ToolTransfer {
+  id              String   @id @default(cuid())
+  toolId          String
+  tool            Tool     @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  fromProjectId   String? // null = was in central store before this transfer
+  fromProject     Project? @relation("ToolTransferFrom", fields: [fromProjectId], references: [id], onDelete: SetNull)
+  toProjectId     String
+  toProject       Project  @relation("ToolTransferTo", fields: [toProjectId], references: [id], onDelete: Cascade)
+  quantity        Decimal  @db.Decimal(12, 2)
+  transferDate    DateTime @default(now())
+  proofPhotoUrl   String // required — a transfer cannot be logged without proof of delivery
+  notes           String?
+  transferredById String
+  transferredBy   User     @relation(fields: [transferredById], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@index([toolId, transferDate])
+  @@index([toProjectId])
+  @@index([fromProjectId])
 }
 
 model Document {

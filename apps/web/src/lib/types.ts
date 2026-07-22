@@ -96,6 +96,28 @@ export interface PaymentsSummary {
   installments: Payment[];
 }
 
+export interface Tool {
+  id: string;
+  name: string;
+  category: string | null;
+  unit: string;
+  quantity: string;
+  currentProject: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+export interface ToolTransfer {
+  id: string;
+  quantity: string;
+  transferDate: string;
+  proofPhotoUrl: string;
+  notes: string | null;
+  fromProject: { id: string; name: string } | null;
+  toProject: { id: string; name: string };
+  transferredBy: { id: string; name: string };
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   phase: string;

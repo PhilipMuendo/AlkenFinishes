@@ -8,6 +8,7 @@ import {
   Fingerprint,
   ListChecks,
   Receipt,
+  Wrench,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Project } from '@/lib/types';
@@ -18,9 +19,10 @@ import { ExpensesPanel } from '@/features/ExpensesPanel';
 import { AttendancePanel } from '@/features/AttendancePanel';
 import { StockPanel } from '@/features/StockPanel';
 import { ReportsPanel } from '@/features/ReportsPanel';
+import { ToolsReadOnlyPanel } from '@/features/ToolsReadOnlyPanel';
 
 /**
- * Supervisor site home: five large action tiles instead of dense tabs.
+ * Supervisor site home: large action tiles instead of dense tabs.
  * Optimized for one-handed phone use on site — no financials here.
  */
 const ACTIONS = [
@@ -29,6 +31,7 @@ const ACTIONS = [
   { id: 'expenses', label: 'Expenses', icon: Receipt, color: 'bg-amber-600' },
   { id: 'tasks', label: 'Tasks', icon: ListChecks, color: 'bg-violet-700' },
   { id: 'report', label: 'Daily report', icon: ClipboardList, color: 'bg-slate-700' },
+  { id: 'tools', label: 'Tools', icon: Wrench, color: 'bg-teal-700' },
 ] as const;
 
 type ActionId = (typeof ACTIONS)[number]['id'];
@@ -94,6 +97,7 @@ export function SiteDetailPage() {
       {view === 'expenses' && <ExpensesPanel projectId={projectId} />}
       {view === 'tasks' && <TasksPanel projectId={projectId} />}
       {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
+      {view === 'tools' && <ToolsReadOnlyPanel />}
     </div>
   );
 }
