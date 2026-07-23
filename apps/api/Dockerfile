@@ -21,4 +21,4 @@ RUN cd apps/api && npx prisma generate
 COPY --from=build /app/apps/api/dist apps/api/dist
 WORKDIR /app/apps/api
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts && node dist/server.js"]
