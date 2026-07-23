@@ -1,3 +1,4 @@
+import { CheckCircle2, AlertTriangle, AlertOctagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Health } from '@/lib/types';
 
@@ -8,17 +9,18 @@ export function Badge({
 }: React.HTMLAttributes<HTMLSpanElement> & {
   tone?: 'slate' | 'green' | 'yellow' | 'red' | 'blue';
 }) {
+  // Ring-inset tint reads sharper and more considered than a flat fill.
   const tones = {
-    slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-green-100 text-green-800',
-    yellow: 'bg-amber-100 text-amber-800',
-    red: 'bg-red-100 text-red-800',
-    blue: 'bg-brand-100 text-brand-700',
+    slate: 'bg-surface-sunken text-fg-muted ring-hairline-strong/50',
+    green: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
+    yellow: 'bg-amber-50 text-amber-700 ring-amber-600/20',
+    red: 'bg-red-50 text-red-700 ring-red-600/20',
+    blue: 'bg-brand-50 text-brand-700 ring-brand-600/20',
   };
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset',
         tones[tone],
         className,
       )}
@@ -27,20 +29,20 @@ export function Badge({
   );
 }
 
-/** Budget health chip — status color is never conveyed by color alone. */
+/** Budget health chip — status is conveyed by icon + label, never color alone. */
 export function HealthBadge({ health, pct }: { health: Health; pct?: number | null }) {
   if (health === 'NONE') return <Badge>No budget</Badge>;
   const map = {
-    GREEN: { tone: 'green' as const, label: 'Healthy', icon: '●' },
-    YELLOW: { tone: 'yellow' as const, label: 'Watch', icon: '▲' },
-    RED: { tone: 'red' as const, label: 'At risk', icon: '■' },
+    GREEN: { tone: 'green' as const, label: 'Healthy', Icon: CheckCircle2 },
+    YELLOW: { tone: 'yellow' as const, label: 'Watch', Icon: AlertTriangle },
+    RED: { tone: 'red' as const, label: 'At risk', Icon: AlertOctagon },
   };
   const m = map[health];
   return (
     <Badge tone={m.tone}>
-      <span aria-hidden>{m.icon}</span>
+      <m.Icon size={12} aria-hidden className="shrink-0" />
       {m.label}
-      {pct != null && <span>· {pct}%</span>}
+      {pct != null && <span className="nums opacity-80">· {pct}%</span>}
     </Badge>
   );
 }
@@ -56,5 +58,9 @@ export function StatusBadge({ status }: { status: string }) {
           : status === 'IN_PROGRESS'
             ? 'blue'
             : 'slate';
-  return <Badge tone={tone}>{status.replaceAll('_', ' ')}</Badge>;
+  return (
+    <Badge tone={tone} className="capitalize">
+      {status.replaceAll('_', ' ').toLowerCase()}
+    </Badge>
+  );
 }

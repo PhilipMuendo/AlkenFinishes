@@ -32,16 +32,16 @@ export function Dialog({
         if (e.target === ref.current) onClose();
       }}
       className={cn(
-        'flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl p-0 shadow-xl backdrop:bg-slate-900/50 open:animate-in',
+        'flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-2xl border border-hairline bg-surface p-0 text-fg shadow-lg backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] open:animate-fade-in',
         className,
       )}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+      <div className="flex shrink-0 items-center justify-between border-b border-hairline px-5 py-4">
+        <h2 className="text-base font-semibold text-fg">{title}</h2>
         <button
           onClick={onClose}
           aria-label="Close"
-          className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+          className="-mr-1 rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
         >
           <X size={18} />
         </button>

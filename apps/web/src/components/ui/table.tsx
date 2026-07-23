@@ -12,7 +12,7 @@ export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
   return (
     <th
       className={cn(
-        'border-b border-slate-200 px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500',
+        'border-b border-hairline px-3 py-2.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle',
         className,
       )}
       {...props}
@@ -23,15 +23,26 @@ export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
 export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
     <td
-      className={cn('border-b border-slate-100 px-3 py-2.5 text-slate-800', className)}
+      className={cn('border-b border-hairline/70 px-3 py-2.5 text-fg', className)}
       {...props}
     />
   );
 }
 
-export function Empty({ children }: { children: React.ReactNode }) {
+export function Empty({
+  children,
+  icon: Icon,
+}: {
+  children: React.ReactNode;
+  icon?: React.ComponentType<{ size?: number; className?: string }>;
+}) {
   return (
-    <div className="flex flex-col items-center justify-center gap-1 py-12 text-center text-sm text-slate-500">
+    <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-fg-muted">
+      {Icon && (
+        <div className="mb-1 flex h-11 w-11 items-center justify-center rounded-full bg-surface-sunken text-fg-subtle">
+          <Icon size={20} />
+        </div>
+      )}
       {children}
     </div>
   );

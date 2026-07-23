@@ -6,7 +6,7 @@ export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTML
     <input
       ref={ref}
       className={cn(
-        'h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50',
+        'h-11 w-full rounded-lg border border-hairline-strong bg-surface px-3 text-sm text-fg shadow-xs transition-colors placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:opacity-50',
         className,
       )}
       {...props}
@@ -22,7 +22,7 @@ export const Textarea = forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'min-h-[90px] w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500',
+      'min-h-[90px] w-full rounded-lg border border-hairline-strong bg-surface p-3 text-sm text-fg shadow-xs transition-colors placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
       className,
     )}
     {...props}
@@ -35,7 +35,7 @@ export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<H
     <select
       ref={ref}
       className={cn(
-        'h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500',
+        'h-11 w-full rounded-lg border border-hairline-strong bg-surface px-3 text-sm text-fg shadow-xs transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
         className,
       )}
       {...props}
@@ -46,7 +46,7 @@ Select.displayName = 'Select';
 
 export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
-    <label className={cn('mb-1.5 block text-xs font-medium text-slate-600', className)} {...props} />
+    <label className={cn('mb-1.5 block text-xs font-medium text-fg-muted', className)} {...props} />
   );
 }
 
