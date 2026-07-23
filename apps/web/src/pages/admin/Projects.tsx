@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Building2, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AppUser, Project } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -8,12 +8,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { PageHeader } from '@/components/ui/page-header';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ProjectCard } from '@/components/ProjectCard';
 
 export function ProjectsPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const { data: projects } = useQuery({
+  const { data: projects, isLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
   });
@@ -47,26 +49,42 @@ export function ProjectsPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Projects</h1>
-          <p className="text-sm text-slate-500">Construction sites and contracts</p>
-        </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus size={16} /> New project
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Projects"
+        description="Construction sites and contracts"
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus size={16} /> New project
+          </Button>
+        }
+      />
 
-      {projects?.length === 0 && (
+      {isLoading && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-xl" />
+          ))}
+        </div>
+      )}
+
+      {!isLoading && projects?.length === 0 && (
         <Card>
-          <CardContent className="pt-5">
-            <Empty>No projects yet. Create your first project to get started.</Empty>
+          <CardContent>
+            <Empty icon={Building2}>
+              <p className="font-medium text-fg">No projects yet</p>
+              <p className="mt-1 max-w-xs text-fg-muted">
+                Create your first project to start tracking budgets, payments, and progress.
+              </p>
+              <Button className="mt-3" onClick={() => setOpen(true)}>
+                <Plus size={16} /> New project
+              </Button>
+            </Empty>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {projects?.map((p) => (
           <ProjectCard key={p.id} project={p} />
         ))}

@@ -1,3 +1,4 @@
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function Table({ className, ...props }: React.HTMLAttributes<HTMLTableElement>) {
@@ -34,7 +35,7 @@ export function Empty({
   icon: Icon,
 }: {
   children: React.ReactNode;
-  icon?: React.ComponentType<{ size?: number; className?: string }>;
+  icon?: LucideIcon;
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-fg-muted">

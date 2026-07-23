@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { History, Plus, Repeat } from 'lucide-react';
+import { History, Plus, Repeat, Wrench } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Project, Tool, ToolTransfer } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { PageHeader } from '@/components/ui/page-header';
 
 export function ToolsPage() {
   const qc = useQueryClient();
@@ -49,40 +50,52 @@ export function ToolsPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Tools</h1>
-          <p className="text-sm text-slate-500">Company equipment and where it currently sits</p>
-        </div>
-        <Button onClick={() => setAddOpen(true)}>
-          <Plus size={16} /> New tool
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Tools"
+        description="Company equipment and where it currently sits"
+        actions={
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus size={16} /> New tool
+          </Button>
+        }
+      />
 
       {tools?.length === 0 && (
-        <Empty>No tools registered yet. Add one to start tracking transfers.</Empty>
+        <Card>
+          <CardContent>
+            <Empty icon={Wrench}>
+              <p className="font-medium text-fg">No tools registered yet</p>
+              <p className="mt-1 max-w-xs text-fg-muted">
+                Add equipment to track where it sits and move it between sites with photo proof.
+              </p>
+              <Button className="mt-3" onClick={() => setAddOpen(true)}>
+                <Plus size={16} /> New tool
+              </Button>
+            </Empty>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {tools?.map((tool) => (
-          <Card key={tool.id} className="p-4">
+          <Card key={tool.id} className="p-4 transition-shadow hover:shadow-md">
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-slate-900">{tool.name}</p>
-                {tool.category && <p className="text-xs text-slate-500">{tool.category}</p>}
-                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                <p className="font-semibold text-fg">{tool.name}</p>
+                {tool.category && <p className="text-xs text-fg-subtle">{tool.category}</p>}
+                <p className="nums mt-2 text-2xl font-semibold tracking-tight text-fg">
                   {Number(tool.quantity).toLocaleString()}{' '}
-                  <span className="text-sm font-normal text-slate-500">{tool.unit}</span>
+                  <span className="text-sm font-normal text-fg-subtle">{tool.unit}</span>
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-fg-muted">
                   {tool.currentProject?.name ?? 'Central store'}
                 </p>
               </div>
               <button
                 onClick={() => setHistoryTool(tool)}
                 aria-label={`History for ${tool.name}`}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
               >
                 <History size={18} />
               </button>

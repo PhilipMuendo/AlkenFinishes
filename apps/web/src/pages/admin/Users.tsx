@@ -8,6 +8,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th } from '@/components/ui/table';
+import { Card } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 
 export function UsersPage() {
   const qc = useQueryClient();
@@ -33,17 +35,18 @@ export function UsersPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Team</h1>
-          <p className="text-sm text-slate-500">Supervisors and administrators</p>
-        </div>
-        <Button onClick={() => setOpen(true)}>
-          <Plus size={16} /> Add user
-        </Button>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Team"
+        description="Supervisors and administrators"
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus size={16} /> Add user
+          </Button>
+        }
+      />
 
+      <Card className="overflow-hidden">
       <Table>
         <thead>
           <tr>
@@ -59,12 +62,14 @@ export function UsersPage() {
           {users?.map((u) => (
             <tr key={u.id}>
               <Td>
-                <span className="font-medium">{u.name}</span>
-                <p className="text-xs text-slate-500">{u.phone ?? ''}</p>
+                <span className="font-medium text-fg">{u.name}</span>
+                <p className="text-xs text-fg-subtle">{u.phone ?? ''}</p>
               </Td>
               <Td>{u.email}</Td>
               <Td>
-                <Badge tone={u.role === 'SUPERADMIN' ? 'blue' : 'slate'}>{u.role}</Badge>
+                <Badge tone={u.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
+                  {u.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
+                </Badge>
               </Td>
               <Td>{u.projects.map((p) => p.name).join(', ') || '—'}</Td>
               <Td>
@@ -83,6 +88,7 @@ export function UsersPage() {
           ))}
         </tbody>
       </Table>
+      </Card>
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Add user">
         <form

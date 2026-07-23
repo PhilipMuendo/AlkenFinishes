@@ -55,6 +55,13 @@
   }
 }
 
+/* A closed <dialog> must stay hidden. Utility classes like `flex` on the
+ * element would otherwise override the UA `display: none`, leaking the
+ * dialog's contents into the page. This selector outranks a single class. */
+dialog:not([open]) {
+  display: none;
+}
+
 dialog[open] {
   margin: auto;
 }

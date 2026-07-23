@@ -9,6 +9,9 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { PageHeader } from '@/components/ui/page-header';
+import { HardHat } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 
 const IMPORT_TEMPLATE_CSV =
   'Name,Phone,Trade,Hourly Rate,Biometric ID\nJohn Mwangi,0712345678,Painter,300,\nPeter Otieno,0723456789,Tiler,350,\n';
@@ -85,25 +88,43 @@ export function WorkersPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">Workers</h1>
-          <p className="text-sm text-slate-500">Fundis and site workers across all projects</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload size={16} /> Import
-          </Button>
-          <Button onClick={() => setOpen(true)}>
-            <Plus size={16} /> Add worker
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Workers"
+        description="Fundis and site workers across all projects"
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload size={16} /> Import
+            </Button>
+            <Button onClick={() => setOpen(true)}>
+              <Plus size={16} /> Add worker
+            </Button>
+          </>
+        }
+      />
 
       {workers?.length === 0 ? (
-        <Empty>No workers registered yet</Empty>
+        <Card>
+          <CardContent>
+            <Empty icon={HardHat}>
+              <p className="font-medium text-fg">No workers yet</p>
+              <p className="mt-1 max-w-xs text-fg-muted">
+                Add fundis one at a time, or import a whole crew from a spreadsheet.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button variant="outline" onClick={() => setImportOpen(true)}>
+                  <Upload size={16} /> Import
+                </Button>
+                <Button onClick={() => setOpen(true)}>
+                  <Plus size={16} /> Add worker
+                </Button>
+              </div>
+            </Empty>
+          </CardContent>
+        </Card>
       ) : (
+        <Card className="overflow-hidden">
         <Table>
           <thead>
             <tr>
@@ -120,8 +141,8 @@ export function WorkersPage() {
             {workers?.map((w) => (
               <tr key={w.id}>
                 <Td>
-                  <span className="font-medium">{w.name}</span>
-                  <p className="text-xs text-slate-500">{w.phone ?? '—'}</p>
+                  <span className="font-medium text-fg">{w.name}</span>
+                  <p className="text-xs text-fg-subtle">{w.phone ?? '—'}</p>
                 </Td>
                 <Td>{w.trade}</Td>
                 <Td className="text-right tabular-nums">{fmtMoney(Number(w.hourlyRate))}/hr</Td>
@@ -132,7 +153,11 @@ export function WorkersPage() {
                     <Badge tone="yellow">Not enrolled</Badge>
                   )}
                 </Td>
-                <Td>{w.assignments[0]?.project.name ?? <span className="text-slate-400">Unassigned</span>}</Td>
+                <Td>
+                  {w.assignments[0]?.project.name ?? (
+                    <span className="text-fg-subtle">Unassigned</span>
+                  )}
+                </Td>
                 <Td>
                   <Badge tone={w.status === 'ACTIVE' ? 'green' : 'slate'}>{w.status}</Badge>
                 </Td>
@@ -151,6 +176,7 @@ export function WorkersPage() {
             ))}
           </tbody>
         </Table>
+        </Card>
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Add worker">

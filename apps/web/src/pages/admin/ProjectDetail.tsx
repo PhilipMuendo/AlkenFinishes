@@ -57,19 +57,19 @@ export function ProjectDetailPage() {
     },
   });
 
-  if (!project) return <p className="text-sm text-slate-500">Loading project…</p>;
+  if (!project) return <p className="text-sm text-fg-muted">Loading project…</p>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div>
         <Link
           to="/admin/projects"
-          className="mb-2 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800"
+          className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
         >
           <ChevronLeft size={16} /> Projects
         </Link>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-slate-900">{project.name}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight text-fg">{project.name}</h1>
           <Select
             value={project.status}
             onChange={(e) => setStatus.mutate(e.target.value as ProjectStatus)}
@@ -83,7 +83,7 @@ export function ProjectDetailPage() {
             ))}
           </Select>
         </div>
-        <p className="text-sm text-slate-500">
+        <p className="mt-1 text-sm text-fg-muted">
           {project.clientName} · {project.location} · {fmtDate(project.startDate)} →{' '}
           {fmtDate(project.expectedCompletion)} · Supervisor:{' '}
           {project.supervisor?.name ?? 'Unassigned'}

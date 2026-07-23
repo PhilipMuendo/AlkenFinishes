@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
 
 interface Device {
   id: string;
@@ -93,14 +94,14 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <h1 className="text-xl font-semibold text-slate-900">Settings</h1>
+      <PageHeader title="Settings" description="Budget rules and attendance devices" />
 
       <Card>
         <CardHeader>
           <CardTitle>Budget health thresholds</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-fg-muted">
             A category is <Badge tone="green">Healthy</Badge> below the watch threshold,{' '}
             <Badge tone="yellow">Watch</Badge> once consumption reaches it, and{' '}
             <Badge tone="red">At risk</Badge> at the risk threshold.

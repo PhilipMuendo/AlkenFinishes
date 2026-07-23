@@ -12,7 +12,7 @@ export function Tabs({
   return (
     <div
       role="tablist"
-      className="flex gap-1 overflow-x-auto border-b border-slate-200 pb-px"
+      className="-mb-px flex gap-1 overflow-x-auto border-b border-hairline"
     >
       {tabs.map((t) => (
         <button
@@ -21,10 +21,10 @@ export function Tabs({
           aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            'whitespace-nowrap rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors',
+            'relative whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors',
             active === t.id
-              ? 'border-b-2 border-brand-600 text-brand-700'
-              : 'text-slate-500 hover:text-slate-800',
+              ? 'border-brand-600 text-fg'
+              : 'border-transparent text-fg-muted hover:text-fg',
           )}
         >
           {t.label}
