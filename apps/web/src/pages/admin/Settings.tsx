@@ -177,7 +177,7 @@ export function SettingsPage() {
           {devices?.map((d) => (
             <div
               key={d.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"
             >
               <div className="flex items-center gap-3">
                 <Fingerprint size={18} className="text-brand-600" />
@@ -188,7 +188,7 @@ export function SettingsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Select
                   value={d.projectId ?? ''}
                   onChange={(e) =>

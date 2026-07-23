@@ -132,16 +132,28 @@ router.get(
         monthlyTotals(settings.labourCostSource),
       ]);
 
+    // Index each aggregate array once so the per-project loop below is O(P), not O(P x Q).
+    const expenseByProject = new Map<string, Record<string, number>>();
+    for (const row of expenseAgg) {
+      const bucket = expenseByProject.get(row.projectId) ?? {};
+      bucket[row.category] = Number(row._sum.amount ?? 0);
+      expenseByProject.set(row.projectId, bucket);
+    }
+    const labourByProject = new Map(labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]));
+    const overridesByProject = new Map(overrideAgg.map((o) => [o.projectId, o._count]));
+    const collectedByProject = new Map(paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]));
+    const budgetLinesByProject = new Map<string, typeof budgetLines>();
+    for (const line of budgetLines) {
+      const bucket = budgetLinesByProject.get(line.projectId) ?? [];
+      bucket.push(line);
+      budgetLinesByProject.set(line.projectId, bucket);
+    }
+
     const perProject = projects.map((p) => {
-      const expenseByCategory: Record<string, number> = {};
-      for (const row of expenseAgg) {
-        if (row.projectId === p.id) expenseByCategory[row.category] = Number(row._sum.amount ?? 0);
-      }
-      const attendanceLabour = Number(
-        labourAgg.find((a) => a.projectId === p.id)?._sum.labourCost ?? 0,
-      );
+      const expenseByCategory = expenseByProject.get(p.id) ?? {};
+      const attendanceLabour = labourByProject.get(p.id) ?? 0;
       const categories = buildCategories(
-        budgetLines.filter((b) => b.projectId === p.id),
+        budgetLinesByProject.get(p.id) ?? [],
         { expenseByCategory, attendanceLabour },
         settings,
       );
@@ -149,9 +161,7 @@ router.get(
       const totalActual = categories.reduce((s, c) => s + c.actual, 0);
       const contractValue = Number(p.contractValue);
       const consumedPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : null;
-      const totalCollected = Number(
-        paymentAgg.find((a) => a.projectId === p.id)?._sum.amount ?? 0,
-      );
+      const totalCollected = collectedByProject.get(p.id) ?? 0;
       return {
         id: p.id,
         name: p.name,
@@ -169,7 +179,7 @@ router.get(
         estimatedProfit: contractValue - totalActual,
         consumedPct,
         health: health(consumedPct, settings.thresholds),
-        manualOverrides30d: overrideAgg.find((o) => o.projectId === p.id)?._count ?? 0,
+        manualOverrides30d: overridesByProject.get(p.id) ?? 0,
         totalCollected,
         pendingBalance: contractValue - totalCollected,
       };

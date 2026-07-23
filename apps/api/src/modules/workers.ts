@@ -150,19 +150,27 @@ router.post(
     );
     const seenInFile = new Set<string>();
 
-    const results: ImportRowResult[] = [];
-    for (const [i, raw] of sheetRows.entries()) {
+    // Phase 1: validate every row synchronously (no DB round trips yet).
+    const results: ImportRowResult[] = new Array(sheetRows.length);
+    const toCreate: {
+      index: number;
+      rowNum: number;
+      data: z.infer<typeof importRowSchema>;
+      biometricId: string | null;
+      warning?: string;
+    }[] = [];
+    sheetRows.forEach((raw, i) => {
       const rowNum = i + 2; // header is row 1
       const normalized = normalizeRow(raw);
       const parsed = importRowSchema.safeParse(normalized);
       if (!parsed.success) {
-        results.push({
+        results[i] = {
           row: rowNum,
           name: normalized.name,
           status: 'error',
           error: parsed.error.issues.map((iss) => iss.message).join('; '),
-        });
-        continue;
+        };
+        return;
       }
       const data = parsed.data;
       let biometricId: string | null = data.biometricId?.trim() || null;
@@ -172,21 +180,38 @@ router.post(
         biometricId = null;
       }
       if (biometricId) seenInFile.add(biometricId);
+      toCreate.push({ index: i, rowNum, data, biometricId, warning });
+    });
 
-      try {
-        const worker = await prisma.worker.create({
-          data: {
-            name: data.name,
-            phone: data.phone || null,
-            trade: data.trade,
-            hourlyRate: data.hourlyRate,
-            biometricId,
-          },
-        });
-        results.push({ row: rowNum, name: worker.name, status: 'created', warning });
-      } catch {
-        results.push({ row: rowNum, name: data.name, status: 'error', error: 'Could not save this row' });
-      }
+    // Phase 2: writes are independent, so run them with bounded concurrency
+    // instead of one round trip at a time — a 500-row file no longer means
+    // 500 serialized queries on one connection.
+    const CONCURRENCY = 20;
+    for (let start = 0; start < toCreate.length; start += CONCURRENCY) {
+      const batch = toCreate.slice(start, start + CONCURRENCY);
+      await Promise.all(
+        batch.map(async ({ index, rowNum, data, biometricId, warning }) => {
+          try {
+            const worker = await prisma.worker.create({
+              data: {
+                name: data.name,
+                phone: data.phone || null,
+                trade: data.trade,
+                hourlyRate: data.hourlyRate,
+                biometricId,
+              },
+            });
+            results[index] = { row: rowNum, name: worker.name, status: 'created', warning };
+          } catch {
+            results[index] = {
+              row: rowNum,
+              name: data.name,
+              status: 'error',
+              error: 'Could not save this row',
+            };
+          }
+        }),
+      );
     }
 
     const created = results.filter((r) => r.status === 'created').length;

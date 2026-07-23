@@ -222,6 +222,8 @@ model TaskPhoto {
   fileUrl    String
   caption    String?
   uploadedAt DateTime @default(now())
+
+  @@index([taskId])
 }
 
 model Worker {
@@ -365,6 +367,7 @@ model Document {
   createdAt    DateTime     @default(now())
 
   @@index([projectId, type])
+  @@index([projectId, createdAt])
 }
 
 model DailyReport {
@@ -382,7 +385,6 @@ model DailyReport {
   createdAt      DateTime @default(now())
 
   @@unique([projectId, date])
-  @@index([projectId, date])
 }
 
 model AttendanceDevice {

@@ -26,6 +26,7 @@ router.get(
       where: { projectId: req.params.projectId },
       include,
       orderBy: { paymentDate: 'desc' },
+      take: 500,
     });
     res.json(payments.map((p) => ({ ...p, receiptUrl: signFileUrl(p.receiptUrl) })));
   }),

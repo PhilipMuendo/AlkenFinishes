@@ -32,11 +32,11 @@ export function Dialog({
         if (e.target === ref.current) onClose();
       }}
       className={cn(
-        'w-full max-w-lg rounded-xl p-0 shadow-xl backdrop:bg-slate-900/50 open:animate-in',
+        'flex max-h-[85vh] w-full max-w-lg flex-col rounded-xl p-0 shadow-xl backdrop:bg-slate-900/50 open:animate-in',
         className,
       )}
     >
-      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
         <h2 className="text-base font-semibold text-slate-900">{title}</h2>
         <button
           onClick={onClose}
@@ -46,7 +46,7 @@ export function Dialog({
           <X size={18} />
         </button>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="overflow-y-auto p-5">{children}</div>
     </dialog>
   );
 }
