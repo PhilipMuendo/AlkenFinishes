@@ -17,6 +17,8 @@ import attendanceRouter, { deviceRouter, adminDeviceRouter } from './modules/att
 import stockRouter from './modules/stock';
 import documentsRouter from './modules/documents';
 import dailyReportsRouter from './modules/dailyReports';
+import weeklyReportsRouter from './modules/weeklyReports';
+import reportsRouter from './modules/reports';
 import analyticsRouter from './modules/analytics';
 import settingsRouter from './modules/settings';
 import { serveUploads } from './middleware/upload';
@@ -44,6 +46,8 @@ export function createApp() {
   v1.use('/projects/:projectId/stock', stockRouter);
   v1.use('/projects/:projectId/documents', documentsRouter);
   v1.use('/projects/:projectId/daily-reports', dailyReportsRouter);
+  v1.use('/projects/:projectId/weekly-reports', weeklyReportsRouter);
+  v1.use('/reports', reportsRouter);
   v1.use('/workers', workersRouter);
   v1.use('/tools', toolsRouter);
   v1.use('/attendance', deviceRouter); // POST /attendance/device-sync (API-key auth)

@@ -98,6 +98,7 @@ model User {
   stockMovements StockMovement[]
   documents      Document[]
   dailyReports   DailyReport[]
+  weeklyReports  WeeklyReport[]
   auditLogs      AuditLog[]
   refreshTokens  RefreshToken[]
   attendanceEdits AttendanceRecord[] @relation("AttendanceRecordedBy")
@@ -140,6 +141,7 @@ model Project {
   stockItems   StockItem[]
   documents    Document[]
   dailyReports DailyReport[]
+  weeklyReports WeeklyReport[]
   toolsHere         Tool[]
   toolTransfersFrom ToolTransfer[] @relation("ToolTransferFrom")
   toolTransfersTo   ToolTransfer[] @relation("ToolTransferTo")
@@ -385,6 +387,26 @@ model DailyReport {
   createdAt      DateTime @default(now())
 
   @@unique([projectId, date])
+}
+
+// A supervisor's written weekly summary for a site — one per week per project.
+// weekEnding is the last day (Sunday) of the ISO week the report covers.
+model WeeklyReport {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  weekEnding    DateTime @db.Date
+  summary       String
+  milestones    String?
+  issues        String?
+  nextWeekPlan  String?
+  photoUrls     String[] @default([])
+  submittedById String
+  submittedBy   User     @relation(fields: [submittedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([projectId, weekEnding])
+  @@index([projectId, weekEnding])
 }
 
 model AttendanceDevice {

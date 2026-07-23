@@ -191,6 +191,37 @@ export interface DailyReport {
   submittedBy: { id: string; name: string };
 }
 
+export interface WeeklyReport {
+  id: string;
+  weekEnding: string;
+  summary: string;
+  milestones: string | null;
+  issues: string | null;
+  nextWeekPlan: string | null;
+  photoUrls: string[];
+  submittedBy: { id: string; name: string };
+}
+
+// Unified cross-site feed item from GET /reports (super admin).
+export interface ReportFeedItem {
+  id: string;
+  type: 'DAILY' | 'WEEKLY';
+  date: string;
+  project: { id: string; name: string };
+  submittedBy: { name: string };
+  // daily
+  workCompleted?: string;
+  workersPresent?: number;
+  materialsUsed?: string | null;
+  challenges?: string | null;
+  // weekly
+  summary?: string;
+  milestones?: string | null;
+  issues?: string | null;
+  nextWeekPlan?: string | null;
+  photoUrls: string[];
+}
+
 export interface CompanyAnalytics {
   totals: {
     contractValue: number;

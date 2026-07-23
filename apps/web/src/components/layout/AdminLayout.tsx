@@ -1,5 +1,16 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, Building2, HardHat, LogOut, Menu, Settings, Users, Wrench, X } from 'lucide-react';
+import {
+  BarChart3,
+  Building2,
+  FileText,
+  HardHat,
+  LogOut,
+  Menu,
+  Settings,
+  Users,
+  Wrench,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
@@ -9,6 +20,7 @@ const nav = [
   { to: '/admin/projects', label: 'Projects', icon: Building2 },
   { to: '/admin/workers', label: 'Workers', icon: HardHat },
   { to: '/admin/tools', label: 'Tools', icon: Wrench },
+  { to: '/admin/reports', label: 'Reports', icon: FileText },
   { to: '/admin/users', label: 'Team', icon: Users },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];

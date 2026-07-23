@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Boxes,
+  CalendarRange,
   ChevronLeft,
   ClipboardList,
   Fingerprint,
@@ -19,6 +20,7 @@ import { ExpensesPanel } from '@/features/ExpensesPanel';
 import { AttendancePanel } from '@/features/AttendancePanel';
 import { StockPanel } from '@/features/StockPanel';
 import { ReportsPanel } from '@/features/ReportsPanel';
+import { WeeklyReportsPanel } from '@/features/WeeklyReportsPanel';
 import { ToolsReadOnlyPanel } from '@/features/ToolsReadOnlyPanel';
 
 /**
@@ -42,6 +44,13 @@ const ACTIONS = [
     hint: "Submit today's update",
     icon: ClipboardList,
     chip: 'bg-indigo-50 text-indigo-600',
+  },
+  {
+    id: 'weekly',
+    label: 'Weekly report',
+    hint: 'Summarise the week',
+    icon: CalendarRange,
+    chip: 'bg-sky-50 text-sky-600',
   },
   { id: 'tools', label: 'Tools', hint: 'Equipment on site', icon: Wrench, chip: 'bg-teal-50 text-teal-600' },
 ] as const;
@@ -111,6 +120,7 @@ export function SiteDetailPage() {
       {view === 'expenses' && <ExpensesPanel projectId={projectId} />}
       {view === 'tasks' && <TasksPanel projectId={projectId} />}
       {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
+      {view === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit />}
       {view === 'tools' && <ToolsReadOnlyPanel />}
     </div>
   );
