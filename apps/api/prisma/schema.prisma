@@ -241,6 +241,7 @@ model Worker {
 
   assignments WorkerAssignment[]
   attendance  AttendanceRecord[]
+  syncIssues  AttendanceSyncIssue[]
 }
 
 model WorkerAssignment {
@@ -410,13 +411,34 @@ model WeeklyReport {
 }
 
 model AttendanceDevice {
-  id         String    @id @default(cuid())
-  name       String
-  apiKeyHash String    @unique
-  active     Boolean   @default(true)
-  projectId  String? // when set, the device may only submit records for this site
-  lastSyncAt DateTime?
-  createdAt  DateTime  @default(now())
+  id           String    @id @default(cuid())
+  name         String
+  apiKeyHash   String    @unique
+  serialNumber String?   @unique // ZKTeco/ADMS push devices identify by serial number
+  active       Boolean   @default(true)
+  projectId    String? // when set, the device may only submit records for this site
+  lastSyncAt   DateTime?
+  createdAt    DateTime  @default(now())
+}
+
+// Punches a sync could not turn into attendance (unknown fingerprint, worker
+// with no active assignment, etc.). Surfaced to the admin so nothing is lost
+// silently. Deduped per (device, biometricId, reason) while unresolved.
+model AttendanceSyncIssue {
+  id          String    @id @default(cuid())
+  deviceId    String? // our AttendanceDevice id, when the device is known
+  biometricId String // raw PIN/template id the device reported
+  workerId    String?
+  worker      Worker?   @relation(fields: [workerId], references: [id], onDelete: SetNull)
+  reason      String // unknown_worker | no_assignment | wrong_site | invalid_time
+  detail      String?
+  occurrences Int       @default(1)
+  lastSeenAt  DateTime  @default(now())
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+
+  @@unique([deviceId, biometricId, reason])
+  @@index([resolvedAt, lastSeenAt])
 }
 
 model Setting {

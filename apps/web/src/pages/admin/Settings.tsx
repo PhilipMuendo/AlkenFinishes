@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fingerprint, Plus } from 'lucide-react';
+import { AlertTriangle, Fingerprint, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Project } from '@/lib/types';
+import type { Project, Worker } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,8 +16,25 @@ interface Device {
   name: string;
   active: boolean;
   projectId: string | null;
+  serialNumber: string | null;
   lastSyncAt: string | null;
 }
+
+interface SyncIssue {
+  id: string;
+  biometricId: string;
+  reason: 'unknown_worker' | 'no_assignment' | 'wrong_site' | string;
+  occurrences: number;
+  lastSeenAt: string;
+  worker: { id: string; name: string; trade: string } | null;
+}
+
+const ISSUE_LABEL: Record<string, string> = {
+  unknown_worker: 'Unrecognised fingerprint',
+  no_assignment: 'Worker not assigned to a site',
+  wrong_site: 'Punched at the wrong site',
+  invalid_time: 'Invalid punch time',
+};
 
 type LabourSource = 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
 
@@ -79,7 +96,8 @@ export function SettingsPage() {
   });
 
   const createDevice = useMutation({
-    mutationFn: (name: string) => api<{ apiKey: string }>('/devices', { body: { name } }),
+    mutationFn: (body: { name: string; serialNumber?: string; projectId?: string | null }) =>
+      api<{ apiKey: string }>('/devices', { body }),
     onSuccess: (data) => {
       setNewKey(data.apiKey);
       void qc.invalidateQueries({ queryKey: ['devices'] });
@@ -90,6 +108,28 @@ export function SettingsPage() {
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/devices/${id}`, { method: 'PATCH', body: { active } }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+  });
+
+  const { data: issues } = useQuery({
+    queryKey: ['sync-issues'],
+    queryFn: () => api<SyncIssue[]>('/devices/issues'),
+  });
+  const { data: workers } = useQuery({
+    queryKey: ['workers'],
+    queryFn: () => api<Worker[]>('/workers'),
+  });
+  const invalidateIssues = () => {
+    void qc.invalidateQueries({ queryKey: ['sync-issues'] });
+    void qc.invalidateQueries({ queryKey: ['workers'] });
+  };
+  const resolveIssue = useMutation({
+    mutationFn: (id: string) => api(`/devices/issues/${id}/resolve`, { method: 'POST' }),
+    onSuccess: invalidateIssues,
+  });
+  const linkIssue = useMutation({
+    mutationFn: ({ id, workerId }: { id: string; workerId: string }) =>
+      api(`/devices/issues/${id}/link`, { method: 'POST', body: { workerId } }),
+    onSuccess: invalidateIssues,
   });
 
   return (
@@ -183,8 +223,13 @@ export function SettingsPage() {
               <div className="flex items-center gap-3">
                 <Fingerprint size={18} className="text-brand-600" />
                 <div>
-                  <p className="text-sm font-medium text-slate-900">{d.name}</p>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-sm font-medium text-fg">{d.name}</p>
+                  <p className="text-xs text-fg-subtle">
+                    {d.serialNumber && (
+                      <>
+                        SN <span className="font-mono">{d.serialNumber}</span> ·{' '}
+                      </>
+                    )}
                     Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}
                   </p>
                 </div>
@@ -219,6 +264,36 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
+      {issues && issues.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <AlertTriangle size={16} className="text-amber-600" />
+              <CardTitle>Sync issues ({issues.length})</CardTitle>
+            </div>
+            <p className="text-xs text-fg-muted">
+              Punches the system couldn&rsquo;t match to a worker. Link an unrecognised fingerprint
+              to enrol that worker; future punches are then recorded automatically.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {issues.map((issue) => (
+              <IssueRow
+                key={issue.id}
+                issue={issue}
+                workers={workers ?? []}
+                onLink={(workerId) => linkIssue.mutate({ id: issue.id, workerId })}
+                onDismiss={() => resolveIssue.mutate(issue.id)}
+                busy={linkIssue.isPending || resolveIssue.isPending}
+              />
+            ))}
+            {linkIssue.isError && (
+              <p className="text-sm text-red-600">{(linkIssue.error as Error).message}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <Dialog
         open={deviceOpen}
         onClose={() => {
@@ -229,13 +304,24 @@ export function SettingsPage() {
       >
         {newKey ? (
           <div className="space-y-3">
-            <p className="text-sm text-slate-700">
-              Device registered. Copy this API key now — it is shown only once. Configure the
-              device (or its sync bridge) to send batches to{' '}
-              <code className="rounded bg-slate-100 px-1">POST /api/v1/attendance/device-sync</code>{' '}
-              with header <code className="rounded bg-slate-100 px-1">X-Device-Key</code>.
+            <p className="text-sm text-fg-muted">
+              Device registered. Two ways to connect it:
             </p>
-            <p className="break-all rounded-lg bg-slate-900 p-3 font-mono text-xs text-green-400">
+            <ul className="space-y-1.5 text-sm text-fg-muted">
+              <li>
+                <span className="font-medium text-fg">ZKTeco / ADMS terminal:</span> set its server
+                address to this app&rsquo;s address (it will push to{' '}
+                <code className="rounded bg-surface-sunken px-1 text-xs">/iclock</code>). It
+                authenticates by the serial number you entered — no key needed.
+              </li>
+              <li>
+                <span className="font-medium text-fg">Custom bridge:</span> POST batches to{' '}
+                <code className="rounded bg-surface-sunken px-1 text-xs">/api/v1/attendance/device-sync</code>{' '}
+                with header <code className="rounded bg-surface-sunken px-1 text-xs">X-Device-Key</code>{' '}
+                set to the key below. Copy it now — it&rsquo;s shown only once.
+              </li>
+            </ul>
+            <p className="break-all rounded-lg bg-slate-900 p-3 font-mono text-xs text-emerald-400">
               {newKey}
             </p>
             <Button
@@ -253,19 +339,105 @@ export function SettingsPage() {
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
-              createDevice.mutate(fd.get('name') as string);
+              createDevice.mutate({
+                name: fd.get('name') as string,
+                serialNumber: (fd.get('serialNumber') as string) || undefined,
+                projectId: (fd.get('projectId') as string) || null,
+              });
             }}
             className="space-y-3"
           >
             <Field label="Device name">
-              <Input name="name" required placeholder="Karen site — device 1" />
+              <Input name="name" required placeholder="Karen site — gate terminal" />
             </Field>
+            <Field label="Serial number (ZKTeco / ADMS push devices)">
+              <Input name="serialNumber" placeholder="Printed on the device, e.g. ZK9988" />
+            </Field>
+            <Field label="Bind to site (optional)">
+              <Select name="projectId" defaultValue="">
+                <option value="">Any site</option>
+                {projects?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {createDevice.isError && (
+              <p className="text-sm text-red-600">
+                Couldn&rsquo;t register — is that serial number already in use?
+              </p>
+            )}
             <Button type="submit" className="w-full" disabled={createDevice.isPending}>
-              Register & generate API key
+              Register device
             </Button>
           </form>
         )}
       </Dialog>
+    </div>
+  );
+}
+
+function IssueRow({
+  issue,
+  workers,
+  onLink,
+  onDismiss,
+  busy,
+}: {
+  issue: SyncIssue;
+  workers: Worker[];
+  onLink: (workerId: string) => void;
+  onDismiss: () => void;
+  busy: boolean;
+}) {
+  const [workerId, setWorkerId] = useState('');
+  const isUnknown = issue.reason === 'unknown_worker';
+  return (
+    <div className="rounded-lg border border-hairline p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-fg">{ISSUE_LABEL[issue.reason] ?? issue.reason}</p>
+          <p className="text-xs text-fg-subtle">
+            {isUnknown ? (
+              <>
+                Fingerprint <span className="font-mono text-fg-muted">{issue.biometricId}</span>
+              </>
+            ) : (
+              (issue.worker?.name ?? 'Unknown worker')
+            )}{' '}
+            · seen {issue.occurrences}× · last {fmtDate(issue.lastSeenAt)}
+          </p>
+        </div>
+        {!isUnknown && (
+          <Button size="sm" variant="outline" onClick={onDismiss} disabled={busy}>
+            Dismiss
+          </Button>
+        )}
+      </div>
+      {isUnknown && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <Select
+            value={workerId}
+            onChange={(e) => setWorkerId(e.target.value)}
+            className="h-9 w-56 text-xs"
+            aria-label="Link fingerprint to worker"
+          >
+            <option value="">Link to worker…</option>
+            {workers.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name} · {w.trade}
+              </option>
+            ))}
+          </Select>
+          <Button size="sm" disabled={!workerId || busy} onClick={() => onLink(workerId)}>
+            Link &amp; enrol
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDismiss} disabled={busy}>
+            Dismiss
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

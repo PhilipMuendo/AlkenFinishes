@@ -3,12 +3,12 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { env } from '../config/env';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { deviceSyncLimiter } from '../middleware/rateLimit';
+import { computeCost, recordIssue } from '../services/attendanceIngest';
 
 /**
  * Attendance design:
@@ -20,17 +20,6 @@ import { deviceSyncLimiter } from '../middleware/rateLimit';
  * - Hours are capped (MAX_SHIFT_HOURS) and check-out uses the server clock —
  *   timestamps that inflate labour cost are rejected everywhere.
  */
-
-function computeCost(checkIn: Date, checkOut: Date | null, hourlyRate: Prisma.Decimal) {
-  if (!checkOut) return { hoursWorked: null, labourCost: null };
-  const raw = (checkOut.getTime() - checkIn.getTime()) / 3_600_000;
-  const hours = Math.min(Math.max(0, raw), env.MAX_SHIFT_HOURS);
-  const rounded = Math.round(hours * 100) / 100;
-  return {
-    hoursWorked: rounded,
-    labourCost: Math.round(rounded * Number(hourlyRate) * 100) / 100,
-  };
-}
 
 const recordSchema = z.object({
   biometricId: z.string().min(1),
@@ -61,6 +50,10 @@ deviceRouter.post(
 
     const { deviceId, records } = syncSchema.parse(req.body);
     const results: { externalId: string; status: string }[] = [];
+    // Punches we couldn't place, deduped, for the admin's Sync Issues view.
+    const issuesToRecord = new Map<string, { biometricId: string; reason: string; workerId?: string }>();
+    const flagIssue = (biometricId: string, reason: string, workerId?: string) =>
+      issuesToRecord.set(`${biometricId}:${reason}`, { biometricId, reason, workerId });
 
     // Batch-fetch everything the loop needs: workers, existing sync records,
     // and existing same-day records — three queries instead of N per record.
@@ -95,15 +88,18 @@ deviceRouter.post(
       const worker = workerByBio.get(rec.biometricId);
       if (!worker) {
         results.push({ externalId: rec.externalId, status: 'unknown_worker' });
+        flagIssue(rec.biometricId, 'unknown_worker');
         continue;
       }
       const projectId = rec.projectId ?? device.projectId ?? worker.assignments[0]?.projectId;
       if (!projectId) {
         results.push({ externalId: rec.externalId, status: 'no_assignment' });
+        flagIssue(rec.biometricId, 'no_assignment', worker.id);
         continue;
       }
       if (device.projectId && projectId !== device.projectId) {
         results.push({ externalId: rec.externalId, status: 'wrong_site_for_device' });
+        flagIssue(rec.biometricId, 'wrong_site', worker.id);
         continue;
       }
       const checkOut = rec.checkOut ?? null;
@@ -161,6 +157,12 @@ deviceRouter.post(
         data: { lastSyncAt: new Date() },
       }),
     ]);
+
+    await Promise.all(
+      [...issuesToRecord.values()].map((i) =>
+        recordIssue(device.id, i.biometricId, i.reason, i.workerId),
+      ),
+    );
 
     res.json({ received: records.length, results });
   }),
@@ -281,6 +283,7 @@ adminDeviceRouter.get(
           name: true,
           active: true,
           projectId: true,
+          serialNumber: true,
           lastSyncAt: true,
           createdAt: true,
         },
@@ -293,18 +296,24 @@ adminDeviceRouter.get(
 adminDeviceRouter.post(
   '/',
   asyncHandler(async (req, res) => {
-    const { name, projectId } = z
-      .object({ name: z.string().min(1), projectId: z.string().nullable().optional() })
+    const { name, projectId, serialNumber } = z
+      .object({
+        name: z.string().min(1),
+        projectId: z.string().nullable().optional(),
+        // ZKTeco/ADMS push devices identify by serial number.
+        serialNumber: z.string().trim().min(1).optional(),
+      })
       .parse(req.body);
     const apiKey = crypto.randomBytes(32).toString('hex');
     const device = await prisma.attendanceDevice.create({
       data: {
         name,
         projectId: projectId ?? null,
+        serialNumber: serialNumber ?? null,
         apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex'),
       },
     });
-    audit(req, 'device.create', 'AttendanceDevice', device.id, { name, projectId });
+    audit(req, 'device.create', 'AttendanceDevice', device.id, { name, projectId, serialNumber });
     // The plaintext key is returned exactly once.
     res.status(201).json({ id: device.id, name: device.name, apiKey });
   }),
@@ -314,15 +323,76 @@ adminDeviceRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
     const data = z
-      .object({ active: z.boolean().optional(), projectId: z.string().nullable().optional() })
+      .object({
+        active: z.boolean().optional(),
+        projectId: z.string().nullable().optional(),
+        serialNumber: z.string().trim().min(1).nullable().optional(),
+      })
       .parse(req.body);
     const device = await prisma.attendanceDevice.update({
       where: { id: req.params.id },
       data,
-      select: { id: true, name: true, active: true, projectId: true },
+      select: { id: true, name: true, active: true, projectId: true, serialNumber: true },
     });
     audit(req, 'device.update', 'AttendanceDevice', device.id, data);
     res.json(device);
+  }),
+);
+
+// ---- Sync issues: punches that couldn't become attendance ----
+
+adminDeviceRouter.get(
+  '/issues',
+  asyncHandler(async (req, res) => {
+    const { resolved } = z
+      .object({ resolved: z.enum(['true', 'false']).optional() })
+      .parse(req.query);
+    const issues = await prisma.attendanceSyncIssue.findMany({
+      where: { resolvedAt: resolved === 'true' ? { not: null } : null },
+      include: { worker: { select: { id: true, name: true, trade: true } } },
+      orderBy: { lastSeenAt: 'desc' },
+      take: 200,
+    });
+    res.json(issues);
+  }),
+);
+
+adminDeviceRouter.post(
+  '/issues/:id/resolve',
+  asyncHandler(async (req, res) => {
+    const issue = await prisma.attendanceSyncIssue.update({
+      where: { id: req.params.id },
+      data: { resolvedAt: new Date() },
+    });
+    audit(req, 'attendance.issue_resolve', 'AttendanceSyncIssue', issue.id);
+    res.json(issue);
+  }),
+);
+
+// Enroll: bind an unrecognised fingerprint id to a worker, then clear the issue.
+adminDeviceRouter.post(
+  '/issues/:id/link',
+  asyncHandler(async (req, res) => {
+    const { workerId } = z.object({ workerId: z.string().min(1) }).parse(req.body);
+    const issue = await prisma.attendanceSyncIssue.findUniqueOrThrow({
+      where: { id: req.params.id },
+    });
+    const clash = await prisma.worker.findFirst({
+      where: { biometricId: issue.biometricId, NOT: { id: workerId } },
+      select: { id: true, name: true },
+    });
+    if (clash) {
+      throw ApiError.conflict(`Fingerprint ID is already assigned to ${clash.name}`);
+    }
+    await prisma.$transaction([
+      prisma.worker.update({ where: { id: workerId }, data: { biometricId: issue.biometricId } }),
+      prisma.attendanceSyncIssue.update({
+        where: { id: issue.id },
+        data: { resolvedAt: new Date(), workerId },
+      }),
+    ]);
+    audit(req, 'worker.enroll', 'Worker', workerId, { biometricId: issue.biometricId });
+    res.json({ ok: true });
   }),
 );
 

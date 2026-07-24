@@ -14,6 +14,7 @@ import tasksRouter from './modules/tasks';
 import workersRouter from './modules/workers';
 import toolsRouter from './modules/tools';
 import attendanceRouter, { deviceRouter, adminDeviceRouter } from './modules/attendance';
+import iclockRouter from './modules/iclock';
 import stockRouter from './modules/stock';
 import documentsRouter from './modules/documents';
 import dailyReportsRouter from './modules/dailyReports';
@@ -34,6 +35,8 @@ export function createApp() {
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   // Uploads are private: HMAC-signed, expiring links only.
   app.use('/uploads', serveUploads);
+  // ZKTeco/ADMS fingerprint terminals push here (device-authenticated by SN).
+  app.use('/iclock', iclockRouter);
 
   const v1 = express.Router();
   v1.use('/auth', authRouter);
