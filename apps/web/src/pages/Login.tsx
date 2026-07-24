@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
-import { Wordmark } from '@/components/Wordmark';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -31,7 +30,7 @@ export function LoginPage() {
   return (
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       {/* Brand panel — hidden on mobile to keep the form front and centre */}
-      <div className="relative hidden overflow-hidden bg-brand-900 lg:flex lg:flex-col lg:justify-between lg:p-12">
+      <div className="relative hidden overflow-hidden bg-brand-900 lg:flex lg:flex-col lg:items-center lg:justify-center lg:gap-8 lg:p-12">
         <div
           aria-hidden
           className="absolute inset-0 opacity-[0.15]"
@@ -39,26 +38,20 @@ export function LoginPage() {
             backgroundImage:
               'linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)',
             backgroundSize: '48px 48px',
-            maskImage: 'radial-gradient(ellipse at 30% 20%, black, transparent 75%)',
+            maskImage: 'radial-gradient(ellipse at 50% 40%, black, transparent 75%)',
           }}
         />
-        <div className="relative flex items-center gap-2.5">
-          <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <Wordmark className="text-lg" onDark />
+        <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg">
+          <img src="/logo.jpeg" alt="Alken Decor Limited" className="w-full" />
         </div>
-        <div className="relative max-w-md">
-          <div className="mb-5 h-1 w-12 rounded-full bg-accent-500" />
-          <h2 className="text-3xl font-semibold leading-tight tracking-tight text-white text-balance">
+        <div className="relative max-w-md text-center">
+          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-white text-balance">
             Every site, every shilling, in one place.
           </h2>
-          <p className="mt-4 text-[15px] leading-relaxed text-brand-100">
+          <p className="mt-3 text-[15px] leading-relaxed text-brand-100">
             Track budgets, payments, attendance, and progress across your construction projects —
             from the office or the field.
           </p>
-        </div>
-        <div className="relative flex items-center gap-2 text-sm text-brand-200">
-          <Building2 size={16} />
-          Airless spraying · Premium finishes · Lasting protection
         </div>
       </div>
 
@@ -66,10 +59,11 @@ export function LoginPage() {
       <div className="flex items-center justify-center bg-surface-muted px-5 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <div className="flex items-center gap-2.5">
-              <img src="/favicon.svg" alt="" className="h-9 w-9" />
-              <Wordmark className="text-lg" />
-            </div>
+            <img
+              src="/logo.jpeg"
+              alt="Alken Decor Limited"
+              className="mx-auto w-40 rounded-xl"
+            />
           </div>
 
           <h1 className="text-2xl font-semibold tracking-tight text-fg">Welcome back</h1>
