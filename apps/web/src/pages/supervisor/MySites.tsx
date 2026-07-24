@@ -44,12 +44,12 @@ export function MySitesPage() {
         </div>
       )}
 
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {projects?.map((p) => (
           <Link
             key={p.id}
             to={`/sites/${p.id}`}
-            className="flex items-center gap-3 rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-colors active:bg-surface-sunken"
+            className="flex items-center gap-3 rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-colors hover:border-hairline-strong active:bg-surface-sunken"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Project, ProjectStatus } from '@/lib/types';
+import type { AppUser, Project, ProjectStatus } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Tabs } from '@/components/ui/tabs';
 import { Select } from '@/components/ui/input';
@@ -47,14 +47,28 @@ export function ProjectDetailPage() {
     queryKey: ['project', projectId],
     queryFn: () => api<Project>(`/projects/${projectId}`),
   });
+  const { data: users } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => api<AppUser[]>('/users'),
+  });
+  const supervisors = users?.filter((u) => u.role === 'SUPERVISOR' && u.active) ?? [];
+
+  function patchProject(body: Record<string, unknown>) {
+    return api(`/projects/${projectId}`, { method: 'PATCH', body });
+  }
+  function onProjectChange() {
+    void qc.invalidateQueries({ queryKey: ['project', projectId] });
+    void qc.invalidateQueries({ queryKey: ['projects'] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+  }
 
   const setStatus = useMutation({
-    mutationFn: (status: ProjectStatus) =>
-      api(`/projects/${projectId}`, { method: 'PATCH', body: { status } }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['project', projectId] });
-      void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
-    },
+    mutationFn: (status: ProjectStatus) => patchProject({ status }),
+    onSuccess: onProjectChange,
+  });
+  const setSupervisor = useMutation({
+    mutationFn: (supervisorId: string | null) => patchProject({ supervisorId }),
+    onSuccess: onProjectChange,
   });
 
   if (!project) return <p className="text-sm text-fg-muted">Loading project…</p>;
@@ -70,23 +84,39 @@ export function ProjectDetailPage() {
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold tracking-tight text-fg">{project.name}</h1>
-          <Select
-            value={project.status}
-            onChange={(e) => setStatus.mutate(e.target.value as ProjectStatus)}
-            className="h-9 w-auto text-sm"
-            aria-label="Project status"
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={project.status}
+              onChange={(e) => setStatus.mutate(e.target.value as ProjectStatus)}
+              className="h-9 w-auto text-sm"
+              aria-label="Project status"
+              disabled={setStatus.isPending}
+            >
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </option>
+              ))}
+            </Select>
+            <Select
+              value={project.supervisor?.id ?? ''}
+              onChange={(e) => setSupervisor.mutate(e.target.value || null)}
+              className="h-9 w-auto text-sm"
+              aria-label="Assigned supervisor"
+              disabled={setSupervisor.isPending}
+            >
+              <option value="">Unassigned</option>
+              {supervisors.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
         <p className="mt-1 text-sm text-fg-muted">
           {project.clientName} · {project.location} · {fmtDate(project.startDate)} →{' '}
-          {fmtDate(project.expectedCompletion)} · Supervisor:{' '}
-          {project.supervisor?.name ?? 'Unassigned'}
+          {fmtDate(project.expectedCompletion)}
         </p>
       </div>
 
