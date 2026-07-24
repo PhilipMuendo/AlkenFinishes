@@ -16,19 +16,35 @@ export default {
         ],
       },
       colors: {
-        // Refined, trustworthy brand blue — full ramp so shades stay harmonious.
+        // Brand navy — from the Alken Decor logo. Structural: nav, links, focus,
+        // primary buttons. Full ramp so shades stay harmonious.
         brand: {
-          50: '#eff6fe',
-          100: '#dceafc',
-          200: '#c0dbfa',
-          300: '#93c3f6',
-          400: '#5fa2ef',
-          500: '#3a81e4',
-          600: '#2565cc',
-          700: '#1e51a6',
-          800: '#1e4585',
-          900: '#1d3c6e',
-          950: '#142547',
+          50: '#eef3f9',
+          100: '#d6e0ee',
+          200: '#b0c4dd',
+          300: '#7f9ec5',
+          400: '#4d72a3',
+          500: '#2d5183',
+          600: '#1e3c66',
+          700: '#182f50',
+          800: '#14284a',
+          900: '#101f3a',
+          950: '#0a1526',
+        },
+        // Brand orange — the logo's accent. Used deliberately for emphasis and
+        // identity (mark, wordmark, highlights), not as a general fill.
+        accent: {
+          50: '#fff5ec',
+          100: '#ffe6d0',
+          200: '#ffc9a1',
+          300: '#ffa568',
+          400: '#fb8536',
+          500: '#f47a21',
+          600: '#e0620f',
+          700: '#ba4a10',
+          800: '#943c15',
+          900: '#783414',
+          950: '#411806',
         },
         // Semantic tokens (defined in index.css). Drive theming from one place.
         surface: {

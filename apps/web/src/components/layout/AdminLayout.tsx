@@ -14,6 +14,7 @@ import {
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { Wordmark } from '@/components/Wordmark';
 
 const nav = [
   { to: '/admin', label: 'Overview', icon: BarChart3, end: true },
@@ -100,7 +101,7 @@ export function AdminLayout() {
       <aside className="hidden w-60 shrink-0 flex-col border-r border-hairline bg-surface lg:flex">
         <div className="flex items-center gap-2.5 px-5 py-[18px]">
           <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <span className="text-[15px] font-semibold tracking-tight text-fg">AlkenFinishes</span>
+          <Wordmark className="text-[15px]" />
         </div>
         <NavItems />
         <UserFooter name={user?.name} onSignOut={() => void logout()} />
@@ -111,7 +112,7 @@ export function AdminLayout() {
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-hairline bg-surface/90 px-4 py-3 backdrop-blur lg:hidden">
           <div className="flex items-center gap-2">
             <img src="/favicon.svg" alt="" className="h-7 w-7" />
-            <span className="font-semibold tracking-tight text-fg">AlkenFinishes</span>
+            <Wordmark />
           </div>
           <button
             aria-label={open ? 'Close menu' : 'Open menu'}
@@ -134,7 +135,7 @@ export function AdminLayout() {
             <div className="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] animate-fade-in flex-col border-r border-hairline bg-surface shadow-lg lg:hidden">
               <div className="flex items-center gap-2.5 px-5 py-[18px]">
                 <img src="/favicon.svg" alt="" className="h-8 w-8" />
-                <span className="text-[15px] font-semibold tracking-tight text-fg">AlkenFinishes</span>
+                <Wordmark className="text-[15px]" />
               </div>
               <NavItems onNavigate={() => setOpen(false)} />
               <UserFooter name={user?.name} onSignOut={() => void logout()} />
