@@ -4,6 +4,7 @@ import { Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
+import { Wordmark } from '@/components/Wordmark';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -41,11 +42,12 @@ export function LoginPage() {
             maskImage: 'radial-gradient(ellipse at 30% 20%, black, transparent 75%)',
           }}
         />
-        <div className="relative flex items-center gap-2.5 text-white">
+        <div className="relative flex items-center gap-2.5">
           <img src="/favicon.svg" alt="" className="h-8 w-8" />
-          <span className="text-lg font-semibold tracking-tight">AlkenFinishes</span>
+          <Wordmark className="text-lg" onDark />
         </div>
         <div className="relative max-w-md">
+          <div className="mb-5 h-1 w-12 rounded-full bg-accent-500" />
           <h2 className="text-3xl font-semibold leading-tight tracking-tight text-white text-balance">
             Every site, every shilling, in one place.
           </h2>
@@ -56,7 +58,7 @@ export function LoginPage() {
         </div>
         <div className="relative flex items-center gap-2 text-sm text-brand-200">
           <Building2 size={16} />
-          Construction finishes management
+          Airless spraying · Premium finishes · Lasting protection
         </div>
       </div>
 
@@ -66,7 +68,7 @@ export function LoginPage() {
           <div className="mb-8 lg:hidden">
             <div className="flex items-center gap-2.5">
               <img src="/favicon.svg" alt="" className="h-9 w-9" />
-              <span className="text-lg font-semibold tracking-tight text-fg">AlkenFinishes</span>
+              <Wordmark className="text-lg" />
             </div>
           </div>
 

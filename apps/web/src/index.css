@@ -20,9 +20,9 @@
     --fg: 15 23 42; /* primary text */
     --fg-muted: 100 116 139; /* secondary text */
     --fg-subtle: 148 163 184; /* placeholders, captions */
-    --primary: 37 101 204; /* brand-600 */
+    --primary: 30 60 102; /* brand-600 navy */
     --primary-fg: 255 255 255;
-    --ring: 58 129 228; /* brand-500 focus ring */
+    --ring: 45 81 131; /* brand-500 navy focus ring */
   }
 
   html {

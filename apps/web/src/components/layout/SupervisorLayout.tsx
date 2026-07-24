@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { Building2, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
+import { Wordmark } from '@/components/Wordmark';
 
 /**
  * Mobile-first supervisor shell: simple top bar + bottom navigation with
@@ -20,7 +21,7 @@ export function SupervisorLayout() {
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-hairline bg-surface/90 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="" className="h-7 w-7" />
-          <span className="text-[15px] font-semibold tracking-tight text-fg">AlkenFinishes</span>
+          <Wordmark className="text-[15px]" />
         </div>
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">

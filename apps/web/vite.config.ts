@@ -13,10 +13,10 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'AlkenFinishes',
-        short_name: 'Alken',
+        name: 'Alken Decor Limited',
+        short_name: 'Alken Decor',
         description: 'Construction finishes management',
-        theme_color: '#0f172a',
+        theme_color: '#14284a',
         background_color: '#f8fafc',
         display: 'standalone',
         icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
