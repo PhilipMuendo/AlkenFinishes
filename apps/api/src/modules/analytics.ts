@@ -211,4 +211,126 @@ router.get(
   }),
 );
 
+const DAY = 86_400_000;
+const QUIET_AFTER_DAYS = 4; // an active site with no report in this long has "gone quiet"
+const FINISHING_SOON_DAYS = 14;
+
+// The Overview digest: only the projects that need the owner's attention,
+// grouped by reason. Never a wall of metrics — just "what needs a decision".
+router.get(
+  '/attention',
+  requireSuperadmin,
+  asyncHandler(async (_req, res) => {
+    const settings = await getFinanceSettings();
+    const now = Date.now();
+    const [projects, budgetLines, expenseAgg, labourAgg, paymentAgg, dailyMax, weeklyMax] =
+      await Promise.all([
+        prisma.project.findMany({
+          where: { status: { notIn: ['CANCELLED'] } },
+          include: { supervisor: { select: { id: true, name: true } } },
+        }),
+        prisma.budgetLine.findMany(),
+        prisma.expense.groupBy({ by: ['projectId', 'category'], _sum: { amount: true } }),
+        prisma.attendanceRecord.groupBy({
+          by: ['projectId'],
+          where: { labourCost: { not: null } },
+          _sum: { labourCost: true },
+        }),
+        prisma.payment.groupBy({ by: ['projectId'], _sum: { amount: true } }),
+        prisma.dailyReport.groupBy({ by: ['projectId'], _max: { date: true } }),
+        prisma.weeklyReport.groupBy({ by: ['projectId'], _max: { weekEnding: true } }),
+      ]);
+
+    const budgetByProject = new Map<string, typeof budgetLines>();
+    for (const b of budgetLines) {
+      const list = budgetByProject.get(b.projectId) ?? [];
+      list.push(b);
+      budgetByProject.set(b.projectId, list);
+    }
+    const expenseByProject = new Map<string, Record<string, number>>();
+    for (const row of expenseAgg) {
+      const bucket = expenseByProject.get(row.projectId) ?? {};
+      bucket[row.category] = Number(row._sum.amount ?? 0);
+      expenseByProject.set(row.projectId, bucket);
+    }
+    const labourByProject = new Map(labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]));
+    const collectedByProject = new Map(paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]));
+    const lastReportByProject = new Map<string, number>();
+    for (const d of dailyMax) if (d._max.date) lastReportByProject.set(d.projectId, d._max.date.getTime());
+    for (const w of weeklyMax) {
+      if (!w._max.weekEnding) continue;
+      const t = w._max.weekEnding.getTime();
+      lastReportByProject.set(w.projectId, Math.max(lastReportByProject.get(w.projectId) ?? 0, t));
+    }
+
+    const paymentOverdue: unknown[] = [];
+    const overBudget: unknown[] = [];
+    const unassigned: unknown[] = [];
+    const wentQuiet: unknown[] = [];
+    const finishingSoon: unknown[] = [];
+    let activeCount = 0;
+
+    for (const p of projects) {
+      const isActive = p.status === 'ACTIVE';
+      const isSpending = p.status === 'ACTIVE' || p.status === 'ON_HOLD';
+      if (isActive) activeCount++;
+
+      const categories = buildCategories(
+        budgetByProject.get(p.id) ?? [],
+        {
+          expenseByCategory: expenseByProject.get(p.id) ?? {},
+          attendanceLabour: labourByProject.get(p.id) ?? 0,
+        },
+        settings,
+      );
+      const totalBudget = categories.reduce((s, c) => s + c.allocated, 0);
+      const totalActual = categories.reduce((s, c) => s + c.actual, 0);
+      const consumedPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : null;
+      const pendingBalance = Number(p.contractValue) - (collectedByProject.get(p.id) ?? 0);
+
+      // Money owed, past the agreed date.
+      if (p.balanceDueDate && p.balanceDueDate.getTime() < now && pendingBalance > 0) {
+        paymentOverdue.push({
+          id: p.id,
+          name: p.name,
+          pendingBalance,
+          balanceDueDate: p.balanceDueDate,
+          daysOverdue: Math.floor((now - p.balanceDueDate.getTime()) / DAY),
+        });
+      }
+      // Spending sites over the risk threshold.
+      if (isSpending && health(consumedPct, settings.thresholds) === 'RED') {
+        overBudget.push({ id: p.id, name: p.name, consumedPct });
+      }
+      if (isActive && !p.supervisorId) {
+        unassigned.push({ id: p.id, name: p.name });
+      }
+      if (isActive) {
+        const last = lastReportByProject.get(p.id) ?? null;
+        const daysSince = last == null ? null : Math.floor((now - last) / DAY);
+        if (daysSince == null || daysSince > QUIET_AFTER_DAYS) {
+          wentQuiet.push({ id: p.id, name: p.name, lastReportAt: last ? new Date(last) : null, daysSince });
+        }
+        const daysLeft = Math.ceil((p.expectedCompletion.getTime() - now) / DAY);
+        if (daysLeft >= 0 && daysLeft <= FINISHING_SOON_DAYS) {
+          finishingSoon.push({ id: p.id, name: p.name, expectedCompletion: p.expectedCompletion, daysLeft });
+        }
+      }
+    }
+
+    paymentOverdue.sort((a: any, b: any) => b.daysOverdue - a.daysOverdue);
+    finishingSoon.sort((a: any, b: any) => a.daysLeft - b.daysLeft);
+
+    const totalFlags =
+      paymentOverdue.length + overBudget.length + unassigned.length + wentQuiet.length + finishingSoon.length;
+
+    res.json({
+      activeCount,
+      portfolioCount: projects.length,
+      allClear: totalFlags === 0,
+      groups: { paymentOverdue, overBudget, unassigned, wentQuiet, finishingSoon },
+    });
+  }),
+);
+
 export default router;

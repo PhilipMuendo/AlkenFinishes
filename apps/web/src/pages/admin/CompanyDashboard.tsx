@@ -1,62 +1,161 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, Building2 } from 'lucide-react';
+import {
+  AlertOctagon,
+  AlertTriangle,
+  ArrowRight,
+  CalendarClock,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  FileText,
+  UserX,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Project, ProjectStatus } from '@/lib/types';
+import type { AttentionDigest } from '@/lib/types';
+import { fmtMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
-import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ProjectCard } from '@/components/ProjectCard';
 
-// The landing page is a portfolio at a glance — projects only, grouped by
-// lifecycle stage. All the numbers (budget, payments, health, charts) live
-// inside each project, not here.
-const SECTIONS: { key: ProjectStatus; label: string; hint: string }[] = [
-  { key: 'ACTIVE', label: 'Ongoing', hint: 'Live sites in progress' },
-  { key: 'PLANNING', label: 'About to start', hint: 'Awaiting kickoff' },
-  { key: 'ON_HOLD', label: 'On hold', hint: 'Paused sites' },
-  { key: 'COMPLETED', label: 'Completed', hint: 'Delivered projects' },
+type Tone = 'red' | 'amber' | 'blue';
+type Item = { id: string; name: string };
+
+interface Section {
+  key: keyof AttentionDigest['groups'];
+  label: string;
+  hint: string;
+  icon: LucideIcon;
+  tone: Tone;
+  detail: (item: any) => string;
+}
+
+// Ordered by urgency: money first, then risk, then operational nudges.
+const SECTIONS: Section[] = [
+  {
+    key: 'paymentOverdue',
+    label: 'Payments overdue',
+    hint: 'Money owed past the agreed date',
+    icon: Clock,
+    tone: 'red',
+    detail: (i) => `${fmtMoney(i.pendingBalance)} · ${i.daysOverdue}d overdue`,
+  },
+  {
+    key: 'overBudget',
+    label: 'Over budget',
+    hint: 'Spend has crossed the risk threshold',
+    icon: AlertOctagon,
+    tone: 'red',
+    detail: (i) => (i.consumedPct != null ? `${i.consumedPct}% of budget used` : 'Over budget'),
+  },
+  {
+    key: 'unassigned',
+    label: 'No supervisor',
+    hint: 'Active sites without anyone assigned',
+    icon: UserX,
+    tone: 'amber',
+    detail: () => 'Assign a supervisor',
+  },
+  {
+    key: 'wentQuiet',
+    label: 'No recent reports',
+    hint: 'Active sites that have gone quiet',
+    icon: FileText,
+    tone: 'amber',
+    detail: (i) => (i.daysSince == null ? 'No reports yet' : `Last report ${i.daysSince}d ago`),
+  },
+  {
+    key: 'finishingSoon',
+    label: 'Finishing soon',
+    hint: 'Deadlines within two weeks',
+    icon: CalendarClock,
+    tone: 'blue',
+    detail: (i) => (i.daysLeft === 0 ? 'Due today' : `${i.daysLeft}d to deadline`),
+  },
 ];
 
-function DashboardSkeleton() {
+const toneChip: Record<Tone, string> = {
+  red: 'bg-red-50 text-red-600',
+  amber: 'bg-amber-50 text-amber-600',
+  blue: 'bg-brand-50 text-brand-600',
+};
+const toneText: Record<Tone, string> = {
+  red: 'text-red-600',
+  amber: 'text-amber-700',
+  blue: 'text-brand-600',
+};
+
+function AttentionSection({ section, items }: { section: Section; items: Item[] }) {
+  const { icon: Icon, tone } = section;
   return (
-    <div className="space-y-8">
-      <PageHeader title="Overview" description="Your projects at a glance" />
-      <div className="space-y-3">
-        <Skeleton className="h-4 w-32" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-xl" />
-          ))}
+    <Card className="overflow-hidden">
+      <div className="flex items-center gap-3 border-b border-hairline px-4 py-3">
+        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${toneChip[tone]}`}>
+          <Icon size={16} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-fg">
+            {section.label}{' '}
+            <span className="nums font-normal text-fg-subtle">({items.length})</span>
+          </p>
+          <p className="text-xs text-fg-subtle">{section.hint}</p>
         </div>
+      </div>
+      <ul>
+        {items.map((item) => (
+          <li key={item.id}>
+            <Link
+              to={`/admin/projects/${item.id}`}
+              className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken"
+            >
+              <span className="truncate text-sm font-medium text-fg">{item.name}</span>
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span className={`nums text-xs font-medium ${toneText[tone]}`}>
+                  {section.detail(item)}
+                </span>
+                <ChevronRight size={15} className="text-fg-subtle" />
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Overview" description="What needs your attention" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-32 w-full rounded-xl" />
+        ))}
       </div>
     </div>
   );
 }
 
 export function CompanyDashboard() {
-  const { data: projects, isError, isLoading, refetch } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => api<Project[]>('/projects'),
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['analytics', 'attention'],
+    queryFn: () => api<AttentionDigest>('/analytics/attention'),
   });
 
-  if (isLoading) return <DashboardSkeleton />;
+  if (isLoading) return <OverviewSkeleton />;
 
-  if (isError || !projects) {
+  if (isError || !data) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Overview" description="Your projects at a glance" />
+        <PageHeader title="Overview" description="What needs your attention" />
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
               <AlertTriangle size={20} />
             </div>
-            <div>
-              <p className="font-medium text-fg">Couldn&rsquo;t load your projects</p>
-              <p className="mt-1 text-sm text-fg-muted">Check your connection and try again.</p>
-            </div>
+            <p className="font-medium text-fg">Couldn&rsquo;t load your overview</p>
             <button
               className={buttonVariants({ variant: 'outline', size: 'sm' })}
               onClick={() => void refetch()}
@@ -69,57 +168,48 @@ export function CompanyDashboard() {
     );
   }
 
-  // Cancelled projects stay out of the portfolio view.
-  const visible = projects.filter((p) => p.status !== 'CANCELLED');
-  const activeCount = visible.filter((p) => p.status === 'ACTIVE').length;
+  const active = SECTIONS.map((s) => ({ section: s, items: data.groups[s.key] as Item[] })).filter(
+    (s) => s.items.length > 0,
+  );
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <PageHeader
         title="Overview"
-        description={
-          visible.length
-            ? `${activeCount} active · ${visible.length} in portfolio`
-            : 'Your projects at a glance'
+        description={`${data.activeCount} active · ${data.portfolioCount} in portfolio`}
+        actions={
+          <Link
+            to="/admin/projects"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            All projects <ArrowRight size={15} />
+          </Link>
         }
       />
 
-      {visible.length === 0 ? (
+      {data.allClear ? (
         <Card>
-          <CardContent>
-            <Empty icon={Building2}>
-              <p className="font-medium text-fg">No projects yet</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Create your first project to start tracking budgets, payments, and progress.
+          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <CheckCircle2 size={24} />
+            </div>
+            <div>
+              <p className="font-medium text-fg">Everything&rsquo;s on track</p>
+              <p className="mt-1 max-w-sm text-sm text-fg-muted">
+                No overdue payments, budget risks, or quiet sites right now. New issues will show
+                up here the moment they appear.
               </p>
-              <Link to="/admin/projects" className={buttonVariants({ className: 'mt-3' })}>
-                Create a project
-              </Link>
-            </Empty>
+            </div>
+            <Link to="/admin/projects" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              View all projects
+            </Link>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-8">
-          {SECTIONS.map(({ key, label, hint }) => {
-            const group = visible.filter((p) => p.status === key);
-            if (group.length === 0) return null;
-            return (
-              <section key={key}>
-                <div className="mb-3 flex items-baseline gap-2.5">
-                  <h2 className="text-sm font-semibold tracking-tight text-fg">{label}</h2>
-                  <span className="nums rounded-full bg-surface-sunken px-2 py-0.5 text-xs font-medium text-fg-muted">
-                    {group.length}
-                  </span>
-                  <span className="text-xs text-fg-subtle">{hint}</span>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {group.map((p) => (
-                    <ProjectCard key={p.id} project={p} />
-                  ))}
-                </div>
-              </section>
-            );
-          })}
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          {active.map(({ section, items }) => (
+            <AttentionSection key={section.key} section={section} items={items} />
+          ))}
         </div>
       )}
     </div>

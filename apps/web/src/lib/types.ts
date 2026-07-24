@@ -256,6 +256,26 @@ export interface CompanyAnalytics {
   spendTrend: { month: string; total: number }[];
 }
 
+// Overview digest — only the projects that need the owner's attention.
+export interface AttentionDigest {
+  activeCount: number;
+  portfolioCount: number;
+  allClear: boolean;
+  groups: {
+    paymentOverdue: {
+      id: string;
+      name: string;
+      pendingBalance: number;
+      balanceDueDate: string;
+      daysOverdue: number;
+    }[];
+    overBudget: { id: string; name: string; consumedPct: number | null }[];
+    unassigned: { id: string; name: string }[];
+    wentQuiet: { id: string; name: string; lastReportAt: string | null; daysSince: number | null }[];
+    finishingSoon: { id: string; name: string; expectedCompletion: string; daysLeft: number }[];
+  };
+}
+
 export interface ProjectAnalytics {
   project: {
     id: string;
