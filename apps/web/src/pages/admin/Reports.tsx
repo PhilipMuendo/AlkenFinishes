@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { CalendarRange, ClipboardList, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Project, ReportFeedItem } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Field, Select, Input } from '@/components/ui/input';
@@ -12,6 +13,11 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type TypeFilter = '' | 'DAILY' | 'WEEKLY';
+
+interface ReportFeed {
+  items: ReportFeedItem[];
+  nextCursor: string | null;
+}
 
 const DAILY_FIELDS: { key: keyof ReportFeedItem; label: string }[] = [
   { key: 'workCompleted', label: 'Work completed' },
@@ -84,18 +90,28 @@ export function ReportsPage() {
     queryFn: () => api<Project[]>('/projects'),
   });
 
-  const { data: reports, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery({
     queryKey: ['reports', { projectId, type, from, to }],
-    queryFn: () => {
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }: { pageParam: string | null }) => {
       const params = new URLSearchParams();
       if (projectId) params.set('projectId', projectId);
       if (type) params.set('type', type);
       if (from) params.set('from', from);
       if (to) params.set('to', to);
+      if (pageParam) params.set('cursor', pageParam);
       const qs = params.toString();
-      return api<ReportFeedItem[]>(`/reports${qs ? `?${qs}` : ''}`);
+      return api<ReportFeed>(`/reports${qs ? `?${qs}` : ''}`);
     },
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+  const reports = data?.pages.flatMap((p) => p.items);
 
   return (
     <div className="space-y-6">
@@ -155,6 +171,18 @@ export function ReportsPage() {
           <ReportRow key={`${r.type}-${r.id}`} r={r} />
         ))}
       </div>
+
+      {hasNextPage && (
+        <div className="flex justify-center">
+          <Button
+            variant="outline"
+            onClick={() => void fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? 'Loading…' : 'Load older reports'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

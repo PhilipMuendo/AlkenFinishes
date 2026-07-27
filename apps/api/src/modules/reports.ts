@@ -12,11 +12,21 @@ import { signFileUrl } from '../middleware/upload';
 const router = Router();
 router.use(requireAuth, requireSuperadmin);
 
+// Page size for the merged feed. Hard-capped at 20 sites filing daily +
+// weekly reports, the old fixed take(150)+take(150)->slice(200) meant the
+// unfiltered "All sites" view silently lost history older than ~1-2 weeks
+// with no way to page back further — this cursor lets the client keep
+// asking for older pages instead of hitting an invisible wall.
+const PAGE_SIZE = 50;
+
 const querySchema = z.object({
   projectId: z.string().optional(),
   type: z.enum(['DAILY', 'WEEKLY']).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  // Exclusive: only rows strictly older than this. Set to the last item's
+  // `date` from the previous page to fetch the next one.
+  cursor: z.coerce.date().optional(),
 });
 
 interface FeedItem {
@@ -41,26 +51,30 @@ interface FeedItem {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const { projectId, type, from, to } = querySchema.parse(req.query);
-    const dateFilter = from || to ? { gte: from, lte: to } : undefined;
+    const { projectId, type, from, to, cursor } = querySchema.parse(req.query);
+    const dateFilter: { gte?: Date; lte?: Date; lt?: Date } = {};
+    if (from) dateFilter.gte = from;
+    if (to) dateFilter.lte = to;
+    if (cursor) dateFilter.lt = cursor;
+    const hasDateFilter = Object.keys(dateFilter).length > 0;
     const projectInclude = { project: { select: { id: true, name: true } }, submittedBy: { select: { name: true } } } as const;
 
     const [daily, weekly] = await Promise.all([
       type === 'WEEKLY'
         ? []
         : prisma.dailyReport.findMany({
-            where: { ...(projectId && { projectId }), ...(dateFilter && { date: dateFilter }) },
+            where: { ...(projectId && { projectId }), ...(hasDateFilter && { date: dateFilter }) },
             include: projectInclude,
             orderBy: { date: 'desc' },
-            take: 150,
+            take: PAGE_SIZE,
           }),
       type === 'DAILY'
         ? []
         : prisma.weeklyReport.findMany({
-            where: { ...(projectId && { projectId }), ...(dateFilter && { weekEnding: dateFilter }) },
+            where: { ...(projectId && { projectId }), ...(hasDateFilter && { weekEnding: dateFilter }) },
             include: projectInclude,
             orderBy: { weekEnding: 'desc' },
-            take: 150,
+            take: PAGE_SIZE,
           }),
     ]);
 
@@ -89,11 +103,15 @@ router.get(
         nextWeekPlan: r.nextWeekPlan,
         photoUrls: r.photoUrls.map((u) => signFileUrl(u)),
       })),
-    ]
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 200);
+    ].sort((a, b) => b.date.getTime() - a.date.getTime());
 
-    res.json(feed);
+    // Either source hitting the page-size cap means it may hold more rows
+    // we haven't fetched yet, even if not all of them made this page.
+    const hasMore = daily.length === PAGE_SIZE || weekly.length === PAGE_SIZE;
+    const items = feed.slice(0, PAGE_SIZE);
+    const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].date.toISOString() : null;
+
+    res.json({ items, nextCursor });
   }),
 );
 
