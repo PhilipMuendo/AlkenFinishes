@@ -65,14 +65,15 @@ router.get(
   asyncHandler(async (req, res) => {
     const { page } = z.object({ page: z.coerce.number().int().min(1).default(1) }).parse(req.query);
     const pageSize = 50;
-    res.json(
-      await prisma.auditLog.findMany({
-        include: { user: { select: { id: true, name: true } } },
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-    );
+    const items = await prisma.auditLog.findMany({
+      include: { user: { select: { id: true, name: true, role: true } } },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    // hasMore is a cheap "did this page fill up" check, not a total count —
+    // fine for simple next/prev paging without an extra count() query.
+    res.json({ items, page, hasMore: items.length === pageSize });
   }),
 );
 

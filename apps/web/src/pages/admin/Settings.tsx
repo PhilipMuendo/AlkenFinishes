@@ -1,16 +1,27 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Fingerprint, Plus } from 'lucide-react';
+import { AlertTriangle, Fingerprint, Plus, ScrollText } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Project, Worker } from '@/lib/types';
-import { fmtDate } from '@/lib/format';
+import type { AuditLogPage, Project, Worker } from '@/lib/types';
+import { fmtDate, fmtTime } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
+import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
+
+/** "worker.delete" -> "worker delete", "auth.login_failed" -> "auth login failed" */
+function humanizeAction(action: string): string {
+  const spaced = action
+    .replace(/\./g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 interface Device {
   id: string;
@@ -45,6 +56,7 @@ export function SettingsPage() {
   const [newKey, setNewKey] = useState<string | null>(null);
   const [yellowPct, setYellowPct] = useState('80');
   const [redPct, setRedPct] = useState('100');
+  const [auditPage, setAuditPage] = useState(1);
 
   const { data: finance } = useQuery({
     queryKey: ['finance-settings'],
@@ -60,6 +72,10 @@ export function SettingsPage() {
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
+  });
+  const { data: auditLog, isLoading: auditLoading } = useQuery({
+    queryKey: ['audit-log', auditPage],
+    queryFn: () => api<AuditLogPage>(`/settings/audit-log?page=${auditPage}`),
   });
 
   useEffect(() => {
@@ -294,6 +310,70 @@ export function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <ScrollText size={16} className="text-fg-muted" />
+            <CardTitle>Audit log</CardTitle>
+          </div>
+          <p className="text-xs text-fg-muted">
+            Every create, update, and delete across the system, with who did it. Superadmin-only.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {auditLoading && <p className="text-sm text-fg-muted">Loading…</p>}
+          {!auditLoading && auditLog?.items.length === 0 && (
+            <Empty icon={ScrollText}>No activity recorded yet</Empty>
+          )}
+          <div className="divide-y divide-hairline">
+            {auditLog?.items.map((entry) => {
+              const actor = entry.user?.name ?? (entry.meta?.email as string | undefined) ?? 'Unknown';
+              return (
+                <div key={entry.id} className="flex items-start justify-between gap-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="flex flex-wrap items-center gap-1.5 text-fg">
+                      <span className="font-medium">{actor}</span>
+                      {entry.user && (
+                        <Badge tone={entry.user.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
+                          {entry.user.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
+                        </Badge>
+                      )}
+                    </p>
+                    <p className="text-xs text-fg-subtle">
+                      {humanizeAction(entry.action)} · {entry.entity}
+                    </p>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap text-xs text-fg-subtle">
+                    {fmtDate(entry.createdAt)} {fmtTime(entry.createdAt)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {auditLog && (auditPage > 1 || auditLog.hasMore) && (
+            <div className="flex items-center justify-between pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={auditPage <= 1}
+                onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-fg-subtle">Page {auditPage}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!auditLog.hasMore}
+                onClick={() => setAuditPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog
         open={deviceOpen}

@@ -298,3 +298,21 @@ export interface AppUser {
   active: boolean;
   projects: { id: string; name: string }[];
 }
+
+export interface AuditLogEntry {
+  id: string;
+  userId: string | null;
+  user: { id: string; name: string; role: Role } | null;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  meta: Record<string, unknown> | null;
+  ip: string | null;
+  createdAt: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[];
+  page: number;
+  hasMore: boolean;
+}

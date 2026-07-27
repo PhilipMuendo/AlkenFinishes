@@ -46,7 +46,7 @@ router.post(
     const authUser = { id: user.id, role: user.role, email: user.email, name: user.name };
     const accessToken = signAccessToken(authUser);
     const refreshToken = await issueRefreshToken(user.id);
-    audit(req, 'auth.login', 'User', user.id);
+    audit(req, 'auth.login', 'User', user.id, undefined, user.id);
     res.json({ accessToken, refreshToken, user: authUser });
   }),
 );
@@ -66,7 +66,7 @@ router.post(
         where: { userId: stored.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      audit(req, 'auth.refresh_reuse_detected', 'User', stored.userId);
+      audit(req, 'auth.refresh_reuse_detected', 'User', stored.userId, undefined, stored.userId);
       throw ApiError.unauthorized('Invalid refresh token');
     }
     if (!stored || stored.expiresAt < new Date() || !stored.user.active) {
