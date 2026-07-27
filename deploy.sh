@@ -10,11 +10,17 @@ git pull
 if [[ "${1:-}" == "--fresh" ]]; then
   echo "==> Full rebuild (no cache)..."
   docker compose build --no-cache
-  docker compose up -d
 else
-  echo "==> Building changed layers and starting..."
-  docker compose up -d --build
+  echo "==> Building changed layers..."
+  docker compose build
 fi
+
+# --force-recreate matters: compose sometimes decides a service "hasn't
+# changed" and leaves the OLD container running even after a fresh image was
+# built, silently serving stale code. Force it every time so a deploy always
+# actually deploys.
+echo "==> Starting (force-recreate)..."
+docker compose up -d --force-recreate
 
 echo "==> Removing old images..."
 docker image prune -f >/dev/null

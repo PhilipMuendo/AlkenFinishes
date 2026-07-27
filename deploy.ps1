@@ -14,11 +14,17 @@ git pull
 if ($Fresh) {
     Write-Host "==> Full rebuild (no cache)..." -ForegroundColor Cyan
     docker compose build --no-cache
-    docker compose up -d
 } else {
-    Write-Host "==> Building changed layers and starting..." -ForegroundColor Cyan
-    docker compose up -d --build
+    Write-Host "==> Building changed layers..." -ForegroundColor Cyan
+    docker compose build
 }
+
+# --force-recreate matters: compose sometimes decides a service "hasn't
+# changed" and leaves the OLD container running even after a fresh image was
+# built, silently serving stale code. Force it every time so a deploy always
+# actually deploys.
+Write-Host "==> Starting (force-recreate)..." -ForegroundColor Cyan
+docker compose up -d --force-recreate
 
 Write-Host "==> Removing old images..." -ForegroundColor Cyan
 docker image prune -f | Out-Null

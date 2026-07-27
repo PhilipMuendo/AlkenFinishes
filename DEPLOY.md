@@ -52,6 +52,17 @@ that's Docker Desktop's builder running out of memory — usually caused by a fu
    and make sure the disk isn't full.
 4. If it persists: `docker builder prune -f`, restart Docker Desktop, retry.
 
+**If the site still looks old after a successful deploy — even in incognito:**
+that means Docker itself served the old code, not your browser. Check
+`docker compose ps`: if a container's `CREATED` time is much older than when
+you just deployed, Compose decided that service "hadn't changed" and left the
+stale container running on a stale image. Both deploy scripts now pass
+`--force-recreate` to prevent this, but if you ever run `docker compose up`
+manually, use:
+```bash
+docker compose up -d --build --force-recreate
+```
+
 ### Seeing UI changes after a deploy
 
 The app is a PWA and the browser caches it. After a deploy it self-updates
