@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Upload } from 'lucide-react';
+import { Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
@@ -45,6 +45,7 @@ export function WorkersPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [assigning, setAssigning] = useState<Worker | null>(null);
+  const [deleting, setDeleting] = useState<Worker | null>(null);
 
   const { data: workers } = useQuery({
     queryKey: ['workers'],
@@ -84,6 +85,14 @@ export function WorkersPage() {
     onSuccess: (data) => {
       invalidate();
       setImportResult(data);
+    },
+  });
+
+  const deleteWorker = useMutation({
+    mutationFn: (id: string) => api(`/workers/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      invalidate();
+      setDeleting(null);
     },
   });
 
@@ -162,15 +171,24 @@ export function WorkersPage() {
                   <Badge tone={w.status === 'ACTIVE' ? 'green' : 'slate'}>{w.status}</Badge>
                 </Td>
                 <Td className="text-right">
-                  {w.assignments[0] ? (
-                    <Button size="sm" variant="outline" onClick={() => unassign.mutate(w.id)}>
-                      Unassign
-                    </Button>
-                  ) : (
-                    <Button size="sm" variant="secondary" onClick={() => setAssigning(w)}>
-                      Assign to site
-                    </Button>
-                  )}
+                  <div className="flex justify-end gap-1.5">
+                    {w.assignments[0] ? (
+                      <Button size="sm" variant="outline" onClick={() => unassign.mutate(w.id)}>
+                        Unassign
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="secondary" onClick={() => setAssigning(w)}>
+                        Assign to site
+                      </Button>
+                    )}
+                    <button
+                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                      aria-label={`Delete ${w.name}`}
+                      onClick={() => setDeleting(w)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </Td>
               </tr>
             ))}
@@ -204,7 +222,7 @@ export function WorkersPage() {
             <Input name="trade" required placeholder="Painter, Tiler, Mason…" />
           </Field>
           <Field label="Hourly rate (KES)">
-            <Input name="hourlyRate" type="number" min="0" step="0.01" required />
+            <Input name="hourlyRate" type="number" min="0" max="5000" step="0.01" required />
           </Field>
           <Field label="Biometric ID (from fingerprint device)">
             <Input name="biometricId" placeholder="Device enrolment ID" />
@@ -324,6 +342,52 @@ export function WorkersPage() {
             Assign
           </Button>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={!!deleting}
+        onClose={() => {
+          setDeleting(null);
+          deleteWorker.reset();
+        }}
+        title={deleting ? `Delete ${deleting.name}?` : ''}
+      >
+        {deleting && (
+          <div className="space-y-3">
+            <p className="text-sm text-fg-muted">
+              This permanently removes <span className="font-medium text-fg">{deleting.name}</span>{' '}
+              and can&rsquo;t be undone. Workers with attendance history can&rsquo;t be deleted —
+              unassign them from their site instead to preserve those records.
+            </p>
+            {deleteWorker.isError && (
+              <p className="text-sm text-red-600">
+                {deleteWorker.error instanceof ApiRequestError
+                  ? deleteWorker.error.message
+                  : 'Failed to delete this worker'}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setDeleting(null);
+                  deleteWorker.reset();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={deleteWorker.isPending}
+                onClick={() => deleteWorker.mutate(deleting.id)}
+              >
+                Delete permanently
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
     </div>
   );

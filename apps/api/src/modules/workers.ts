@@ -11,11 +11,21 @@ import { audit } from '../middleware/audit';
 const router = Router();
 router.use(requireAuth);
 
+// A wide sanity ceiling, not a wage policy — this only exists to catch a
+// fat-fingered extra zero (e.g. 2500 typed for 250), not to cap what a
+// specialist can legitimately be paid. It feeds labour cost / budget health
+// directly, so a typo here silently corrupts those numbers otherwise.
+const MAX_HOURLY_RATE = 5000;
+const hourlyRateField = z.coerce
+  .number()
+  .nonnegative()
+  .max(MAX_HOURLY_RATE, `Hourly rate looks too high (over KES ${MAX_HOURLY_RATE.toLocaleString()}/hr) — check for an extra digit`);
+
 const workerSchema = z.object({
   name: z.string().min(1),
   phone: z.string().nullable().optional(),
   trade: z.string().min(1),
-  hourlyRate: z.coerce.number().nonnegative(),
+  hourlyRate: hourlyRateField,
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
   biometricId: z.string().nullable().optional(),
 });
@@ -28,7 +38,7 @@ const supervisorWorkerSchema = z.object({
   name: z.string().min(1),
   phone: z.string().nullable().optional(),
   trade: z.string().min(1),
-  hourlyRate: z.coerce.number().nonnegative(),
+  hourlyRate: hourlyRateField,
 });
 
 const include = {
@@ -125,6 +135,30 @@ router.patch(
   }),
 );
 
+// Admin-only, permanent. Worker → AttendanceRecord is onDelete: Cascade, so a
+// bare delete would silently wipe labour-cost history that feeds budget
+// numbers — block it explicitly rather than relying on a FK violation that
+// will never fire. WorkerAssignment rows carry no financial data, so letting
+// those cascade away is fine.
+router.delete(
+  '/:id',
+  requireSuperadmin,
+  asyncHandler(async (req, res) => {
+    const worker = await prisma.worker.findUniqueOrThrow({ where: { id: req.params.id } });
+    const attendanceCount = await prisma.attendanceRecord.count({
+      where: { workerId: worker.id },
+    });
+    if (attendanceCount > 0) {
+      throw ApiError.conflict(
+        'This fundi has attendance history (which feeds labour cost and budget records) and cannot be permanently deleted. Remove them from their site instead to preserve those records.',
+      );
+    }
+    await prisma.worker.delete({ where: { id: worker.id } });
+    audit(req, 'worker.delete', 'Worker', worker.id, { name: worker.name });
+    res.json({ ok: true });
+  }),
+);
+
 // ---- Bulk import from CSV/Excel — the fundi list usually already exists there ----
 
 // In-memory only: the file is parsed and discarded, never persisted or
@@ -170,7 +204,10 @@ const importRowSchema = z.object({
   trade: z.string().min(1, 'trade is required'),
   // positive (not nonnegative): an empty cell coerces to 0, which must be
   // rejected rather than silently imported as a free worker.
-  hourlyRate: z.coerce.number().positive('hourly rate is required and must be greater than 0'),
+  hourlyRate: z.coerce
+    .number()
+    .positive('hourly rate is required and must be greater than 0')
+    .max(MAX_HOURLY_RATE, `hourly rate over KES ${MAX_HOURLY_RATE.toLocaleString()}/hr — check for an extra digit`),
   biometricId: z.string().optional(),
 });
 

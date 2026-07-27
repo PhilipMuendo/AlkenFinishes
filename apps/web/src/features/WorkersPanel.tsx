@@ -129,7 +129,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
             <Input name="trade" required placeholder="Painter, Tiler, Mason…" />
           </Field>
           <Field label="Agreed hourly rate (KES)">
-            <Input name="hourlyRate" type="number" min="0" step="0.01" required />
+            <Input name="hourlyRate" type="number" min="0" max="5000" step="0.01" required />
           </Field>
           {create.isError && (
             <p className="text-sm text-red-600">
@@ -175,6 +175,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
                 name="hourlyRate"
                 type="number"
                 min="0"
+                max="5000"
                 step="0.01"
                 required
                 defaultValue={editing.hourlyRate}
