@@ -73,17 +73,17 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <CardTitle>Contract &amp; deposit</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p className="text-lg font-semibold tabular-nums text-slate-900">
+          <p className="text-lg font-semibold tabular-nums text-fg">
             {fmtMoney(summary?.contractValue ?? 0)}
           </p>
           {summary?.deposit ? (
             <div className="text-sm">
-              <p className="text-slate-800">
+              <p className="text-fg">
                 Deposit paid: <span className="font-medium">{fmtMoney(Number(summary.deposit.amount))}</span>{' '}
                 via {METHOD_LABEL[summary.deposit.method]} on {fmtDate(summary.deposit.paymentDate)}
               </p>
               {summary.deposit.notes && (
-                <p className="mt-1 text-xs text-slate-500">{summary.deposit.notes}</p>
+                <p className="mt-1 text-xs text-fg-muted">{summary.deposit.notes}</p>
               )}
               {summary.deposit.receiptUrl && (
                 <a
@@ -97,7 +97,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
               )}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">No deposit recorded yet</p>
+            <p className="text-sm text-fg-muted">No deposit recorded yet</p>
           )}
         </CardContent>
       </Card>
@@ -107,11 +107,11 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <CardTitle>Pending balance</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-2xl font-semibold tabular-nums text-slate-900">
+          <p className="text-2xl font-semibold tabular-nums text-fg">
             {fmtMoney(summary?.pendingBalance ?? 0)}
           </p>
           <Progress value={percentPaid} health="GREEN" />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-fg-muted">
             {fmtMoney(summary?.totalPaid ?? 0)} paid of {fmtMoney(summary?.contractValue ?? 0)}
           </p>
           <div className="flex flex-wrap items-end gap-3">
@@ -154,7 +154,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                 <Td className="text-right font-medium tabular-nums">
                   {fmtMoney(Number(p.amount))}
                 </Td>
-                <Td>{p.notes ?? <span className="text-slate-400">—</span>}</Td>
+                <Td>{p.notes ?? <span className="text-fg-subtle">—</span>}</Td>
                 <Td>
                   {p.receiptUrl ? (
                     <a
@@ -166,7 +166,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                       <Receipt size={14} /> View
                     </a>
                   ) : (
-                    <span className="text-slate-400">—</span>
+                    <span className="text-fg-subtle">—</span>
                   )}
                 </Td>
                 <Td className="text-right">

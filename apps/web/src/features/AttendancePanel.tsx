@@ -56,7 +56,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-sm text-slate-600">
+        <p className="flex items-center gap-2 text-sm text-fg-muted">
           <Fingerprint size={16} className="text-brand-600" />
           Records sync automatically from fingerprint devices
         </p>
@@ -89,7 +89,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                 <Td className="whitespace-nowrap">{fmtDate(r.date)}</Td>
                 <Td>
                   <span className="font-medium">{r.worker.name}</span>
-                  <p className="text-xs text-slate-500">{r.worker.trade}</p>
+                  <p className="text-xs text-fg-muted">{r.worker.trade}</p>
                 </Td>
                 <Td className="tabular-nums">{fmtTime(r.checkIn)}</Td>
                 <Td className="tabular-nums">

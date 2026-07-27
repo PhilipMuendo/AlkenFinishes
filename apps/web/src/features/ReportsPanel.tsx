@@ -38,36 +38,33 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
       )}
 
       {reports?.length === 0 && (
-        <Empty>
-          <ClipboardList size={24} className="text-slate-300" />
-          No daily reports submitted yet
-        </Empty>
+        <Empty icon={ClipboardList}>No daily reports submitted yet</Empty>
       )}
 
       <div className="space-y-3">
         {reports?.map((r) => (
           <Card key={r.id} className="p-4">
             <div className="flex items-center justify-between">
-              <p className="font-semibold text-slate-900">{fmtDate(r.date)}</p>
-              <p className="text-xs text-slate-500">
+              <p className="font-semibold text-fg">{fmtDate(r.date)}</p>
+              <p className="text-xs text-fg-muted">
                 {r.submittedBy.name} · {r.workersPresent} workers present
               </p>
             </div>
             <dl className="mt-2 space-y-2 text-sm">
               <div>
-                <dt className="text-xs font-medium uppercase text-slate-400">Work completed</dt>
-                <dd className="text-slate-700">{r.workCompleted}</dd>
+                <dt className="text-xs font-medium uppercase text-fg-subtle">Work completed</dt>
+                <dd className="text-fg">{r.workCompleted}</dd>
               </div>
               {r.materialsUsed && (
                 <div>
-                  <dt className="text-xs font-medium uppercase text-slate-400">Materials used</dt>
-                  <dd className="text-slate-700">{r.materialsUsed}</dd>
+                  <dt className="text-xs font-medium uppercase text-fg-subtle">Materials used</dt>
+                  <dd className="text-fg">{r.materialsUsed}</dd>
                 </div>
               )}
               {r.challenges && (
                 <div>
-                  <dt className="text-xs font-medium uppercase text-slate-400">Challenges</dt>
-                  <dd className="text-slate-700">{r.challenges}</dd>
+                  <dt className="text-xs font-medium uppercase text-fg-subtle">Challenges</dt>
+                  <dd className="text-fg">{r.challenges}</dd>
                 </div>
               )}
             </dl>

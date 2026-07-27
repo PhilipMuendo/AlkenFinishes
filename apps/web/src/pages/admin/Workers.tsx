@@ -248,12 +248,12 @@ export function WorkersPage() {
       >
         {importResult ? (
           <div className="space-y-3">
-            <p className="text-sm text-slate-700">
+            <p className="text-sm text-fg">
               Imported <span className="font-medium">{importResult.created}</span> of{' '}
               {importResult.totalRows} rows.
             </p>
             {importResult.results.some((r) => r.status === 'error' || r.warning) && (
-              <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 text-xs">
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-hairline p-2 text-xs">
                 {importResult.results
                   .filter((r) => r.status === 'error' || r.warning)
                   .map((r) => (
@@ -288,7 +288,7 @@ export function WorkersPage() {
             }}
             className="space-y-3"
           >
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-fg-muted">
               Upload a CSV or Excel file with your fundi list — columns: Name, Phone, Trade,
               Hourly Rate, and optionally Biometric ID.{' '}
               <button

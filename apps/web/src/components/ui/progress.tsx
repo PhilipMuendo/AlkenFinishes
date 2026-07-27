@@ -5,7 +5,7 @@ const healthColor: Record<Health, string> = {
   GREEN: 'bg-emerald-500',
   YELLOW: 'bg-amber-500',
   RED: 'bg-red-500',
-  NONE: 'bg-slate-300',
+  NONE: 'bg-hairline-strong',
 };
 
 export function Progress({

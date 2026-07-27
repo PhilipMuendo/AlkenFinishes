@@ -69,7 +69,7 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
             />
           </Field>
         ))}
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-fg-muted">
           Total budget:{' '}
           <span className="font-semibold tabular-nums">
             KES {total.toLocaleString('en-KE')}

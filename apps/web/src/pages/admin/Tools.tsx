@@ -177,7 +177,7 @@ export function ToolsPage() {
             }}
             className="space-y-3"
           >
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-muted">
               Currently at: {transferring.currentProject?.name ?? 'Central store'} ·{' '}
               {Number(transferring.quantity).toLocaleString()} {transferring.unit}
             </p>
@@ -232,17 +232,17 @@ export function ToolsPage() {
         <div className="max-h-80 space-y-2 overflow-y-auto">
           {history?.length === 0 && <Empty>No transfers yet</Empty>}
           {history?.map((t) => (
-            <div key={t.id} className="rounded-lg border border-slate-200 p-3">
+            <div key={t.id} className="rounded-lg border border-hairline p-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-slate-800">
+                <p className="text-sm font-medium text-fg">
                   {t.fromProject?.name ?? 'Central store'} → {t.toProject.name}
                 </p>
-                <span className="text-xs tabular-nums text-slate-500">
+                <span className="text-xs tabular-nums text-fg-muted">
                   {Number(t.quantity).toLocaleString()} {historyTool?.unit}
                 </span>
               </div>
-              {t.notes && <p className="mt-1 text-xs text-slate-500">{t.notes}</p>}
-              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+              {t.notes && <p className="mt-1 text-xs text-fg-muted">{t.notes}</p>}
+              <div className="mt-2 flex items-center justify-between text-xs text-fg-muted">
                 <a
                   href={t.proofPhotoUrl}
                   target="_blank"

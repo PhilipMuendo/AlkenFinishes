@@ -19,15 +19,15 @@ export function ToolsReadOnlyPanel() {
       {tools?.map((t) => (
         <div
           key={t.id}
-          className="flex items-center justify-between rounded-lg border border-slate-200 p-3"
+          className="flex items-center justify-between rounded-lg border border-hairline p-3"
         >
           <div>
-            <p className="font-medium text-slate-900">{t.name}</p>
-            {t.category && <p className="text-xs text-slate-500">{t.category}</p>}
+            <p className="font-medium text-fg">{t.name}</p>
+            {t.category && <p className="text-xs text-fg-muted">{t.category}</p>}
           </div>
-          <p className="text-sm font-semibold tabular-nums text-slate-900">
+          <p className="text-sm font-semibold tabular-nums text-fg">
             {Number(t.quantity).toLocaleString()}{' '}
-            <span className="font-normal text-slate-500">{t.unit}</span>
+            <span className="font-normal text-fg-muted">{t.unit}</span>
           </p>
         </div>
       ))}

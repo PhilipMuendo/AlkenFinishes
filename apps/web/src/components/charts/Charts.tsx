@@ -128,7 +128,7 @@ export function CategoryBreakdownChart({ data }: { data: CategoryFinancials[] })
       fill: CATEGORY_COLORS[c.category],
     }));
   if (rows.length === 0) {
-    return <p className="py-10 text-center text-sm text-slate-500">No expenses recorded yet</p>;
+    return <p className="py-10 text-center text-sm text-fg-muted">No expenses recorded yet</p>;
   }
   return (
     <ResponsiveContainer width="100%" height={Math.max(160, rows.length * 52)}>

@@ -20,7 +20,7 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
     queryFn: () => api<ProjectAnalytics>(`/analytics/projects/${projectId}`),
   });
   if (isError) return <p className="text-sm text-red-600">Failed to load financials.</p>;
-  if (!data) return <p className="text-sm text-slate-500">Loading financials…</p>;
+  if (!data) return <p className="text-sm text-fg-muted">Loading financials…</p>;
   const { financials: fin, expenseSeries } = data;
 
   return (
@@ -49,10 +49,10 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
           {fin.categories.map((c) => (
             <div key={c.category}>
               <div className="mb-1 flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-800">
+                <span className="font-medium text-fg">
                   {c.category.charAt(0) + c.category.slice(1).toLowerCase()}
                 </span>
-                <span className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="flex items-center gap-2 text-xs text-fg-muted">
                   <span className="tabular-nums">
                     {fmtMoney(c.actual)} / {fmtMoney(c.allocated)}
                   </span>
@@ -62,7 +62,7 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
               <Progress value={c.consumedPct ?? 0} health={c.health} />
             </div>
           ))}
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-fg-subtle">
             Thresholds: Watch at {fin.thresholds.yellowPct}%, At-risk at {fin.thresholds.redPct}%.
             Labour source:{' '}
             {fin.labourCostSource === 'ATTENDANCE'

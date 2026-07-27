@@ -181,7 +181,7 @@ export function SettingsPage() {
           <CardTitle>Labour cost source</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-fg-muted">
             Prevents double-counting wages. Choose where LABOUR actuals come from: biometric
             attendance (recommended once devices are live), labour expense entries, or both
             (conservative — may overstate costs if wages appear in both places).
@@ -211,14 +211,14 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-2">
           {devices?.length === 0 && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-fg-muted">
               No devices registered. Register a device to get its API key for attendance sync.
             </p>
           )}
           {devices?.map((d) => (
             <div
               key={d.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 p-3"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline p-3"
             >
               <div className="flex items-center gap-3">
                 <Fingerprint size={18} className="text-brand-600" />

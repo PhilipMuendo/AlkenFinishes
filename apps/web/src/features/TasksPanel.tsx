@@ -77,25 +77,25 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         return (
           <Card key={phase} className="p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">{phase}</h3>
-              <span className="text-xs tabular-nums text-slate-500">{avg}% complete</span>
+              <h3 className="font-semibold text-fg">{phase}</h3>
+              <span className="text-xs tabular-nums text-fg-muted">{avg}% complete</span>
             </div>
             <div className="space-y-2">
               {phaseTasks.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setEditing(t)}
-                  className="flex w-full items-center gap-3 rounded-lg border border-slate-200 p-3 text-left hover:bg-slate-50"
+                  className="flex w-full items-center gap-3 rounded-lg border border-hairline p-3 text-left hover:bg-surface-sunken"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-slate-800">{t.name}</p>
+                    <p className="truncate text-sm font-medium text-fg">{t.name}</p>
                     <div className="mt-1.5 flex items-center gap-2">
                       <Progress value={t.completionPct} health="GREEN" className="max-w-[160px]" />
-                      <span className="text-xs tabular-nums text-slate-500">
+                      <span className="text-xs tabular-nums text-fg-muted">
                         {t.completionPct}%
                       </span>
                       {t.photos.length > 0 && (
-                        <span className="flex items-center gap-1 text-xs text-slate-400">
+                        <span className="flex items-center gap-1 text-xs text-fg-subtle">
                           <Camera size={12} /> {t.photos.length}
                         </span>
                       )}
