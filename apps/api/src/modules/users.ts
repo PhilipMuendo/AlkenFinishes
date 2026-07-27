@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
@@ -75,16 +76,35 @@ router.patch(
   }),
 );
 
+// Permanently removes the account. Disabling (PATCH { active: false }) is
+// the reversible option and preserves history; this is not reversible.
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    if (req.params.id === req.user!.id) throw ApiError.badRequest('Cannot deactivate yourself');
-    const user = await prisma.user.update({
+    if (req.params.id === req.user!.id) throw ApiError.badRequest('Cannot delete your own account');
+    const target = await prisma.user.findUniqueOrThrow({
       where: { id: req.params.id },
-      data: { active: false },
-      select: { id: true },
+      select: { id: true, role: true, email: true },
     });
-    audit(req, 'user.deactivate', 'User', user.id);
+    if (target.role === 'SUPERADMIN') {
+      const otherAdmins = await prisma.user.count({
+        where: { role: 'SUPERADMIN', id: { not: target.id } },
+      });
+      if (otherAdmins === 0) {
+        throw ApiError.badRequest('Cannot delete the only superadmin account');
+      }
+    }
+    try {
+      await prisma.user.delete({ where: { id: target.id } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2003') {
+        throw ApiError.conflict(
+          'This account has activity on record (expenses, payments, reports, transfers, etc.) and cannot be permanently deleted. Disable it instead to preserve the audit trail.',
+        );
+      }
+      throw e;
+    }
+    audit(req, 'user.delete', 'User', target.id, { email: target.email });
     res.json({ ok: true });
   }),
 );

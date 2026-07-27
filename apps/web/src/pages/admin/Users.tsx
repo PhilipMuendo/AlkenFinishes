@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
-import { api } from '@/lib/api';
+import { KeyRound, Plus, Trash2 } from 'lucide-react';
+import { api, ApiRequestError } from '@/lib/api';
 import type { AppUser } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -14,6 +14,8 @@ import { PageHeader } from '@/components/ui/page-header';
 export function UsersPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [resetting, setResetting] = useState<AppUser | null>(null);
+  const [deleting, setDeleting] = useState<AppUser | null>(null);
 
   const { data: users } = useQuery({
     queryKey: ['users'],
@@ -32,6 +34,20 @@ export function UsersPage() {
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/users/${id}`, { method: 'PATCH', body: { active } }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+
+  const resetPassword = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api(`/users/${id}`, { method: 'PATCH', body: { password } }),
+    onSuccess: () => setResetting(null),
+  });
+
+  const deleteUser = useMutation({
+    mutationFn: (id: string) => api(`/users/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['users'] });
+      setDeleting(null);
+    },
   });
 
   return (
@@ -76,13 +92,29 @@ export function UsersPage() {
                 <Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'Active' : 'Disabled'}</Badge>
               </Td>
               <Td className="text-right">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => toggle.mutate({ id: u.id, active: !u.active })}
-                >
-                  {u.active ? 'Disable' : 'Enable'}
-                </Button>
+                <div className="flex justify-end gap-1.5">
+                  <button
+                    className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                    aria-label={`Reset password for ${u.name}`}
+                    onClick={() => setResetting(u)}
+                  >
+                    <KeyRound size={16} />
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => toggle.mutate({ id: u.id, active: !u.active })}
+                  >
+                    {u.active ? 'Disable' : 'Enable'}
+                  </Button>
+                  <button
+                    className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                    aria-label={`Delete ${u.name}`}
+                    onClick={() => setDeleting(u)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </Td>
             </tr>
           ))}
@@ -128,6 +160,85 @@ export function UsersPage() {
             Create user
           </Button>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={!!resetting}
+        onClose={() => setResetting(null)}
+        title={resetting ? `Reset password — ${resetting.name}` : ''}
+      >
+        {resetting && (
+          <form
+            key={resetting.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              resetPassword.mutate({ id: resetting.id, password: fd.get('password') as string });
+            }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-fg-muted">
+              Set a new temporary password for <span className="font-medium text-fg">{resetting.email}</span>.
+              Share it with them directly — they aren&rsquo;t notified automatically.
+            </p>
+            <Field label="New password (min 8 characters)">
+              <Input name="password" type="text" minLength={8} required autoFocus />
+            </Field>
+            {resetPassword.isError && (
+              <p className="text-sm text-red-600">Failed to reset the password</p>
+            )}
+            <Button type="submit" className="w-full" disabled={resetPassword.isPending}>
+              Set new password
+            </Button>
+          </form>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!deleting}
+        onClose={() => {
+          setDeleting(null);
+          deleteUser.reset();
+        }}
+        title={deleting ? `Delete ${deleting.name}?` : ''}
+      >
+        {deleting && (
+          <div className="space-y-3">
+            <p className="text-sm text-fg-muted">
+              This permanently removes <span className="font-medium text-fg">{deleting.email}</span>.
+              This can&rsquo;t be undone. If you might need this account again, use{' '}
+              <span className="font-medium text-fg">Disable</span> instead — it blocks sign-in but
+              keeps their history.
+            </p>
+            {deleteUser.isError && (
+              <p className="text-sm text-red-600">
+                {deleteUser.error instanceof ApiRequestError
+                  ? deleteUser.error.message
+                  : 'Failed to delete this account'}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setDeleting(null);
+                  deleteUser.reset();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={deleteUser.isPending}
+                onClick={() => deleteUser.mutate(deleting.id)}
+              >
+                Delete permanently
+              </Button>
+            </div>
+          </div>
+        )}
       </Dialog>
     </div>
   );
