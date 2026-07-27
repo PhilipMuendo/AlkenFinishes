@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fingerprint, PenLine } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { AttendanceRecord, Worker } from '@/lib/types';
 import { fmtDate, fmtMoney, fmtTime, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -23,9 +23,11 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
     queryKey: ['attendance', projectId],
     queryFn: () => api<AttendanceRecord[]>(`/projects/${projectId}/attendance`),
   });
+  // Scoped to this site only — a picker for a manual override must never
+  // list a fundi from a different site the caller happens to also cover.
   const { data: workers } = useQuery({
-    queryKey: ['workers'],
-    queryFn: () => api<Worker[]>('/workers'),
+    queryKey: ['workers', projectId],
+    queryFn: () => api<Worker[]>(`/workers?projectId=${projectId}`),
   });
 
   const invalidate = () => {
@@ -178,7 +180,9 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           </Field>
           {override.isError && (
             <p className="text-sm text-red-600">
-              Failed — the worker may already have a record for this day
+              {override.error instanceof ApiRequestError
+                ? override.error.message
+                : 'Failed to save the override'}
             </p>
           )}
           <Button type="submit" className="w-full" disabled={override.isPending}>

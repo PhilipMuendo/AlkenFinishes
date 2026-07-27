@@ -60,13 +60,22 @@ async function assertOwnWorker(userId: string, role: string, workerId: string) {
 }
 
 // Supervisors see workers currently assigned to their sites; admin sees all.
+// An optional ?projectId narrows further to just that site — callers picking
+// a worker for a specific project (attendance override, fundi roster) should
+// always pass it, so cross-site names never leak into a single-site picker.
 router.get(
   '/',
   asyncHandler(async (req, res) => {
+    const { projectId } = req.query;
+    const scope = req.user!.role === 'SUPERADMIN' ? {} : projectScope(req.user!);
+    const projectFilter = {
+      ...scope,
+      ...(typeof projectId === 'string' && projectId ? { id: projectId } : {}),
+    };
     const where =
-      req.user!.role === 'SUPERADMIN'
+      Object.keys(projectFilter).length === 0
         ? {}
-        : { assignments: { some: { endDate: null, project: projectScope(req.user!) } } };
+        : { assignments: { some: { endDate: null, project: projectFilter } } };
     res.json(await prisma.worker.findMany({ where, include, orderBy: { name: 'asc' } }));
   }),
 );

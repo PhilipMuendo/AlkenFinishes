@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { BudgetCategory } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,7 +76,11 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           </span>
         </p>
         {save.isSuccess && <p className="text-sm text-green-700">Budget saved</p>}
-        {save.isError && <p className="text-sm text-red-600">Failed to save budget</p>}
+        {save.isError && (
+          <p className="text-sm text-red-600">
+            {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save budget'}
+          </p>
+        )}
         <Button onClick={() => save.mutate()} disabled={save.isPending}>
           Save budget
         </Button>

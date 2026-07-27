@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Plus, Receipt } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { BudgetCategory, Expense } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
@@ -70,7 +70,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
         </Card>
 
         <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
-          <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.isError} />
+          <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
         </Dialog>
       </div>
     );
@@ -131,7 +131,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
-        <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.isError} />
+        <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
       </Dialog>
     </div>
   );
@@ -144,7 +144,7 @@ function ExpenseForm({
 }: {
   onSubmit: (formData: FormData) => void;
   pending: boolean;
-  error: boolean;
+  error: unknown;
 }) {
   return (
     <form
@@ -176,7 +176,11 @@ function ExpenseForm({
       <Field label="Receipt photo / document">
         <Input name="receipt" type="file" accept="image/*,.pdf" capture="environment" />
       </Field>
-      {error && <p className="text-sm text-red-600">Failed to save expense</p>}
+      {error != null && (
+        <p className="text-sm text-red-600">
+          {error instanceof ApiRequestError ? error.message : 'Failed to save expense'}
+        </p>
+      )}
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
         Save expense
       </Button>

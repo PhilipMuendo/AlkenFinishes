@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { AppUser, Project } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -128,7 +128,11 @@ export function ProjectsPage() {
               ))}
             </Select>
           </Field>
-          {create.isError && <p className="text-sm text-red-600">Failed to create project</p>}
+          {create.isError && (
+            <p className="text-sm text-red-600">
+              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to create project'}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Create project
           </Button>

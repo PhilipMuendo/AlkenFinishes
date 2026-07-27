@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Upload } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { ProjectDocument } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -115,7 +115,11 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
           <Field label="File">
             <Input name="file" type="file" required accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" />
           </Field>
-          {uploadDoc.isError && <p className="text-sm text-red-600">Upload failed</p>}
+          {uploadDoc.isError && (
+            <p className="text-sm text-red-600">
+              {uploadDoc.error instanceof ApiRequestError ? uploadDoc.error.message : 'Upload failed'}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={uploadDoc.isPending}>
             Upload
           </Button>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, Plus, Repeat, Wrench } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { Project, Tool, ToolTransfer } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -152,7 +152,11 @@ export function ToolsPage() {
               ))}
             </Select>
           </Field>
-          {createTool.isError && <p className="text-sm text-red-600">Failed to add tool</p>}
+          {createTool.isError && (
+            <p className="text-sm text-red-600">
+              {createTool.error instanceof ApiRequestError ? createTool.error.message : 'Failed to add tool'}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={createTool.isPending}>
             Add tool
           </Button>
@@ -207,7 +211,11 @@ export function ToolsPage() {
               />
             </Field>
             {transferTool.isError && (
-              <p className="text-sm text-red-600">Transfer failed — check the details and try again</p>
+              <p className="text-sm text-red-600">
+                {transferTool.error instanceof ApiRequestError
+                  ? transferTool.error.message
+                  : 'Transfer failed — check the details and try again'}
+              </p>
             )}
             <Button type="submit" size="lg" className="w-full" disabled={transferTool.isPending}>
               Confirm transfer

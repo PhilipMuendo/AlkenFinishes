@@ -131,7 +131,11 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
           <Field label="Agreed hourly rate (KES)">
             <Input name="hourlyRate" type="number" min="0" step="0.01" required />
           </Field>
-          {create.isError && <p className="text-sm text-red-600">Failed to add this fundi</p>}
+          {create.isError && (
+            <p className="text-sm text-red-600">
+              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add this fundi'}
+            </p>
+          )}
           <Button type="submit" size="lg" className="w-full" disabled={create.isPending}>
             Add to this site
           </Button>

@@ -155,7 +155,13 @@ export function UsersPage() {
               <option value="SUPERADMIN">Superadmin</option>
             </Select>
           </Field>
-          {create.isError && <p className="text-sm text-red-600">Failed — email may already exist</p>}
+          {create.isError && (
+            <p className="text-sm text-red-600">
+              {create.error instanceof ApiRequestError
+                ? create.error.message
+                : 'Failed — email may already exist'}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Create user
           </Button>

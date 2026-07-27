@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpFromLine, Boxes, History, Plus } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { StockItem, StockMovement } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -135,6 +135,13 @@ export function StockPanel({ projectId }: { projectId: string }) {
           <Field label="Unit">
             <Input name="unit" required placeholder="bags" />
           </Field>
+          {createItem.isError && (
+            <p className="text-sm text-red-600">
+              {createItem.error instanceof ApiRequestError
+                ? createItem.error.message
+                : 'Failed to add material'}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={createItem.isPending}>
             Add material
           </Button>
@@ -176,7 +183,11 @@ export function StockPanel({ projectId }: { projectId: string }) {
             <Field label="Reason">
               <Textarea name="reason" required placeholder="Delivery from supplier / used for bedroom walls" />
             </Field>
-            {move.isError && <p className="text-sm text-red-600">Failed — check stock quantity</p>}
+            {move.isError && (
+              <p className="text-sm text-red-600">
+                {move.error instanceof ApiRequestError ? move.error.message : 'Failed to save movement'}
+              </p>
+            )}
             <Button type="submit" size="lg" className="w-full" disabled={move.isPending}>
               Save movement
             </Button>

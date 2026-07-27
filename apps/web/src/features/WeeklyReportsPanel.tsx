@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarRange, Plus } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { WeeklyReport } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -137,7 +137,11 @@ export function WeeklyReportsPanel({
           <Field label="Photos (up to 6)">
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />
           </Field>
-          {submit.isError && <p className="text-sm text-red-600">Failed to submit report</p>}
+          {submit.isError && (
+            <p className="text-sm text-red-600">
+              {submit.error instanceof ApiRequestError ? submit.error.message : 'Failed to submit report'}
+            </p>
+          )}
           <Button type="submit" size="lg" className="w-full" disabled={submit.isPending}>
             Submit report
           </Button>

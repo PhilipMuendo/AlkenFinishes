@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Upload } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiRequestError } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -209,7 +209,11 @@ export function WorkersPage() {
           <Field label="Biometric ID (from fingerprint device)">
             <Input name="biometricId" placeholder="Device enrolment ID" />
           </Field>
-          {create.isError && <p className="text-sm text-red-600">Failed to add worker</p>}
+          {create.isError && (
+            <p className="text-sm text-red-600">
+              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add worker'}
+            </p>
+          )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Add worker
           </Button>
