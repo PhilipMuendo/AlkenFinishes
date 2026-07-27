@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import sharp from 'sharp';
 import type { NextFunction, Request, Response } from 'express';
 import { env } from '../config/env';
 import { ApiError } from '../utils/http';
@@ -20,6 +21,11 @@ const ALLOWED = new Set([
 
 const dir = path.resolve(env.UPLOAD_DIR);
 fs.mkdirSync(dir, { recursive: true });
+
+// Thumbnails are derived, cached files, kept separate from the originals so
+// the upload directory stays a flat 1:1 map of DB rows to source files.
+const thumbDir = path.join(dir, '.thumbs');
+fs.mkdirSync(thumbDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: dir,
@@ -97,6 +103,7 @@ export function removeUploadedFile(url: string | null | undefined) {
   fs.promises
     .unlink(path.join(dir, filename))
     .catch((e) => logger.warn({ filename, err: e.code }, 'upload cleanup skipped'));
+  removeThumbnails(filename);
 }
 
 // ---- Signed URLs: uploads are private; links expire ----
@@ -120,8 +127,29 @@ const CONTENT_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
 };
 
-/** Validates the signature, then serves the file with safe headers. */
-export function serveUploads(req: Request, res: Response, next: NextFunction) {
+const RESIZABLE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+// Fixed allowlist, not an arbitrary client-chosen width — otherwise every
+// distinct value in `?w=` becomes its own cached file on disk forever.
+// Covers the thumbnail sizes actually used in the UI (64-80px, @1x/@2x).
+const ALLOWED_THUMB_WIDTHS = new Set([160, 320]);
+
+/** Resizes to a cached JPEG thumbnail on first request; reused after that. */
+async function getOrCreateThumbnail(filePath: string, width: number): Promise<string> {
+  const thumbPath = path.join(thumbDir, `${path.basename(filePath)}-w${width}.jpg`);
+  if (!fs.existsSync(thumbPath)) {
+    // Flattens transparency onto white — fine for photos, the only content
+    // these thumbnails are used for (receipts, task/report photos).
+    await sharp(filePath)
+      .resize({ width, withoutEnlargement: true })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ quality: 78 })
+      .toFile(thumbPath);
+  }
+  return thumbPath;
+}
+
+/** Validates the signature, then serves the file (or a resized thumbnail) with safe headers. */
+export async function serveUploads(req: Request, res: Response, next: NextFunction) {
   const exp = Number(req.query.exp);
   const provided = String(req.query.sig ?? '');
   const clean = `/uploads/${path.basename(req.path)}`;
@@ -137,6 +165,22 @@ export function serveUploads(req: Request, res: Response, next: NextFunction) {
   const filePath = path.join(dir, path.basename(req.path));
   const ext = path.extname(filePath).toLowerCase();
   const type = CONTENT_TYPES[ext];
+
+  const width = Number(req.query.w);
+  if (RESIZABLE_EXTS.has(ext) && ALLOWED_THUMB_WIDTHS.has(width)) {
+    try {
+      const thumbPath = await getOrCreateThumbnail(filePath, width);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.setHeader('Content-Disposition', 'inline');
+      return res.sendFile(thumbPath, { headers: { 'Content-Type': 'image/jpeg' } }, (err) => {
+        if (err) next(ApiError.notFound('File not found'));
+      });
+    } catch (e) {
+      logger.warn({ filePath, width, err: e }, 'thumbnail generation failed, serving original');
+    }
+  }
+
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'private, max-age=3600');
   // Images/PDFs render inline; everything else downloads.
@@ -144,4 +188,13 @@ export function serveUploads(req: Request, res: Response, next: NextFunction) {
   res.sendFile(filePath, { headers: type ? { 'Content-Type': type } : undefined }, (err) => {
     if (err) next(ApiError.notFound('File not found'));
   });
+}
+
+/** Best-effort removal of a cached thumbnail alongside its source file. */
+function removeThumbnails(filename: string) {
+  for (const width of ALLOWED_THUMB_WIDTHS) {
+    fs.promises
+      .unlink(path.join(thumbDir, `${filename}-w${width}.jpg`))
+      .catch(() => undefined);
+  }
 }

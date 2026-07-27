@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Camera, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
+import { thumbUrl } from '@/lib/format';
 import type { Task, TaskStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -195,7 +196,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 {editing.photos.map((p) => (
                   <a key={p.id} href={p.fileUrl} target="_blank" rel="noreferrer">
                     <img
-                      src={p.fileUrl}
+                      src={thumbUrl(p.fileUrl, 160)}
                       alt={p.caption ?? 'Task photo'}
                       loading="lazy"
                       className="h-16 w-16 rounded-lg object-cover"

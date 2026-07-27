@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarRange, Plus } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import type { WeeklyReport } from '@/lib/types';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -93,7 +93,7 @@ export function WeeklyReportsPanel({
                 {r.photoUrls.map((url) => (
                   <a key={url} href={url} target="_blank" rel="noreferrer">
                     <img
-                      src={url}
+                      src={thumbUrl(url, 160)}
                       alt="Site progress"
                       loading="lazy"
                       className="h-20 w-20 rounded-lg object-cover"

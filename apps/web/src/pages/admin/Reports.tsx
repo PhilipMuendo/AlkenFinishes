@@ -3,7 +3,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { CalendarRange, ClipboardList, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Project, ReportFeedItem } from '@/lib/types';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,7 +66,7 @@ function ReportRow({ r }: { r: ReportFeedItem }) {
           {r.photoUrls.map((url) => (
             <a key={url} href={url} target="_blank" rel="noreferrer">
               <img
-                src={url}
+                src={thumbUrl(url, 160)}
                 alt="Site progress"
                 loading="lazy"
                 className="h-20 w-20 rounded-lg object-cover"
