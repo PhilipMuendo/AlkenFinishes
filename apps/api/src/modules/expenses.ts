@@ -19,8 +19,12 @@ const expenseSchema = z.object({
 
 const include = { submittedBy: { select: { id: true, name: true } } } as const;
 
+// Supervisors can submit expenses (money leaves their hand on site and
+// needs a receipt captured there) but not browse the project's spend
+// history/amounts — that's financial visibility reserved for the office.
 router.get(
   '/',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const expenses = await prisma.expense.findMany({
       where: { projectId: req.params.projectId },

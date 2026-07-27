@@ -152,14 +152,6 @@ export interface AttendanceRecord {
   recordedBy: { id: string; name: string } | null;
 }
 
-export interface StockItem {
-  id: string;
-  name: string;
-  unit: string;
-  quantity: string;
-  updatedAt: string;
-}
-
 export interface StockMovement {
   id: string;
   type: 'IN' | 'OUT' | 'ADJUSTMENT';
@@ -167,6 +159,15 @@ export interface StockMovement {
   reason: string;
   date: string;
   user: { id: string; name: string };
+}
+
+export interface StockItem {
+  id: string;
+  name: string;
+  unit: string;
+  quantity: string;
+  updatedAt: string;
+  movements?: StockMovement[]; // most recent movement only, from the list endpoint
 }
 
 export interface ProjectDocument {

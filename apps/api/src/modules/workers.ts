@@ -20,12 +20,44 @@ const workerSchema = z.object({
   biometricId: z.string().nullable().optional(),
 });
 
+// What a supervisor may set: roster/contact details for their own site's
+// fundis. Company-wide fields (status, biometric enrollment) stay
+// admin-only — status affects the whole roster, and fingerprint linking is
+// centralized through the Sync Issues flow to avoid conflicting IDs.
+const supervisorWorkerSchema = z.object({
+  name: z.string().min(1),
+  phone: z.string().nullable().optional(),
+  trade: z.string().min(1),
+  hourlyRate: z.coerce.number().nonnegative(),
+});
+
 const include = {
   assignments: {
     where: { endDate: null },
     include: { project: { select: { id: true, name: true } } },
   },
 } as const;
+
+/** Is this project one the caller supervises (or any project, if admin)? */
+async function assertOwnProject(userId: string, role: string, projectId: string) {
+  if (role === 'SUPERADMIN') return;
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { supervisorId: true },
+  });
+  if (!project || project.supervisorId !== userId) {
+    throw ApiError.forbidden('You are not assigned to this site');
+  }
+}
+
+/** Is this worker currently active on one of the caller's own sites? */
+async function assertOwnWorker(userId: string, role: string, workerId: string) {
+  if (role === 'SUPERADMIN') return;
+  const active = await prisma.workerAssignment.findFirst({
+    where: { workerId, endDate: null, project: { supervisorId: userId } },
+  });
+  if (!active) throw ApiError.forbidden('This fundi is not on one of your sites');
+}
 
 // Supervisors see workers currently assigned to their sites; admin sees all.
 router.get(
@@ -39,23 +71,44 @@ router.get(
   }),
 );
 
+// Admin: create a worker, optionally onto any project. Supervisor: create a
+// fundi and place them straight onto one of their own sites (projectId
+// required) — a bare, unassigned worker isn't useful from a site screen.
 router.post(
   '/',
-  requireSuperadmin,
   asyncHandler(async (req, res) => {
-    const worker = await prisma.worker.create({ data: workerSchema.parse(req.body), include });
-    audit(req, 'worker.create', 'Worker', worker.id, { name: worker.name });
+    const isAdmin = req.user!.role === 'SUPERADMIN';
+    const { projectId, ...body } = req.body ?? {};
+    const data = isAdmin ? workerSchema.parse(body) : supervisorWorkerSchema.parse(body);
+
+    if (!isAdmin) {
+      if (typeof projectId !== 'string' || !projectId) {
+        throw ApiError.badRequest('projectId is required');
+      }
+      await assertOwnProject(req.user!.id, req.user!.role, projectId);
+    }
+
+    const worker = await prisma.$transaction(async (tx) => {
+      const created = await tx.worker.create({ data });
+      if (projectId) {
+        await tx.workerAssignment.create({ data: { workerId: created.id, projectId } });
+      }
+      return tx.worker.findUniqueOrThrow({ where: { id: created.id }, include });
+    });
+    audit(req, 'worker.create', 'Worker', worker.id, { name: worker.name, projectId });
     res.status(201).json(worker);
   }),
 );
 
 router.patch(
   '/:id',
-  requireSuperadmin,
   asyncHandler(async (req, res) => {
+    const isAdmin = req.user!.role === 'SUPERADMIN';
+    await assertOwnWorker(req.user!.id, req.user!.role, req.params.id);
+    const data = (isAdmin ? workerSchema : supervisorWorkerSchema).partial().parse(req.body);
     const worker = await prisma.worker.update({
       where: { id: req.params.id },
-      data: workerSchema.partial().parse(req.body),
+      data,
       include,
     });
     audit(req, 'worker.update', 'Worker', worker.id);
@@ -231,13 +284,29 @@ const assignSchema = z.object({
   startDate: z.coerce.date().optional(),
 });
 
+// Admin: move any worker onto any site. Supervisor: pick up an existing,
+// currently-unassigned fundi onto one of their own sites — moving someone
+// who's actively working another site is blocked, so a supervisor can't
+// poach a fundi out from under a peer.
 router.post(
   '/:id/assign',
-  requireSuperadmin,
   asyncHandler(async (req, res) => {
+    const isAdmin = req.user!.role === 'SUPERADMIN';
     const { projectId, startDate } = assignSchema.parse(req.body);
-    const worker = await prisma.worker.findUnique({ where: { id: req.params.id } });
+    const worker = await prisma.worker.findUnique({
+      where: { id: req.params.id },
+      include: { assignments: { where: { endDate: null }, take: 1 } },
+    });
     if (!worker) throw ApiError.notFound('Worker not found');
+
+    if (!isAdmin) {
+      await assertOwnProject(req.user!.id, req.user!.role, projectId);
+      const current = worker.assignments[0];
+      if (current && current.projectId !== projectId) {
+        throw ApiError.conflict('This fundi is already assigned to another site');
+      }
+    }
+
     const assignment = await prisma.$transaction(async (tx) => {
       // Close any open assignment before opening a new one.
       await tx.workerAssignment.updateMany({
@@ -256,8 +325,8 @@ router.post(
 
 router.post(
   '/:id/unassign',
-  requireSuperadmin,
   asyncHandler(async (req, res) => {
+    await assertOwnWorker(req.user!.id, req.user!.role, req.params.id);
     await prisma.workerAssignment.updateMany({
       where: { workerId: req.params.id, endDate: null },
       data: { endDate: new Date() },

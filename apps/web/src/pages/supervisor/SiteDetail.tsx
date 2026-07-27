@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ClipboardList,
   Fingerprint,
+  HardHat,
   ListChecks,
   Receipt,
   Wrench,
@@ -22,12 +23,14 @@ import { StockPanel } from '@/features/StockPanel';
 import { ReportsPanel } from '@/features/ReportsPanel';
 import { WeeklyReportsPanel } from '@/features/WeeklyReportsPanel';
 import { ToolsReadOnlyPanel } from '@/features/ToolsReadOnlyPanel';
+import { WorkersPanel } from '@/features/WorkersPanel';
 
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
  * Optimized for one-handed phone use on site — no financials here.
  */
 const ACTIONS = [
+  { id: 'fundis', label: 'Fundis', hint: 'Add and manage workers', icon: HardHat, chip: 'bg-rose-50 text-rose-600' },
   {
     id: 'attendance',
     label: 'Attendance',
@@ -115,6 +118,7 @@ export function SiteDetailPage() {
         </div>
       )}
 
+      {view === 'fundis' && <WorkersPanel projectId={projectId} />}
       {view === 'attendance' && <AttendancePanel projectId={projectId} />}
       {view === 'stock' && <StockPanel projectId={projectId} />}
       {view === 'expenses' && <ExpensesPanel projectId={projectId} />}

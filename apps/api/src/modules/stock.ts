@@ -16,6 +16,15 @@ router.get(
     res.json(
       await prisma.stockItem.findMany({
         where: { projectId: req.params.projectId },
+        // Most recent movement per item, so the list shows activity is
+        // actually being captured without opening each item's full history.
+        include: {
+          movements: {
+            orderBy: { date: 'desc' },
+            take: 1,
+            include: { user: { select: { id: true, name: true } } },
+          },
+        },
         orderBy: { name: 'asc' },
       }),
     );

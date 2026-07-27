@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDownToLine, ArrowUpFromLine, History, Plus } from 'lucide-react';
+import { ArrowDownToLine, ArrowUpFromLine, Boxes, History, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { StockItem, StockMovement } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
@@ -55,46 +55,68 @@ export function StockPanel({ projectId }: { projectId: string }) {
       </div>
 
       {items?.length === 0 && (
-        <Empty>No materials tracked yet. Add a material to start recording stock.</Empty>
+        <div className="rounded-xl border border-hairline bg-surface shadow-sm">
+          <Empty icon={Boxes}>
+            <p className="font-medium text-fg">No materials tracked yet</p>
+            <p className="mt-1 max-w-xs text-fg-muted">
+              Add a material first (e.g. &ldquo;Tiles&rdquo;, unit &ldquo;pieces&rdquo;) — then use{' '}
+              <span className="font-medium text-fg">Received</span> and{' '}
+              <span className="font-medium text-fg">Used</span> on it to log deliveries and usage.
+              Every change is recorded and visible in its history.
+            </p>
+          </Empty>
+        </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {items?.map((item) => (
-          <Card key={item.id} className="p-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-semibold text-slate-900">{item.name}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
-                  {Number(item.quantity).toLocaleString()}{' '}
-                  <span className="text-sm font-normal text-slate-500">{item.unit}</span>
-                </p>
+        {items?.map((item) => {
+          const last = item.movements?.[0];
+          return (
+            <Card key={item.id} className="p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-semibold text-fg">{item.name}</p>
+                  <p className="nums mt-1 text-2xl font-semibold tracking-tight text-fg">
+                    {Number(item.quantity).toLocaleString()}{' '}
+                    <span className="text-sm font-normal text-fg-subtle">{item.unit}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={() => setHistoryItem(item)}
+                  aria-label={`History for ${item.name}`}
+                  className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                >
+                  <History size={18} />
+                </button>
               </div>
-              <button
-                onClick={() => setHistoryItem(item)}
-                aria-label={`History for ${item.name}`}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <History size={18} />
-              </button>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <Button
-                size="lg"
-                variant="secondary"
-                onClick={() => setMovement({ item, type: 'IN' })}
-              >
-                <ArrowDownToLine size={18} /> Received
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => setMovement({ item, type: 'OUT' })}
-              >
-                <ArrowUpFromLine size={18} /> Used
-              </Button>
-            </div>
-          </Card>
-        ))}
+              {last ? (
+                <p className="mt-2 truncate text-xs text-fg-subtle">
+                  Last: {last.type === 'OUT' ? '−' : '+'}
+                  {Number(last.quantity).toLocaleString()} {item.unit} · {last.reason} ·{' '}
+                  {fmtDate(last.date)}
+                </p>
+              ) : (
+                <p className="mt-2 text-xs text-fg-subtle">No activity logged yet</p>
+              )}
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <Button
+                  size="lg"
+                  variant="secondary"
+                  onClick={() => setMovement({ item, type: 'IN' })}
+                >
+                  <ArrowDownToLine size={18} /> Received
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={() => setMovement({ item, type: 'OUT' })}
+                >
+                  <ArrowUpFromLine size={18} /> Used
+                </Button>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title="New material">
@@ -170,19 +192,19 @@ export function StockPanel({ projectId }: { projectId: string }) {
         <div className="max-h-80 space-y-2 overflow-y-auto">
           {history?.length === 0 && <Empty>No movements yet</Empty>}
           {history?.map((m) => (
-            <div key={m.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
+            <div key={m.id} className="flex items-center justify-between rounded-lg border border-hairline p-3">
               <div>
                 <div className="flex items-center gap-2">
                   <Badge tone={m.type === 'IN' ? 'green' : m.type === 'OUT' ? 'blue' : 'yellow'}>
                     {m.type}
                   </Badge>
-                  <span className="text-sm font-medium tabular-nums">
+                  <span className="nums text-sm font-medium">
                     {Number(m.quantity).toLocaleString()} {historyItem?.unit}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-500">{m.reason}</p>
+                <p className="mt-1 text-xs text-fg-muted">{m.reason}</p>
               </div>
-              <div className="text-right text-xs text-slate-500">
+              <div className="text-right text-xs text-fg-subtle">
                 <p>{fmtDate(m.date)}</p>
                 <p>{m.user.name}</p>
               </div>
