@@ -6,7 +6,8 @@ import type { AttendanceRecord, Worker } from '@/lib/types';
 import { fmtDate, fmtMoney, fmtTime, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { Field, Input, Textarea } from '@/components/ui/input';
+import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 
@@ -155,14 +156,12 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           className="space-y-3"
         >
           <Field label="Worker">
-            <Select name="workerId" required>
-              <option value="">Select worker…</option>
-              {workers?.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name} — {w.trade}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              name="workerId"
+              placeholder="Search worker…"
+              aria-label="Worker"
+              options={(workers ?? []).map((w) => ({ value: w.id, label: `${w.name} — ${w.trade}` }))}
+            />
           </Field>
           <Field label="Date">
             <Input name="date" type="date" defaultValue={todayISO()} required />

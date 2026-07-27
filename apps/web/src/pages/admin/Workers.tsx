@@ -6,7 +6,8 @@ import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input, Select } from '@/components/ui/input';
+import { Field, Input } from '@/components/ui/input';
+import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
@@ -329,14 +330,12 @@ export function WorkersPage() {
           className="space-y-3"
         >
           <Field label="Site / project">
-            <Select name="projectId" required>
-              <option value="">Select site…</option>
-              {projects?.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              name="projectId"
+              placeholder="Search site…"
+              aria-label="Site / project"
+              options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))}
+            />
           </Field>
           <Button type="submit" className="w-full" disabled={assign.isPending}>
             Assign

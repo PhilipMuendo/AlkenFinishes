@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
+import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 
@@ -417,19 +418,14 @@ function IssueRow({
       </div>
       {isUnknown && (
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <Select
+          <Combobox
             value={workerId}
-            onChange={(e) => setWorkerId(e.target.value)}
+            onChange={setWorkerId}
+            placeholder="Link to worker…"
             className="h-9 w-56 text-xs"
             aria-label="Link fingerprint to worker"
-          >
-            <option value="">Link to worker…</option>
-            {workers.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} · {w.trade}
-              </option>
-            ))}
-          </Select>
+            options={workers.map((w) => ({ value: w.id, label: `${w.name} · ${w.trade}` }))}
+          />
           <Button size="sm" disabled={!workerId || busy} onClick={() => onLink(workerId)}>
             Link &amp; enrol
           </Button>
