@@ -44,13 +44,19 @@ router.get(
       .parse(req.query);
 
     // A supervisor sees events for their own sites plus company-wide ones; a
-    // superadmin sees everything. projectScope() already expresses "mine or
-    // all" for a Project relation filter, so it's reused as-is here.
-    const scope = req.user!.role === 'SUPERADMIN' ? {} : { project: projectScope(req.user!) };
+    // superadmin sees everything, so no project-based restriction applies at
+    // all for them — an empty object inside OR still means "match anything",
+    // but is easy to misread as a no-op, so it's kept out of the query.
+    const projectFilter =
+      projectId != null
+        ? { projectId }
+        : req.user!.role === 'SUPERADMIN'
+          ? {}
+          : { OR: [{ project: projectScope(req.user!) }, { projectId: null }] };
 
     const events = await prisma.calendarEvent.findMany({
       where: {
-        ...(projectId ? { projectId } : { OR: [scope, { projectId: null }] }),
+        ...projectFilter,
         date: {
           ...(from && { gte: from }),
           ...(to && { lte: to }),

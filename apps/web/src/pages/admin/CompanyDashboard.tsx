@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
+  ClipboardCheck,
   Clock,
   FileText,
   UserX,
@@ -74,6 +75,14 @@ const SECTIONS: Section[] = [
     icon: CalendarClock,
     tone: 'blue',
     detail: (i) => (i.daysLeft === 0 ? 'Due today' : `${i.daysLeft}d to deadline`),
+  },
+  {
+    key: 'pendingApprovals',
+    label: 'Awaiting a decision',
+    hint: 'Expense claims, material and attendance requests',
+    icon: ClipboardCheck,
+    tone: 'amber',
+    detail: (i) => `${i.total} pending`,
   },
 ];
 

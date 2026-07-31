@@ -20,8 +20,10 @@ import { InvoicesPanel } from '@/features/InvoicesPanel';
 import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
 import { BusinessReportsPanel } from '@/features/BusinessReportsPanel';
+import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 
 const TABS = [
+  { id: 'overview', label: 'Overview' },
   { id: 'financials', label: 'Financials' },
   { id: 'invoices', label: 'Invoices' },
   { id: 'payments', label: 'Payments' },
@@ -49,7 +51,7 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams();
   const qc = useQueryClient();
-  const [tab, setTab] = useState('financials');
+  const [tab, setTab] = useState('overview');
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -142,6 +144,7 @@ export function ProjectDetailPage() {
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
+      {tab === 'overview' && <CommandCentrePanel projectId={projectId} />}
       {tab === 'financials' && <FinancialsPanel projectId={projectId} />}
       {tab === 'invoices' && <InvoicesPanel projectId={projectId} />}
       {tab === 'payments' && <PaymentsPanel projectId={projectId} />}

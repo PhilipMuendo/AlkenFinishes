@@ -387,19 +387,58 @@ router.get(
     paymentOverdue.sort((a: any, b: any) => b.daysOverdue - a.daysOverdue);
     finishingSoon.sort((a: any, b: any) => a.daysLeft - b.daysLeft);
 
+    // Things sitting on the owner's desk waiting for a yes/no — grouped by
+    // project so "3 pending" points somewhere rather than being a bare count.
+    const [expensePending, materialPending, overridePending] = await Promise.all([
+      prisma.expense.groupBy({ by: ['projectId'], where: { status: 'PENDING' }, _count: true }),
+      prisma.materialRequest.groupBy({ by: ['projectId'], where: { status: 'PENDING' }, _count: true }),
+      prisma.attendanceOverrideRequest.groupBy({
+        by: ['projectId'],
+        where: { status: 'PENDING' },
+        _count: true,
+      }),
+    ]);
+    const pendingByProject = new Map<string, { expenses: number; materialRequests: number; attendanceOverrides: number }>();
+    const bump = (rows: { projectId: string; _count: number }[], key: 'expenses' | 'materialRequests' | 'attendanceOverrides') => {
+      for (const r of rows) {
+        const e = pendingByProject.get(r.projectId) ?? { expenses: 0, materialRequests: 0, attendanceOverrides: 0 };
+        e[key] = r._count;
+        pendingByProject.set(r.projectId, e);
+      }
+    };
+    bump(expensePending, 'expenses');
+    bump(materialPending, 'materialRequests');
+    bump(overridePending, 'attendanceOverrides');
+    const pendingApprovals = [...pendingByProject.entries()].map(([projectId, counts]) => ({
+      id: projectId,
+      name: projectNames.get(projectId) ?? '',
+      ...counts,
+      total: counts.expenses + counts.materialRequests + counts.attendanceOverrides,
+    }));
+    pendingApprovals.sort((a, b) => b.total - a.total);
+
     const totalFlags =
       paymentOverdue.length +
       invoiceOverdue.length +
       overBudget.length +
       unassigned.length +
       wentQuiet.length +
-      finishingSoon.length;
+      finishingSoon.length +
+      pendingApprovals.length;
 
     res.json({
       activeCount,
       portfolioCount: projects.length,
       allClear: totalFlags === 0,
-      groups: { invoiceOverdue, paymentOverdue, overBudget, unassigned, wentQuiet, finishingSoon },
+      groups: {
+        invoiceOverdue,
+        paymentOverdue,
+        overBudget,
+        unassigned,
+        wentQuiet,
+        finishingSoon,
+        pendingApprovals,
+      },
     });
   }),
 );

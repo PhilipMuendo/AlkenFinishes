@@ -485,6 +485,14 @@ export interface AttentionDigest {
     unassigned: { id: string; name: string }[];
     wentQuiet: { id: string; name: string; lastReportAt: string | null; daysSince: number | null }[];
     finishingSoon: { id: string; name: string; expectedCompletion: string; daysLeft: number }[];
+    pendingApprovals: {
+      id: string;
+      name: string;
+      expenses: number;
+      materialRequests: number;
+      attendanceOverrides: number;
+      total: number;
+    }[];
   };
 }
 
@@ -758,4 +766,14 @@ export interface CalendarEvent {
   notes: string | null;
   createdBy: { id: string; name: string };
   createdAt: string;
+}
+
+export interface CommandCentreData {
+  financials: ProjectFinancials;
+  contractPosition: ContractPosition | null;
+  latestDailyReport: { date: string; workersPresent: number } | null;
+  snags: { open: number; bySeverity: Record<string, number>; overdue: number };
+  pendingApprovals: { expenses: number; materialRequests: number; attendanceOverrides: number };
+  upcomingEvents: CalendarEvent[];
+  attendance: { assignedWorkers: number; checkedInToday: number; stillOpen: number };
 }
