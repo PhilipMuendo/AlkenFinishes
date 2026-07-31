@@ -731,9 +731,14 @@ model Contract {
   projectId   String?    @unique
   project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
-  title                  String
-  status                 ContractStatus @default(DRAFT)
+  title  String
+  status ContractStatus @default(DRAFT)
+  // The Contract Sum, EXCLUSIVE of VAT — the standard way a construction
+  // contract states it, and the base retention is calculated on. VAT is added
+  // on each payment application. Project.contractValue holds the VAT-inclusive
+  // figure, because that is the cash the client actually pays.
   originalValue          Decimal        @db.Decimal(14, 2)
+  vatRatePct             Decimal        @default(16) @db.Decimal(5, 2)
   retentionPct           Decimal        @default(5) @db.Decimal(5, 2)
   defectsLiabilityMonths Int            @default(6)
 

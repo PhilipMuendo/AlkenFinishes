@@ -1,7 +1,7 @@
 import type { Prisma, Contract, Variation } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { computeInvoiceTotals } from './invoicing';
-import { fromCents, toCents, type MoneyLike } from './money';
+import { fromCents, kes, pctOfCents, toCents, type MoneyLike } from './money';
 
 /**
  * The pre-project pipeline: Lead -> Quotation -> Contract -> Project.
@@ -115,12 +115,26 @@ export async function recalcQuotation(
 // ---- Contract value ----
 
 export interface ContractPosition {
+  /** All ex-VAT, matching how Contract.originalValue is stored. */
   originalValue: number;
   approvedVariations: number;
   pendingVariations: number;
   currentValue: number;
+  vatRatePct: number;
+  vatAmount: number;
+  /** currentValue + VAT — the cash figure, and what Project.contractValue holds. */
+  grossValue: number;
   retentionPct: number;
-  /** Retention against the *current* value, released after the DLP ends. */
+  /**
+   * Retention that will be held across the job, on the ex-VAT current value.
+   *
+   * Ex-VAT for the same reason invoices hold it that way: VAT is remitted to
+   * KRA in full whether or not retention has been released, so retaining a
+   * slice of it would leave the contractor funding the Revenue's cut.
+   *
+   * A projection, not a balance. What is actually held right now is the sum of
+   * retentionAmount on issued invoices — see receivables in services/invoicing.
+   */
   retentionAmount: number;
   defectsLiabilityMonths: number;
   /** null until practical completion is recorded — the clock has not started. */
@@ -139,7 +153,11 @@ type VariationSlice = Pick<Variation, 'amount' | 'status'>;
 export function contractPosition(
   contract: Pick<
     Contract,
-    'originalValue' | 'retentionPct' | 'defectsLiabilityMonths' | 'practicalCompletionDate'
+    | 'originalValue'
+    | 'vatRatePct'
+    | 'retentionPct'
+    | 'defectsLiabilityMonths'
+    | 'practicalCompletionDate'
   >,
   variations: VariationSlice[],
 ): ContractPosition {
@@ -151,16 +169,22 @@ export function contractPosition(
     .filter((v) => v.status === 'PENDING')
     .reduce((s, v) => s + toCents(v.amount), 0);
   const currentCents = originalCents + approvedCents;
+
+  const vatRatePct = Number(contract.vatRatePct);
+  const vatCents = pctOfCents(currentCents, vatRatePct);
   const retentionPct = Number(contract.retentionPct);
-  const retentionCents = Math.round((currentCents * retentionPct) / 100);
+  const retentionCents = pctOfCents(currentCents, retentionPct);
 
   return {
-    originalValue: originalCents / 100,
-    approvedVariations: approvedCents / 100,
-    pendingVariations: pendingCents / 100,
-    currentValue: currentCents / 100,
+    originalValue: kes(originalCents),
+    approvedVariations: kes(approvedCents),
+    pendingVariations: kes(pendingCents),
+    currentValue: kes(currentCents),
+    vatRatePct,
+    vatAmount: kes(vatCents),
+    grossValue: kes(currentCents + vatCents),
     retentionPct,
-    retentionAmount: retentionCents / 100,
+    retentionAmount: kes(retentionCents),
     defectsLiabilityMonths: contract.defectsLiabilityMonths,
     defectsLiabilityEnds: dlpEnd(contract.practicalCompletionDate, contract.defectsLiabilityMonths),
   };
@@ -178,9 +202,13 @@ export function dlpEnd(practicalCompletion: Date | null, months: number): string
  * Keeps Project.contractValue in step with the contract it came from.
  *
  * From this phase on, contractValue is derived rather than hand-entered: it is
- * the original value plus approved variations. It stays a stored column because
- * finance.ts and analytics.ts read it on every request, and recomputing it
- * there would turn one column read into a join on every dashboard query.
+ * the original value plus approved variations, VAT-inclusive. Gross, because
+ * every existing consumer compares it against cash — payments received, budget
+ * spent — and those are gross figures.
+ *
+ * It stays a stored column because finance.ts and analytics.ts read it on every
+ * request, and recomputing it there would turn one column read into a join on
+ * every dashboard query.
  */
 export async function syncProjectContractValue(
   tx: Prisma.TransactionClient,
@@ -194,7 +222,7 @@ export async function syncProjectContractValue(
   const pos = contractPosition(contract, contract.variations);
   await tx.project.update({
     where: { id: contract.projectId },
-    data: { contractValue: fromCents(Math.round(pos.currentValue * 100)) },
+    data: { contractValue: fromCents(toCents(pos.grossValue)) },
   });
 }
 

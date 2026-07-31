@@ -10,6 +10,8 @@ import usersRouter from './modules/users';
 import projectsRouter from './modules/projects';
 import clientsRouter from './modules/clients';
 import leadsRouter from './modules/leads';
+import quotationsRouter from './modules/quotations';
+import contractsRouter from './modules/contracts';
 import expensesRouter from './modules/expenses';
 import paymentsRouter from './modules/payments';
 import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
@@ -46,6 +48,8 @@ export function createApp() {
   v1.use('/users', usersRouter);
   v1.use('/clients', clientsRouter);
   v1.use('/leads', leadsRouter);
+  v1.use('/quotations', quotationsRouter);
+  v1.use('/contracts', contractsRouter);
   v1.use('/projects', projectsRouter);
   v1.use('/projects/:projectId/expenses', expensesRouter);
   v1.use('/projects/:projectId/payments', paymentsRouter);

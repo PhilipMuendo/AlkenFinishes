@@ -11,7 +11,7 @@ import {
   renderPdfToUpload,
 } from '../pdf';
 import type { CompanyProfile } from '../invoicing';
-import { amountInWords, toCents } from '../money';
+import { amountInWords, kes, pctOfCents, toCents } from '../money';
 import { dlpEnd, type PipelineConfig } from '../pipeline';
 
 export type ContractForPdf = Contract & {
@@ -40,13 +40,25 @@ export async function renderContractPdf(
   footerNote?: string,
 ): Promise<string> {
   const n = (v: unknown) => Number(v);
-  const sumCentsValue = toCents(c.originalValue);
   const dlpEnds = dlpEnd(c.practicalCompletionDate, c.defectsLiabilityMonths);
+
+  // The Contract Sum is stored ex-VAT. The words clause quotes the gross,
+  // because that is the sum the Employer is undertaking to part with.
+  const sumCents = toCents(c.originalValue);
+  const vatCents = pctOfCents(sumCents, c.vatRatePct);
+  const grossCents = sumCents + vatCents;
+  const vatRate = n(c.vatRatePct);
 
   const particulars: [string, string][] = [
     ['Contract number', c.contractNo ?? 'DRAFT — NOT ISSUED'],
-    ['Contract sum', `KES ${money(n(c.originalValue))}`],
-    ['Sum in words', `Kenya Shillings ${amountInWords(sumCentsValue)}`],
+    ['Contract sum (excl. VAT)', `KES ${money(kes(sumCents))}`],
+    ...(vatRate > 0
+      ? ([
+          [`VAT @ ${vatRate}%`, `KES ${money(kes(vatCents))}`],
+          ['Total payable', `KES ${money(kes(grossCents))}`],
+        ] as [string, string][])
+      : []),
+    ['Sum in words', `Kenya Shillings ${amountInWords(grossCents)}`],
     ['Commencement date', printDate(c.startDate)],
     ['Contractual completion', printDate(c.expectedCompletion)],
     ['Payment terms', `${paymentTermsDays} days from date of invoice`],
@@ -57,6 +69,7 @@ export async function renderContractPdf(
         (dlpEnds ? ` — expires ${printDate(new Date(dlpEnds))}` : ''),
     ],
   ];
+  const emphasised = new Set(['Contract sum (excl. VAT)', 'Total payable', 'Sum in words']);
 
   const def: TDocumentDefinitions = {
     info: {
@@ -119,7 +132,7 @@ export async function renderContractPdf(
           widths: [150, '*'],
           body: particulars.map(([label, value]): TableCell[] => [
             { text: label, color: MUTED },
-            { text: value, bold: label === 'Contract sum' || label === 'Sum in words' },
+            { text: value, bold: emphasised.has(label) },
           ]),
         },
         layout: {
