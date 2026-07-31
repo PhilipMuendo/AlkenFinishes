@@ -23,6 +23,9 @@ const projectSchema = z.object({
 
 const include = {
   supervisor: { select: { id: true, name: true, email: true, phone: true } },
+  // So a project can be traced back to the agreement it came from — the last
+  // link in the "enter it once" chain, read in the other direction.
+  contract: { select: { id: true, contractNo: true, status: true } },
 } as const;
 
 router.get(

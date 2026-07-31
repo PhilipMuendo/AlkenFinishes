@@ -13,12 +13,13 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { AttentionDigest } from '@/lib/types';
+import type { AttentionDigest, PipelineDigest } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 
 type Tone = 'red' | 'amber' | 'blue';
 type Item = { id: string; name: string };
@@ -138,6 +139,61 @@ function OverviewSkeleton() {
   );
 }
 
+/**
+ * The pipeline strip.
+ *
+ * Sits above the attention digest because it answers a different question:
+ * that one is "what is going wrong on site", this one is "what is coming".
+ * Each figure is a link, since the only useful response to seeing a number
+ * here is to go and look at what is behind it.
+ */
+function PipelineStrip() {
+  const { data } = useQuery({
+    queryKey: ['analytics', 'pipeline'],
+    queryFn: () => api<PipelineDigest>('/analytics/pipeline'),
+  });
+  if (!data) return null;
+
+  const tiles = [
+    { label: 'Leads open', to: '/admin/leads', ...data.openLeads },
+    { label: 'Quotes with clients', to: '/admin/quotations', ...data.quotationsAwaitingDecision },
+    {
+      label: 'Awaiting signature',
+      to: '/admin/contracts',
+      ...data.contractsAwaitingSignature,
+    },
+    { label: 'Agreed, not started', to: '/admin/contracts', ...data.contractsWithoutSite },
+  ];
+  if (tiles.every((t) => t.count === 0)) return null;
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {tiles.map((t) => (
+        <Link
+          key={t.label}
+          to={t.to}
+          className="group rounded-xl border border-hairline bg-surface p-4 transition-colors hover:border-hairline-strong"
+        >
+          <p className="text-xs font-medium text-fg-muted">{t.label}</p>
+          {/* An empty stage is worth showing — it says the pipeline is dry —
+              but it must not pull the eye the way a live figure does. */}
+          <p
+            className={cn(
+              'mt-1 text-2xl font-semibold tabular-nums',
+              t.count > 0 ? 'text-fg' : 'text-fg-subtle/50',
+            )}
+          >
+            {t.count}
+          </p>
+          <p className="mt-0.5 text-xs tabular-nums text-fg-subtle">
+            {t.value > 0 ? fmtMoney(t.value) : '—'}
+          </p>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export function CompanyDashboard() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['analytics', 'attention'],
@@ -186,6 +242,8 @@ export function CompanyDashboard() {
           </Link>
         }
       />
+
+      <PipelineStrip />
 
       {data.allClear ? (
         <Card>

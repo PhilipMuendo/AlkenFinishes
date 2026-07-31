@@ -13,6 +13,8 @@ export interface AuthUser {
 
 export interface Project {
   id: string;
+  /** Allocated from the project number series, e.g. PRJ-2026-0017. */
+  code: string | null;
   name: string;
   clientName: string;
   location: string;
@@ -24,6 +26,7 @@ export interface Project {
   balanceDueDate: string | null;
   supervisorId: string | null;
   supervisor: { id: string; name: string; email: string; phone?: string | null } | null;
+  contract: { id: string; contractNo: string | null; status: ContractStatus } | null;
 }
 
 export interface CategoryFinancials {
@@ -619,4 +622,25 @@ export interface Contract {
   notes: string | null;
   variations: Variation[];
   position: ContractPosition;
+}
+
+/** The pre-project pipeline, aggregated for the overview. */
+export interface PipelineDigest {
+  openLeads: { count: number; value: number };
+  leadsByStage: Record<string, { count: number; value: number }>;
+  quotationsAwaitingDecision: { count: number; value: number };
+  contractsAwaitingSignature: { count: number; value: number };
+  contractsWithoutSite: { count: number; value: number };
+}
+
+export interface PipelineConfig {
+  quotationPrefix: string;
+  contractPrefix: string;
+  projectPrefix: string;
+  quotationValidityDays: number;
+  quotationTermsText: string;
+  contractTermsText: string;
+  nextQuotationNo: string;
+  nextContractNo: string;
+  nextProjectCode: string;
 }

@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Fingerprint, Plus, ScrollText } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
-import type { AuditLogPage, CompanyProfile, InvoicingConfig, Project, Worker } from '@/lib/types';
+import type {
+  AuditLogPage,
+  CompanyProfile,
+  InvoicingConfig,
+  PipelineConfig,
+  Project,
+  Worker,
+} from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -153,7 +160,7 @@ export function SettingsPage() {
     <div className="max-w-2xl space-y-6">
       <PageHeader
         title="Settings"
-        description="Budget rules, invoicing, attendance devices and the audit trail"
+        description="Budget rules, documents, attendance devices and the audit trail"
       />
 
       <Card>
@@ -222,6 +229,7 @@ export function SettingsPage() {
 
       <CompanyLetterheadCard />
       <InvoicingCard />
+      <PipelineCard />
 
       <Card>
         <CardHeader>
@@ -617,6 +625,111 @@ function CompanyLetterheadCard() {
           )}
           <Button type="submit" disabled={save.isPending}>
             Save letterhead
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PipelineCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'pipeline'],
+    queryFn: () => api<PipelineConfig>('/settings/pipeline'),
+  });
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api('/settings/pipeline', { method: 'PUT', body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['settings', 'pipeline'] });
+      void qc.invalidateQueries({ queryKey: ['settings', 'quotationDefaults'] });
+    },
+  });
+
+  if (!data) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Quotations &amp; contracts</CardTitle>
+        <p className="text-xs text-fg-muted">
+          Numbering and the standard wording. Editing the conditions here changes what prints on
+          contracts issued from now on — documents already issued keep the wording they went out
+          with.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={data.quotationPrefix + data.quotationValidityDays}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              quotationPrefix: fd.get('quotationPrefix'),
+              contractPrefix: fd.get('contractPrefix'),
+              projectPrefix: fd.get('projectPrefix'),
+              quotationValidityDays: Number(fd.get('quotationValidityDays')),
+              quotationTermsText: fd.get('quotationTermsText'),
+              contractTermsText: fd.get('contractTermsText'),
+            });
+          }}
+          className="space-y-3"
+        >
+          <dl className="grid grid-cols-3 gap-3 rounded-lg border border-hairline bg-surface-muted/40 p-3 text-sm">
+            {[
+              ['Next quotation', data.nextQuotationNo],
+              ['Next contract', data.nextContractNo],
+              ['Next project code', data.nextProjectCode],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-xs text-fg-subtle">{label}</dt>
+                <dd className="font-medium tabular-nums text-fg">{value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Field label="Quotation prefix">
+              <Input name="quotationPrefix" defaultValue={data.quotationPrefix} required />
+            </Field>
+            <Field label="Contract prefix">
+              <Input name="contractPrefix" defaultValue={data.contractPrefix} required />
+            </Field>
+            <Field label="Project prefix">
+              <Input name="projectPrefix" defaultValue={data.projectPrefix} required />
+            </Field>
+            <Field label="Valid for (days)">
+              <Input
+                name="quotationValidityDays"
+                type="number"
+                min="1"
+                max="365"
+                defaultValue={data.quotationValidityDays}
+                required
+              />
+            </Field>
+          </div>
+
+          <Field label="Standard quotation terms">
+            <Textarea name="quotationTermsText" rows={4} defaultValue={data.quotationTermsText} />
+          </Field>
+          <p className="-mt-2 text-xs text-fg-subtle">
+            One condition per line — each prints as a bullet.
+          </p>
+
+          <Field label="Conditions of contract">
+            <Textarea name="contractTermsText" rows={10} defaultValue={data.contractTermsText} />
+          </Field>
+          <p className="-mt-2 text-xs text-fg-subtle">
+            Leave a blank line between clauses. These are a starting point, not legal advice — have
+            them reviewed before you rely on them.
+          </p>
+
+          {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
+          {save.isError && <p className="text-sm text-red-600">Couldn&rsquo;t save those settings</p>}
+          <Button type="submit" disabled={save.isPending}>
+            Save quotation &amp; contract settings
           </Button>
         </form>
       </CardContent>

@@ -13,6 +13,7 @@ import {
   LIVE_INVOICE_STATUSES,
 } from '../services/invoicing';
 import { toCents } from '../services/money';
+import { leadPipeline } from '../services/pipeline';
 
 const router = Router();
 router.use(requireAuth);
@@ -391,6 +392,58 @@ router.get(
       portfolioCount: projects.length,
       allClear: totalFlags === 0,
       groups: { invoiceOverdue, paymentOverdue, overBudget, unassigned, wentQuiet, finishingSoon },
+    });
+  }),
+);
+
+/**
+ * The pre-project pipeline in one call — what is being chased, what is sitting
+ * with a client, and what has been agreed but not yet started.
+ *
+ * One endpoint rather than the dashboard making four list requests and counting
+ * them in the browser: these are aggregates, and aggregating them is the
+ * database's job.
+ */
+router.get(
+  '/pipeline',
+  requireSuperadmin,
+  asyncHandler(async (_req, res) => {
+    const [leads, awaitingDecision, awaitingSignature, unstarted] = await Promise.all([
+      leadPipeline(),
+      prisma.quotation.aggregate({
+        where: { status: 'SENT' },
+        _count: true,
+        _sum: { total: true },
+      }),
+      prisma.contract.aggregate({
+        where: { status: 'ISSUED' },
+        _count: true,
+        _sum: { originalValue: true },
+      }),
+      // Agreed but with no site opened against it yet — the gap where a job can
+      // sit forgotten between the office and the field.
+      prisma.contract.aggregate({
+        where: { projectId: null, status: { in: ['SIGNED', 'ACTIVE'] } },
+        _count: true,
+        _sum: { originalValue: true },
+      }),
+    ]);
+
+    res.json({
+      openLeads: { count: leads.open, value: leads.openValue },
+      leadsByStage: leads.byStage,
+      quotationsAwaitingDecision: {
+        count: awaitingDecision._count,
+        value: Number(awaitingDecision._sum.total ?? 0),
+      },
+      contractsAwaitingSignature: {
+        count: awaitingSignature._count,
+        value: Number(awaitingSignature._sum.originalValue ?? 0),
+      },
+      contractsWithoutSite: {
+        count: unstarted._count,
+        value: Number(unstarted._sum.originalValue ?? 0),
+      },
     });
   }),
 );

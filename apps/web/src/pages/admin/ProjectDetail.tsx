@@ -117,8 +117,20 @@ export function ProjectDetailPage() {
           </div>
         </div>
         <p className="mt-1 text-sm text-fg-muted">
+          {project.code && <span className="font-medium text-fg-subtle">{project.code} · </span>}
           {project.clientName} · {project.location} · {fmtDate(project.startDate)} →{' '}
           {fmtDate(project.expectedCompletion)}
+          {project.contract?.contractNo && (
+            <>
+              {' · '}
+              <Link
+                to="/admin/contracts"
+                className="text-brand-700 underline underline-offset-2 hover:text-brand-800"
+              >
+                {project.contract.contractNo}
+              </Link>
+            </>
+          )}
         </p>
       </div>
 
