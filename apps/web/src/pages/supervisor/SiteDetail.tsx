@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
+  AlertOctagon,
   Boxes,
   CalendarRange,
   ChevronLeft,
@@ -10,6 +11,7 @@ import {
   HardHat,
   ListChecks,
   Receipt,
+  ShieldAlert,
   Wrench,
 } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -24,6 +26,8 @@ import { ReportsPanel } from '@/features/ReportsPanel';
 import { WeeklyReportsPanel } from '@/features/WeeklyReportsPanel';
 import { ToolsReadOnlyPanel } from '@/features/ToolsReadOnlyPanel';
 import { WorkersPanel } from '@/features/WorkersPanel';
+import { SnagsPanel } from '@/features/SnagsPanel';
+import { SafetyPanel } from '@/features/SafetyPanel';
 
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
@@ -56,6 +60,20 @@ const ACTIONS = [
     chip: 'bg-sky-50 text-sky-600',
   },
   { id: 'tools', label: 'Tools', hint: 'Equipment on site', icon: Wrench, chip: 'bg-teal-50 text-teal-600' },
+  {
+    id: 'snags',
+    label: 'Snag list',
+    hint: 'Report a defect',
+    icon: AlertOctagon,
+    chip: 'bg-orange-50 text-orange-600',
+  },
+  {
+    id: 'safety',
+    label: 'Safety',
+    hint: 'Log an incident',
+    icon: ShieldAlert,
+    chip: 'bg-red-50 text-red-600',
+  },
 ] as const;
 
 type ActionId = (typeof ACTIONS)[number]['id'];
@@ -126,6 +144,8 @@ export function SiteDetailPage() {
       {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
       {view === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit />}
       {view === 'tools' && <ToolsReadOnlyPanel />}
+      {view === 'snags' && <SnagsPanel projectId={projectId} />}
+      {view === 'safety' && <SafetyPanel projectId={projectId} />}
     </div>
   );
 }

@@ -283,6 +283,8 @@ export interface Tool {
   unit: string;
   quantity: string;
   currentProject: { id: string; name: string } | null;
+  status: ToolStatus;
+  conditionNotes: string | null;
   createdAt: string;
 }
 
@@ -684,3 +686,40 @@ export interface PipelineConfig {
   nextContractNo: string;
   nextProjectCode: string;
 }
+
+export type SnagSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type SnagStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'VERIFIED';
+
+export interface SnagItem {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  severity: SnagSeverity;
+  status: SnagStatus;
+  photoUrl: string | null;
+  annotation: { x: number; y: number } | null;
+  dueDate: string | null;
+  resolvedPhotoUrl: string | null;
+  resolvedAt: string | null;
+  verifiedAt: string | null;
+  assignedTo: { id: string; name: string } | null;
+  reportedBy: { id: string; name: string };
+  lastActionBy: { id: string; name: string } | null;
+  createdAt: string;
+}
+
+export type SafetyIncidentSeverity = 'NEAR_MISS' | 'MINOR' | 'SERIOUS';
+
+export interface SafetyIncident {
+  id: string;
+  occurredAt: string;
+  severity: SafetyIncidentSeverity;
+  description: string;
+  actionTaken: string | null;
+  photoUrl: string | null;
+  reportedBy: { id: string; name: string };
+  createdAt: string;
+}
+
+export type ToolStatus = 'ACTIVE' | 'MAINTENANCE' | 'RETIRED';

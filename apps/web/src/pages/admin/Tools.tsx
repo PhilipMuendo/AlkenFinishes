@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 
@@ -49,6 +50,12 @@ export function ToolsPage() {
     },
   });
 
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: Tool['status'] }) =>
+      api(`/tools/${id}`, { method: 'PATCH', body: { status } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tools'] }),
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -82,7 +89,14 @@ export function ToolsPage() {
           <Card key={tool.id} className="p-4 transition-shadow hover:shadow-md">
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-semibold text-fg">{tool.name}</p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-semibold text-fg">{tool.name}</p>
+                  {tool.status !== 'ACTIVE' && (
+                    <Badge tone={tool.status === 'RETIRED' ? 'red' : 'yellow'}>
+                      {tool.status === 'RETIRED' ? 'Retired' : 'Under maintenance'}
+                    </Badge>
+                  )}
+                </div>
                 {tool.category && <p className="text-xs text-fg-subtle">{tool.category}</p>}
                 <p className="nums mt-2 text-2xl font-semibold tracking-tight text-fg">
                   {Number(tool.quantity).toLocaleString()}{' '}
@@ -91,6 +105,9 @@ export function ToolsPage() {
                 <p className="mt-1 text-xs text-fg-muted">
                   {tool.currentProject?.name ?? 'Central store'}
                 </p>
+                {tool.conditionNotes && (
+                  <p className="mt-1 text-xs text-fg-subtle">{tool.conditionNotes}</p>
+                )}
               </div>
               <button
                 onClick={() => setHistoryTool(tool)}
@@ -100,14 +117,27 @@ export function ToolsPage() {
                 <History size={18} />
               </button>
             </div>
-            <Button
-              size="lg"
-              variant="secondary"
-              className="mt-3 w-full"
-              onClick={() => setTransferring(tool)}
-            >
-              <Repeat size={18} /> Transfer to another site
-            </Button>
+            <div className="mt-3 flex gap-2">
+              <Button
+                size="lg"
+                variant="secondary"
+                className="flex-1"
+                disabled={tool.status !== 'ACTIVE'}
+                onClick={() => setTransferring(tool)}
+              >
+                <Repeat size={18} /> Transfer
+              </Button>
+              <Select
+                aria-label={`Status for ${tool.name}`}
+                className="w-auto"
+                value={tool.status}
+                onChange={(e) => setStatus.mutate({ id: tool.id, status: e.target.value as Tool['status'] })}
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="RETIRED">Retired</option>
+              </Select>
+            </div>
           </Card>
         ))}
       </div>

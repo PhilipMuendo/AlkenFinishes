@@ -17,6 +17,8 @@ import { StockPanel } from '@/features/StockPanel';
 import { DocumentsPanel } from '@/features/DocumentsPanel';
 import { ReportsPanel } from '@/features/ReportsPanel';
 import { InvoicesPanel } from '@/features/InvoicesPanel';
+import { SnagsPanel } from '@/features/SnagsPanel';
+import { SafetyPanel } from '@/features/SafetyPanel';
 
 const TABS = [
   { id: 'financials', label: 'Financials' },
@@ -29,6 +31,8 @@ const TABS = [
   { id: 'stock', label: 'Stock' },
   { id: 'documents', label: 'Documents' },
   { id: 'reports', label: 'Daily reports' },
+  { id: 'snags', label: 'Snag list' },
+  { id: 'safety', label: 'Safety' },
 ];
 
 const STATUSES: ProjectStatus[] = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
@@ -146,6 +150,8 @@ export function ProjectDetailPage() {
       {tab === 'stock' && <StockPanel projectId={projectId} />}
       {tab === 'documents' && <DocumentsPanel projectId={projectId} />}
       {tab === 'reports' && <ReportsPanel projectId={projectId} canSubmit={false} />}
+      {tab === 'snags' && <SnagsPanel projectId={projectId} />}
+      {tab === 'safety' && <SafetyPanel projectId={projectId} />}
     </div>
   );
 }
