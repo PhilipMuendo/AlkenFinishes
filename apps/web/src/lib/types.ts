@@ -27,6 +27,9 @@ export interface Project {
   supervisorId: string | null;
   supervisor: { id: string; name: string; email: string; phone?: string | null } | null;
   contract: { id: string; contractNo: string | null; status: ContractStatus } | null;
+  geofenceLat: string | null;
+  geofenceLng: string | null;
+  geofenceRadiusM: number | null;
 }
 
 export interface CategoryFinancials {
@@ -332,6 +335,25 @@ export interface AttendanceRecord {
   labourCost: string | null;
   worker: { id: string; name: string; trade: string; hourlyRate: string };
   recordedBy: { id: string; name: string } | null;
+}
+
+export type OverrideRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface AttendanceOverrideRequest {
+  id: string;
+  date: string;
+  checkIn: string;
+  checkOut: string | null;
+  reason: string;
+  latitude: string | null;
+  longitude: string | null;
+  withinGeofence: boolean | null;
+  status: OverrideRequestStatus;
+  worker: { id: string; name: string; trade: string };
+  requestedBy: { id: string; name: string };
+  decidedBy: { id: string; name: string } | null;
+  rejectReason: string | null;
+  createdAt: string;
 }
 
 export interface StockMovement {

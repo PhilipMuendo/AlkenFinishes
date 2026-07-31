@@ -200,56 +200,192 @@ router.get(
   }),
 );
 
-const overrideSchema = z.object({
+/** Great-circle distance in metres — Haversine, accurate enough for a site geofence. */
+function distanceMetres(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+const overrideRequestSchema = z.object({
   workerId: z.string().min(1),
   date: z.coerce.date(),
   checkIn: z.coerce.date(),
   checkOut: z.coerce.date().nullable().optional(),
   reason: z.string().min(3),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
 });
 
-// Exceptional manual entry — flagged and audited, never the primary flow.
+/**
+ * The only path to a manually-entered attendance record. A supervisor can no
+ * longer write AttendanceRecord directly — see the schema comment on
+ * AttendanceOverrideRequest for why. This endpoint only files the request; a
+ * superadmin decides via POST /override-requests/:id/decision.
+ */
 router.post(
-  '/manual-override',
+  '/override-requests',
   asyncHandler(async (req, res) => {
-    const data = overrideSchema.parse(req.body);
+    const data = overrideRequestSchema.parse(req.body);
     if (data.checkOut && data.checkOut <= data.checkIn) {
       throw ApiError.badRequest('Check-out must be after check-in');
     }
-    const worker = await prisma.worker.findUniqueOrThrow({
-      where: { id: data.workerId },
-      include: {
-        assignments: { where: { endDate: null, projectId: req.params.projectId }, take: 1 },
-      },
-    });
+    const [worker, project] = await Promise.all([
+      prisma.worker.findUniqueOrThrow({
+        where: { id: data.workerId },
+        include: {
+          assignments: { where: { endDate: null, projectId: req.params.projectId }, take: 1 },
+        },
+      }),
+      prisma.project.findUniqueOrThrow({
+        where: { id: req.params.projectId },
+        select: { geofenceLat: true, geofenceLng: true, geofenceRadiusM: true },
+      }),
+    ]);
     if (worker.assignments.length === 0) {
       throw ApiError.badRequest('Worker is not currently assigned to this site');
     }
-    const cost = computeCost(data.checkIn, data.checkOut ?? null, worker.hourlyRate);
-    const record = await prisma.attendanceRecord.create({
+
+    let withinGeofence: boolean | null = null;
+    if (
+      project.geofenceLat != null &&
+      project.geofenceLng != null &&
+      project.geofenceRadiusM != null &&
+      data.latitude != null &&
+      data.longitude != null
+    ) {
+      const d = distanceMetres(
+        Number(project.geofenceLat),
+        Number(project.geofenceLng),
+        data.latitude,
+        data.longitude,
+      );
+      withinGeofence = d <= project.geofenceRadiusM;
+    }
+
+    const request = await prisma.attendanceOverrideRequest.create({
       data: {
-        workerId: worker.id,
         projectId: req.params.projectId,
+        workerId: worker.id,
         date: data.date,
         checkIn: data.checkIn,
         checkOut: data.checkOut ?? null,
-        method: 'MANUAL_OVERRIDE',
-        source: 'MANUAL',
-        recordedById: req.user!.id,
-        ...cost,
+        reason: data.reason,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        withinGeofence,
+        requestedById: req.user!.id,
+      },
+      include: {
+        worker: { select: { id: true, name: true, trade: true } },
+        requestedBy: { select: { id: true, name: true } },
       },
     });
-    audit(req, 'attendance.manual_override', 'AttendanceRecord', record.id, {
+    audit(req, 'attendance.override_request', 'AttendanceOverrideRequest', request.id, {
       workerId: worker.id,
-      reason: data.reason,
+      withinGeofence,
     });
-    res.status(201).json(record);
+    res.status(201).json(request);
+  }),
+);
+
+router.get(
+  '/override-requests',
+  asyncHandler(async (req, res) => {
+    const { status } = z
+      .object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional() })
+      .parse(req.query);
+    const requests = await prisma.attendanceOverrideRequest.findMany({
+      where: { projectId: req.params.projectId, ...(status && { status }) },
+      include: {
+        worker: { select: { id: true, name: true, trade: true } },
+        requestedBy: { select: { id: true, name: true } },
+        decidedBy: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.json(requests);
+  }),
+);
+
+router.post(
+  '/override-requests/:id/decision',
+  requireSuperadmin,
+  asyncHandler(async (req, res) => {
+    const { outcome, reason } = z
+      .object({ outcome: z.enum(['APPROVED', 'REJECTED']), reason: z.string().optional() })
+      .parse(req.body);
+    const existing = await prisma.attendanceOverrideRequest.findUnique({
+      where: { id: req.params.id },
+      include: { worker: true },
+    });
+    if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
+    if (existing.status !== 'PENDING') {
+      throw ApiError.conflict(`This request has already been ${existing.status.toLowerCase()}`);
+    }
+    if (outcome === 'REJECTED' && !reason?.trim()) {
+      throw ApiError.badRequest('Say why this override was declined');
+    }
+
+    if (outcome === 'REJECTED') {
+      const rejected = await prisma.attendanceOverrideRequest.update({
+        where: { id: existing.id },
+        data: {
+          status: 'REJECTED',
+          decidedById: req.user!.id,
+          decidedAt: new Date(),
+          rejectReason: reason,
+        },
+      });
+      audit(req, 'attendance.override_reject', 'AttendanceOverrideRequest', rejected.id, { reason });
+      return res.json(rejected);
+    }
+
+    const cost = computeCost(existing.checkIn, existing.checkOut, existing.worker.hourlyRate);
+    const [record, request] = await prisma.$transaction([
+      prisma.attendanceRecord.create({
+        data: {
+          workerId: existing.workerId,
+          projectId: existing.projectId,
+          date: existing.date,
+          checkIn: existing.checkIn,
+          checkOut: existing.checkOut,
+          method: 'MANUAL_OVERRIDE',
+          source: 'MANUAL',
+          recordedById: req.user!.id,
+          ...cost,
+        },
+      }),
+      prisma.attendanceOverrideRequest.update({
+        where: { id: existing.id },
+        data: { status: 'APPROVED', decidedById: req.user!.id, decidedAt: new Date() },
+      }),
+    ]);
+    await prisma.attendanceOverrideRequest.update({
+      where: { id: request.id },
+      data: { resultingRecordId: record.id },
+    });
+    audit(req, 'attendance.override_approve', 'AttendanceOverrideRequest', request.id, {
+      workerId: existing.workerId,
+      recordId: record.id,
+    });
+    res.json({ ...request, resultingRecordId: record.id });
   }),
 );
 
 // Close an open record. Server clock only — clients cannot choose the time.
+// Superadmin-only: closing a record still changes hoursWorked and labourCost,
+// and "supervisors locked out of editing hours" covers this the same as an
+// override.
 router.post(
   '/:id/checkout',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const record = await prisma.attendanceRecord.findUnique({
       where: { id: req.params.id },

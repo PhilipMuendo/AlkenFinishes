@@ -19,6 +19,11 @@ const projectSchema = z.object({
   expectedCompletion: z.coerce.date(),
   supervisorId: z.string().nullable().optional(),
   status: z.enum(['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']).optional(),
+  // Fraud-proofing for manual attendance overrides — see
+  // AttendanceOverrideRequest. Optional: fingerprint terminals need none.
+  geofenceLat: z.coerce.number().min(-90).max(90).nullable().optional(),
+  geofenceLng: z.coerce.number().min(-180).max(180).nullable().optional(),
+  geofenceRadiusM: z.coerce.number().int().positive().nullable().optional(),
 });
 
 const include = {
