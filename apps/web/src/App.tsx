@@ -29,6 +29,9 @@ const QuotationsPage = lazy(() =>
 const ContractsPage = lazy(() =>
   import('./pages/admin/Contracts').then((m) => ({ default: m.ContractsPage })),
 );
+const CalendarPage = lazy(() =>
+  import('./pages/admin/Calendar').then((m) => ({ default: m.CalendarPage })),
+);
 const ProjectDetailPage = lazy(() =>
   import('./pages/admin/ProjectDetail').then((m) => ({ default: m.ProjectDetailPage })),
 );
@@ -90,6 +93,7 @@ export default function App() {
             <Route path="tools" element={<ToolsPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="reports" element={<ReportsPage />} />
+            <Route path="calendar" element={<CalendarPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

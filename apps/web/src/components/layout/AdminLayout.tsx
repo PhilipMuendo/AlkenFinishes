@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   BarChart3,
   Building2,
+  CalendarDays,
   ClipboardList,
   Contact,
   FileSignature,
@@ -41,6 +42,7 @@ const nav: NavEntry[] = [
   { to: '/admin/workers', label: 'Workers', icon: HardHat },
   { to: '/admin/tools', label: 'Tools', icon: Wrench },
   { to: '/admin/reports', label: 'Reports', icon: ClipboardList },
+  { to: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
   { heading: 'Money' },
   { to: '/admin/invoices', label: 'Receivables', icon: ReceiptText },
   { heading: 'Admin' },

@@ -745,3 +745,17 @@ export interface SafetyIncident {
 }
 
 export type ToolStatus = 'ACTIVE' | 'MAINTENANCE' | 'RETIRED';
+
+export type CalendarEventType = 'MILESTONE' | 'INSPECTION' | 'DELIVERY' | 'MEETING' | 'OTHER';
+
+export interface CalendarEvent {
+  id: string;
+  projectId: string | null;
+  project: { id: string; name: string } | null;
+  title: string;
+  type: CalendarEventType;
+  date: string;
+  notes: string | null;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+}

@@ -16,6 +16,7 @@ import expensesRouter from './modules/expenses';
 import materialRequestsRouter from './modules/materialRequests';
 import snagsRouter from './modules/snags';
 import safetyRouter from './modules/safety';
+import calendarRouter from './modules/calendar';
 import paymentsRouter from './modules/payments';
 import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
 import tasksRouter from './modules/tasks';
@@ -74,6 +75,7 @@ export function createApp() {
   v1.use('/devices', adminDeviceRouter);
   v1.use('/analytics', analyticsRouter);
   v1.use('/settings', settingsRouter);
+  v1.use('/calendar', calendarRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);
