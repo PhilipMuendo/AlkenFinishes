@@ -101,6 +101,42 @@ enum InvoiceStatus {
   VOID
 }
 
+// Where a prospect sits in the pipeline. WON is set automatically when a
+// quotation on the lead is accepted, so the two can never disagree.
+enum LeadStage {
+  NEW
+  CONTACTED
+  SITE_VISIT
+  QUOTED
+  WON
+  LOST
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum ContractStatus {
+  DRAFT
+  ISSUED
+  SIGNED
+  ACTIVE
+  COMPLETED
+  TERMINATED
+}
+
+// A variation only moves the contract value once APPROVED — a pending one is
+// visible but must not silently inflate what the client is told they owe.
+enum VariationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -112,19 +148,22 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  projects        Project[]          @relation("ProjectSupervisor")
-  expenses        Expense[]
-  payments        Payment[]
-  toolTransfers   ToolTransfer[]
-  stockMovements  StockMovement[]
-  documents       Document[]
-  dailyReports    DailyReport[]
-  weeklyReports   WeeklyReport[]
-  auditLogs       AuditLog[]
-  refreshTokens   RefreshToken[]
-  attendanceEdits AttendanceRecord[] @relation("AttendanceRecordedBy")
-  invoicesCreated Invoice[]          @relation("InvoiceCreatedBy")
-  paymentsVoided  Payment[]          @relation("PaymentVoidedBy")
+  projects           Project[]          @relation("ProjectSupervisor")
+  expenses           Expense[]
+  payments           Payment[]
+  toolTransfers      ToolTransfer[]
+  stockMovements     StockMovement[]
+  documents          Document[]
+  dailyReports       DailyReport[]
+  weeklyReports      WeeklyReport[]
+  auditLogs          AuditLog[]
+  refreshTokens      RefreshToken[]
+  attendanceEdits    AttendanceRecord[] @relation("AttendanceRecordedBy")
+  invoicesCreated    Invoice[]          @relation("InvoiceCreatedBy")
+  paymentsVoided     Payment[]          @relation("PaymentVoidedBy")
+  leadsOwned         Lead[]             @relation("LeadOwner")
+  quotations         Quotation[]        @relation("QuotationPreparedBy")
+  variationsApproved Variation[]        @relation("VariationApprovedBy")
 }
 
 model RefreshToken {
@@ -141,7 +180,12 @@ model RefreshToken {
 
 model Project {
   id                 String        @id @default(cuid())
+  // Human-readable code, e.g. ALK-2026-0017. Allocated from NumberSequence on
+  // creation; nullable so projects predating the scheme stay valid.
+  code               String?       @unique
   name               String
+  // Denormalised snapshot of the client's name at the time. Kept alongside
+  // clientId so historical records do not change when a client is renamed.
   clientName         String
   location           String
   contractValue      Decimal       @db.Decimal(14, 2)
@@ -150,11 +194,14 @@ model Project {
   status             ProjectStatus @default(PLANNING)
   progressPct        Int           @default(0)
   balanceDueDate     DateTime? // contractual due date for the pending balance; independent of individual Payment rows
+  clientId           String?
+  client             Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   supervisorId       String?
   supervisor         User?         @relation("ProjectSupervisor", fields: [supervisorId], references: [id], onDelete: SetNull)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
+  contract          Contract?
   budgetLines       BudgetLine[]
   expenses          Expense[]
   payments          Payment[]
@@ -171,6 +218,7 @@ model Project {
   toolTransfersTo   ToolTransfer[]     @relation("ToolTransferTo")
 
   @@index([supervisorId])
+  @@index([clientId])
 }
 
 model BudgetLine {
@@ -572,6 +620,163 @@ model AttendanceSyncIssue {
 
   @@unique([deviceId, biometricId, reason])
   @@index([resolvedAt, lastSeenAt])
+}
+
+// The customer. Introduced with the pre-project pipeline so a lead, quotation,
+// contract and project all point at one record instead of repeating a name.
+model Client {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  kraPin        String?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  leads      Lead[]
+  quotations Quotation[]
+  contracts  Contract[]
+  projects   Project[]
+
+  @@index([name])
+}
+
+model Lead {
+  id                String    @id @default(cuid())
+  clientId          String
+  client            Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  title             String
+  description       String?
+  estimatedValue    Decimal?  @db.Decimal(14, 2)
+  stage             LeadStage @default(NEW)
+  source            String?
+  expectedCloseDate DateTime? @db.Date
+  lostReason        String?
+  ownerId           String?
+  owner             User?     @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  quotations Quotation[]
+
+  @@index([stage, expectedCloseDate])
+  @@index([clientId])
+}
+
+model Quotation {
+  id          String          @id @default(cuid())
+  quotationNo String?         @unique // NULL while DRAFT, same rule as an invoice
+  clientId    String
+  client      Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  leadId      String?
+  lead        Lead?           @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  title       String
+  status      QuotationStatus @default(DRAFT)
+  issueDate   DateTime        @db.Date
+  validUntil  DateTime        @db.Date
+
+  // Snapshotted and persisted for the same reason as Invoice: a quotation that
+  // has gone to a client is a document, not a live calculation.
+  clientNameSnapshot String
+  vatRatePct         Decimal @default(16) @db.Decimal(5, 2)
+  subtotal           Decimal @default(0) @db.Decimal(14, 2)
+  vatAmount          Decimal @default(0) @db.Decimal(14, 2)
+  total              Decimal @default(0) @db.Decimal(14, 2)
+
+  termsText    String?
+  notes        String?
+  pdfUrl       String?
+  sentAt       DateTime?
+  decidedAt    DateTime?
+  rejectReason String?
+
+  preparedById String
+  preparedBy   User     @relation("QuotationPreparedBy", fields: [preparedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines    QuotationLine[]
+  contract Contract?
+
+  @@index([clientId, issueDate])
+  @@index([status, validUntil])
+}
+
+model QuotationLine {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  sortOrder   Int       @default(0)
+  description String
+  quantity    Decimal   @db.Decimal(12, 3)
+  unit        String    @default("item")
+  unitPrice   Decimal   @db.Decimal(14, 2)
+  lineTotal   Decimal   @db.Decimal(14, 2)
+  taxable     Boolean   @default(true)
+
+  @@index([quotationId, sortOrder])
+}
+
+model Contract {
+  id          String     @id @default(cuid())
+  contractNo  String?    @unique
+  clientId    String
+  client      Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  // One contract per quotation, and one per project once converted.
+  quotationId String?    @unique
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+  projectId   String?    @unique
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  title                  String
+  status                 ContractStatus @default(DRAFT)
+  originalValue          Decimal        @db.Decimal(14, 2)
+  retentionPct           Decimal        @default(5) @db.Decimal(5, 2)
+  defectsLiabilityMonths Int            @default(6)
+
+  startDate               DateTime  @db.Date
+  expectedCompletion      DateTime  @db.Date
+  signedDate              DateTime? @db.Date
+  // Starts the defects liability clock; retention is released after it ends.
+  practicalCompletionDate DateTime? @db.Date
+
+  generatedPdfUrl String? // rendered by us from the quotation
+  signedPdfUrl    String? // uploaded scan of the executed copy
+  boqUrl          String?
+  specsUrl        String?
+  notes           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  variations Variation[]
+
+  @@index([clientId])
+  @@index([status])
+}
+
+model Variation {
+  id            String          @id @default(cuid())
+  contractId    String
+  contract      Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  reference     String // VO-001, sequential within the contract
+  description   String
+  // May be negative: an omission reduces the contract value.
+  amount        Decimal         @db.Decimal(14, 2)
+  status        VariationStatus @default(PENDING)
+  requestedDate DateTime        @db.Date
+  approvedDate  DateTime?
+  approvedById  String?
+  approvedBy    User?           @relation("VariationApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  rejectReason  String?
+  documentUrl   String?
+  createdAt     DateTime        @default(now())
+
+  @@unique([contractId, reference])
+  @@index([contractId, status])
 }
 
 model Setting {
