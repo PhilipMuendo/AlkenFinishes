@@ -77,23 +77,167 @@ export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MPESA' | 'CHEQUE' | 'OTH
 export interface Payment {
   id: string;
   type: PaymentType;
-  amount: string;
+  amount: number;
   method: PaymentMethod;
   paymentDate: string;
   notes: string | null;
+  /** The CLIENT's uploaded proof of payment (bank slip, M-Pesa screenshot). */
   receiptUrl: string | null;
   submittedBy: { id: string; name: string };
   createdAt: string;
+  invoiceId: string | null;
+  invoice: { id: string; invoiceNo: string | null; type: InvoiceType } | null;
+  bankName: string | null;
+  referenceNo: string | null;
+  /** OUR official numbered receipt. A different document from receiptUrl. */
+  receiptNo: string | null;
+  receiptPdfUrl: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
 }
 
 export interface PaymentsSummary {
   contractValue: number;
   totalPaid: number;
+  /** Balance on contract: contractValue − payments. NOT the same as arOutstanding. */
   pendingBalance: number;
   balanceDueDate: string | null;
   dueDateHealth: Health;
+  /** Billed but not yet paid. Differs from pendingBalance by un-invoiced work. */
+  invoicedNet: number;
+  arOutstanding: number;
+  arOverdue: number;
+  retentionHeld: number;
+  onAccount: number;
   deposit: Payment | null;
   installments: Payment[];
+}
+
+export type InvoiceType =
+  | 'MOBILISATION'
+  | 'PROGRESS_CLAIM'
+  | 'VARIATION'
+  | 'FINAL_ACCOUNT'
+  | 'RETENTION';
+
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
+
+export type AgingBucket = 'CURRENT' | 'D1_30' | 'D31_60' | 'D61_90' | 'D90_PLUS';
+
+export interface InvoiceLine {
+  id: string;
+  sortOrder: number;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  lineTotal: number;
+  taxable: boolean;
+}
+
+export interface Invoice {
+  id: string;
+  projectId: string;
+  invoiceNo: string | null;
+  type: InvoiceType;
+  status: InvoiceStatus;
+  title: string | null;
+  issueDate: string;
+  dueDate: string;
+  clientName: string;
+  clientAddress: string | null;
+  clientKraPin: string | null;
+  vatRatePct: number;
+  retentionRatePct: number;
+  vatInclusive: boolean;
+  subtotal: number;
+  vatAmount: number;
+  grossTotal: number;
+  retentionAmount: number;
+  netPayable: number;
+  notes: string | null;
+  pdfUrl: string | null;
+  issuedAt: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  lines: InvoiceLine[];
+  amountPaid: number;
+  balance: number;
+  overdue: boolean;
+  daysOverdue: number;
+  agingBucket: AgingBucket;
+  payments?: Payment[];
+}
+
+/** One project's receivables position, from GET /invoices/summary. */
+export interface ProjectReceivables {
+  contractValue: number;
+  invoicedNet: number;
+  invoicedGross: number;
+  retentionHeld: number;
+  receiptedAgainstInvoices: number;
+  onAccount: number;
+  totalCollected: number;
+  arOutstanding: number;
+  arOverdue: number;
+  oldestOverdueDays: number | null;
+  counts: { draft: number; issued: number; partiallyPaid: number; paid: number; overdue: number };
+}
+
+/** A row in the cross-project A/R register. */
+export interface InvoiceRegisterRow {
+  id: string;
+  invoiceNo: string | null;
+  type: InvoiceType;
+  status: InvoiceStatus;
+  title: string | null;
+  project: { id: string; name: string };
+  clientName: string;
+  issueDate: string;
+  dueDate: string;
+  netPayable: number;
+  amountPaid: number;
+  balance: number;
+  overdue: boolean;
+  daysOverdue: number;
+  agingBucket: AgingBucket;
+}
+
+export interface CompanyReceivables {
+  totalAr: number;
+  totalOverdue: number;
+  retentionHeld: number;
+  buckets: Record<AgingBucket, number>;
+}
+
+export interface CompanyProfile {
+  name: string;
+  addressLines: string[];
+  phone: string;
+  email: string;
+  kraPin: string;
+  vatRegistered: boolean;
+  bank: {
+    name: string;
+    branch: string;
+    accountName: string;
+    accountNo: string;
+    swift: string;
+    mpesaPaybill: string;
+  };
+  logoUrl: string | null;
+}
+
+export interface InvoicingConfig {
+  invoicePrefix: string;
+  receiptPrefix: string;
+  numberPadding: number;
+  vatRatePct: number;
+  defaultRetentionPct: number;
+  defaultPaymentTermsDays: number;
+  footerNote: string;
+  nextInvoiceNo?: string;
+  nextReceiptNo?: string;
 }
 
 export interface Tool {

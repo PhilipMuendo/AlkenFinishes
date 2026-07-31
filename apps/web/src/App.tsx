@@ -24,6 +24,9 @@ const WorkersPage = lazy(() =>
   import('./pages/admin/Workers').then((m) => ({ default: m.WorkersPage })),
 );
 const ToolsPage = lazy(() => import('./pages/admin/Tools').then((m) => ({ default: m.ToolsPage })));
+const InvoicesPage = lazy(() =>
+  import('./pages/admin/Invoices').then((m) => ({ default: m.InvoicesPage })),
+);
 const ReportsPage = lazy(() =>
   import('./pages/admin/Reports').then((m) => ({ default: m.ReportsPage })),
 );
@@ -69,6 +72,7 @@ export default function App() {
             <Route path="projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="workers" element={<WorkersPage />} />
             <Route path="tools" element={<ToolsPage />} />
+            <Route path="invoices" element={<InvoicesPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="settings" element={<SettingsPage />} />

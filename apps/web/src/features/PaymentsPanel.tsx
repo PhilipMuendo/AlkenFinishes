@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Receipt } from 'lucide-react';
+import { FileText, Plus, Receipt } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
-import type { PaymentMethod, PaymentsSummary } from '@/lib/types';
+import type { Invoice, Payment, PaymentMethod, PaymentsSummary } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
-import { HealthBadge } from '@/components/ui/badge';
+import { Badge, HealthBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 
@@ -20,15 +20,31 @@ const METHOD_LABEL: Record<PaymentMethod, string> = {
   OTHER: 'Other',
 };
 
+/** Methods where the money moved through a system that issues a reference. */
+const NEEDS_REFERENCE: PaymentMethod[] = ['BANK_TRANSFER', 'MPESA', 'CHEQUE'];
+
 export function PaymentsPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [dueDate, setDueDate] = useState('');
+  const [method, setMethod] = useState<PaymentMethod>('BANK_TRANSFER');
+  const [invoiceId, setInvoiceId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [voiding, setVoiding] = useState<Payment | null>(null);
 
   const { data: summary } = useQuery({
     queryKey: ['payments', 'summary', projectId],
     queryFn: () => api<PaymentsSummary>(`/projects/${projectId}/payments/summary`),
   });
+
+  // Open invoices, so a payment can be applied to what it actually settles.
+  const { data: invoices } = useQuery({
+    queryKey: ['invoices', projectId],
+    queryFn: () => api<Invoice[]>(`/projects/${projectId}/invoices`),
+  });
+  const openInvoices = (invoices ?? []).filter(
+    (i) => i.status === 'ISSUED' || i.status === 'PARTIALLY_PAID',
+  );
 
   useEffect(() => {
     setDueDate(summary?.balanceDueDate ? summary.balanceDueDate.slice(0, 10) : '');
@@ -36,6 +52,8 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
 
   const invalidateAll = () => {
     void qc.invalidateQueries({ queryKey: ['payments', 'summary', projectId] });
+    void qc.invalidateQueries({ queryKey: ['invoices'] });
+    void qc.invalidateQueries({ queryKey: ['invoice'] });
     void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
   };
 
@@ -61,10 +79,32 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
     onSuccess: invalidateAll,
   });
 
+  const voidPayment = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api(`/projects/${projectId}/payments/${id}/void`, { body: { reason } }),
+    onSuccess: () => {
+      invalidateAll();
+      setVoiding(null);
+    },
+  });
+
   const hasDeposit = !!summary?.deposit;
-  const percentPaid = summary && summary.contractValue > 0
-    ? (summary.totalPaid / summary.contractValue) * 100
-    : 0;
+  const percentPaid =
+    summary && summary.contractValue > 0 ? (summary.totalPaid / summary.contractValue) * 100 : 0;
+
+  const openDialog = () => {
+    setInvoiceId('');
+    setAmount('');
+    setMethod('BANK_TRANSFER');
+    setAddOpen(true);
+  };
+
+  /** Selecting an invoice prefills the remaining balance; partial = overwrite it. */
+  const onPickInvoice = (id: string) => {
+    setInvoiceId(id);
+    const inv = openInvoices.find((i) => i.id === id);
+    setAmount(inv ? String(inv.balance) : '');
+  };
 
   return (
     <div className="space-y-4">
@@ -79,22 +119,14 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           {summary?.deposit ? (
             <div className="text-sm">
               <p className="text-fg">
-                Deposit paid: <span className="font-medium">{fmtMoney(Number(summary.deposit.amount))}</span>{' '}
-                via {METHOD_LABEL[summary.deposit.method]} on {fmtDate(summary.deposit.paymentDate)}
+                Deposit paid:{' '}
+                <span className="font-medium">{fmtMoney(Number(summary.deposit.amount))}</span> via{' '}
+                {METHOD_LABEL[summary.deposit.method]} on {fmtDate(summary.deposit.paymentDate)}
               </p>
               {summary.deposit.notes && (
                 <p className="mt-1 text-xs text-fg-muted">{summary.deposit.notes}</p>
               )}
-              {summary.deposit.receiptUrl && (
-                <a
-                  href={summary.deposit.receiptUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-xs text-brand-700 hover:underline"
-                >
-                  <Receipt size={12} /> View receipt
-                </a>
-              )}
+              <ReceiptLinks payment={summary.deposit} className="mt-1" placeholder={false} />
             </div>
           ) : (
             <p className="text-sm text-fg-muted">No deposit recorded yet</p>
@@ -104,7 +136,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Pending balance</CardTitle>
+          <CardTitle>Balance on contract</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-2xl font-semibold tabular-nums text-fg">
@@ -112,8 +144,22 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           </p>
           <Progress value={percentPaid} health="GREEN" />
           <p className="text-xs text-fg-muted">
-            {fmtMoney(summary?.totalPaid ?? 0)} paid of {fmtMoney(summary?.contractValue ?? 0)}
+            {fmtMoney(summary?.totalPaid ?? 0)} received of {fmtMoney(summary?.contractValue ?? 0)}
           </p>
+
+          {/* Two different numbers that will rarely agree: the headline is
+              everything still owed on the job, including work not yet invoiced. */}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-hairline pt-3 text-xs sm:grid-cols-4">
+            <Stat label="Invoiced" value={summary?.invoicedNet ?? 0} />
+            <Stat label="Outstanding on invoices" value={summary?.arOutstanding ?? 0} />
+            <Stat
+              label="Overdue"
+              value={summary?.arOverdue ?? 0}
+              tone={summary && summary.arOverdue > 0 ? 'negative' : undefined}
+            />
+            <Stat label="Retention held" value={summary?.retentionHeld ?? 0} />
+          </dl>
+
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Balance due date (as per contract)">
               <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
@@ -127,7 +173,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
       </Card>
 
       <div className="flex justify-end">
-        <Button onClick={() => setAddOpen(true)}>
+        <Button onClick={openDialog}>
           <Plus size={16} /> Record payment
         </Button>
       </div>
@@ -135,54 +181,67 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
       {summary && summary.installments.length === 0 ? (
         <Empty>No subsequent payments recorded yet</Empty>
       ) : (
-        <Table>
-          <thead>
-            <tr>
-              <Th>Date</Th>
-              <Th>Method</Th>
-              <Th className="text-right">Amount</Th>
-              <Th>Notes</Th>
-              <Th>Receipt</Th>
-              <Th />
-            </tr>
-          </thead>
-          <tbody>
-            {summary?.installments.map((p) => (
-              <tr key={p.id}>
-                <Td className="whitespace-nowrap">{fmtDate(p.paymentDate)}</Td>
-                <Td>{METHOD_LABEL[p.method]}</Td>
-                <Td className="text-right font-medium tabular-nums">
-                  {fmtMoney(Number(p.amount))}
-                </Td>
-                <Td>{p.notes ?? <span className="text-fg-subtle">—</span>}</Td>
-                <Td>
-                  {p.receiptUrl ? (
-                    <a
-                      href={p.receiptUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1 text-brand-700 hover:underline"
-                    >
-                      <Receipt size={14} /> View
-                    </a>
-                  ) : (
-                    <span className="text-fg-subtle">—</span>
-                  )}
-                </Td>
-                <Td className="text-right">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => deletePayment.mutate(p.id)}
-                    disabled={deletePayment.isPending}
-                  >
-                    Delete
-                  </Button>
-                </Td>
+        <Card className="overflow-hidden">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Date</Th>
+                <Th>Method</Th>
+                <Th className="text-right">Amount</Th>
+                <Th>Invoice</Th>
+                <Th>Documents</Th>
+                <Th />
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {summary?.installments.map((p) => (
+                <tr key={p.id} className={p.voidedAt ? 'opacity-55' : undefined}>
+                  <Td className="whitespace-nowrap">{fmtDate(p.paymentDate)}</Td>
+                  <Td>
+                    {METHOD_LABEL[p.method]}
+                    {p.referenceNo && (
+                      <p className="text-xs text-fg-subtle">
+                        {p.bankName ? `${p.bankName} · ` : ''}
+                        {p.referenceNo}
+                      </p>
+                    )}
+                  </Td>
+                  <Td
+                    className={`text-right font-medium tabular-nums ${
+                      p.voidedAt ? 'line-through' : ''
+                    }`}
+                  >
+                    {fmtMoney(Number(p.amount))}
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    {p.invoice?.invoiceNo ?? <span className="text-fg-subtle">On account</span>}
+                  </Td>
+                  <Td>
+                    {p.voidedAt ? <Badge tone="slate">Voided</Badge> : <ReceiptLinks payment={p} />}
+                  </Td>
+                  <Td className="text-right">
+                    {p.voidedAt ? (
+                      <span className="text-xs text-fg-subtle">{p.voidReason}</span>
+                    ) : p.receiptNo ? (
+                      <Button size="sm" variant="outline" onClick={() => setVoiding(p)}>
+                        Void
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deletePayment.mutate(p.id)}
+                        disabled={deletePayment.isPending}
+                      >
+                        Delete
+                      </Button>
+                    )}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
       )}
 
       <Dialog open={addOpen} onClose={() => setAddOpen(false)} title="Record payment">
@@ -194,6 +253,20 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           }}
           className="space-y-3"
         >
+          <Field label="Apply to">
+            <Select
+              name="invoiceId"
+              value={invoiceId}
+              onChange={(e) => onPickInvoice(e.target.value)}
+            >
+              <option value="">Not against an invoice (on account)</option>
+              {openInvoices.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.invoiceNo} · balance {fmtMoney(i.balance)}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Type">
             <Select name="type" required defaultValue={hasDeposit ? 'INSTALLMENT' : 'DEPOSIT'}>
               <option value="DEPOSIT" disabled={hasDeposit}>
@@ -203,10 +276,24 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
             </Select>
           </Field>
           <Field label="Amount (KES)">
-            <Input name="amount" type="number" min="1" step="0.01" inputMode="decimal" required />
+            <Input
+              name="amount"
+              type="number"
+              min="1"
+              step="0.01"
+              inputMode="decimal"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              required
+            />
           </Field>
           <Field label="Method">
-            <Select name="method" required>
+            <Select
+              name="method"
+              required
+              value={method}
+              onChange={(e) => setMethod(e.target.value as PaymentMethod)}
+            >
               {(Object.keys(METHOD_LABEL) as PaymentMethod[]).map((m) => (
                 <option key={m} value={m}>
                   {METHOD_LABEL[m]}
@@ -214,19 +301,42 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
               ))}
             </Select>
           </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Bank / M-Pesa till (optional)">
+              <Input name="bankName" placeholder="e.g. Equity Bank" />
+            </Field>
+            <Field
+              label={
+                NEEDS_REFERENCE.includes(method)
+                  ? 'Transaction reference'
+                  : 'Transaction reference (optional)'
+              }
+            >
+              <Input
+                name="referenceNo"
+                placeholder="EFT ref / M-Pesa code / cheque no."
+                required={NEEDS_REFERENCE.includes(method)}
+              />
+            </Field>
+          </div>
           <Field label="Date">
             <Input name="paymentDate" type="date" defaultValue={todayISO()} required />
           </Field>
           <Field label="Notes (optional)">
             <Textarea name="notes" placeholder="e.g. Second installment on completion of roofing" />
           </Field>
-          <Field label="Receipt (optional)">
+          {/* This is the CLIENT's proof they sent the money. Our own numbered
+              receipt is generated automatically on save — see ReceiptLinks. */}
+          <Field label="Client's proof of payment — bank slip (optional)">
             <Input name="receipt" type="file" accept="image/*,.pdf" capture="environment" />
           </Field>
+          <p className="text-xs text-fg-subtle">
+            An official numbered receipt is generated automatically once you save.
+          </p>
           {createPayment.isError && (
             <p className="text-sm text-red-600">
-              {createPayment.error instanceof ApiRequestError && createPayment.error.status === 409
-                ? 'A deposit has already been recorded for this project'
+              {createPayment.error instanceof ApiRequestError
+                ? createPayment.error.message
                 : 'Failed to save payment'}
             </p>
           )}
@@ -235,6 +345,123 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           </Button>
         </form>
       </Dialog>
+
+      <Dialog
+        open={!!voiding}
+        onClose={() => {
+          setVoiding(null);
+          voidPayment.reset();
+        }}
+        title={voiding ? `Void receipt ${voiding.receiptNo}?` : ''}
+      >
+        {voiding && (
+          <form
+            key={voiding.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const reason = new FormData(e.currentTarget).get('reason') as string;
+              voidPayment.mutate({ id: voiding.id, reason });
+            }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-fg-muted">
+              This reverses{' '}
+              <span className="font-medium text-fg">{fmtMoney(Number(voiding.amount))}</span> from
+              collections and reopens any invoice it settled. The receipt number stays on record so
+              the series is not broken.
+            </p>
+            <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
+            {voidPayment.isError && (
+              <p className="text-sm text-red-600">
+                {voidPayment.error instanceof ApiRequestError
+                  ? voidPayment.error.message
+                  : 'Failed to void this payment'}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1"
+                onClick={() => setVoiding(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+                className="flex-1"
+                disabled={voidPayment.isPending}
+              >
+                Void payment
+              </Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
+    </div>
+  );
+}
+
+/**
+ * The two documents on a payment, deliberately labelled apart: ours (numbered,
+ * generated) and theirs (uploaded proof). Conflating them is the confusion this
+ * whole feature exists to remove.
+ *
+ * `placeholder` controls the empty case: a table cell wants a dash to keep the
+ * column aligned, but inline under the deposit line a bare dash reads as a
+ * mistake, so there it renders nothing.
+ */
+function ReceiptLinks({
+  payment,
+  className,
+  placeholder = true,
+}: {
+  payment: Payment;
+  className?: string;
+  placeholder?: boolean;
+}) {
+  if (!payment.receiptPdfUrl && !payment.receiptUrl) {
+    return placeholder ? <span className="text-fg-subtle">—</span> : null;
+  }
+  return (
+    <div className={`flex flex-col gap-0.5 text-xs ${className ?? ''}`}>
+      {payment.receiptPdfUrl && (
+        <a
+          href={payment.receiptPdfUrl}
+          target="_blank"
+          rel="noreferrer"
+          title={payment.receiptNo ?? undefined}
+          className="inline-flex items-center gap-1 text-brand-700 hover:underline"
+        >
+          <Receipt size={12} /> Official receipt
+        </a>
+      )}
+      {payment.receiptUrl && (
+        <a
+          href={payment.receiptUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 text-fg-muted hover:underline"
+        >
+          <FileText size={12} /> Client slip
+        </a>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }: { label: string; value: number; tone?: 'negative' }) {
+  return (
+    <div>
+      <dt className="text-fg-subtle">{label}</dt>
+      <dd
+        className={`font-medium tabular-nums ${
+          tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
+        }`}
+      >
+        {fmtMoney(value)}
+      </dd>
     </div>
   );
 }

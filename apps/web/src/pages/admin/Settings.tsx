@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Fingerprint, Plus, ScrollText } from 'lucide-react';
-import { api } from '@/lib/api';
-import type { AuditLogPage, Project, Worker } from '@/lib/types';
+import { api, ApiRequestError } from '@/lib/api';
+import type { AuditLogPage, CompanyProfile, InvoicingConfig, Project, Worker } from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input, Select } from '@/components/ui/input';
+import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
@@ -151,7 +151,10 @@ export function SettingsPage() {
 
   return (
     <div className="max-w-2xl space-y-6">
-      <PageHeader title="Settings" description="Budget rules and attendance devices" />
+      <PageHeader
+        title="Settings"
+        description="Budget rules, invoicing, attendance devices and the audit trail"
+      />
 
       <Card>
         <CardHeader>
@@ -216,6 +219,9 @@ export function SettingsPage() {
           {saveLabourSource.isSuccess && <p className="text-sm text-green-700">Saved</p>}
         </CardContent>
       </Card>
+
+      <CompanyLetterheadCard />
+      <InvoicingCard />
 
       <Card>
         <CardHeader>
@@ -456,6 +462,307 @@ export function SettingsPage() {
         )}
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Letterhead for generated invoices and receipts. These are legal identifiers,
+ * so they are entered here rather than guessed — an invoice without a correct
+ * registered name and KRA PIN is not a valid tax invoice.
+ */
+function CompanyLetterheadCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'company'],
+    queryFn: () => api<CompanyProfile>('/settings/company'),
+  });
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api('/settings/company', { method: 'PUT', body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'company'] }),
+  });
+  const uploadLogo = useMutation({
+    mutationFn: (formData: FormData) => api('/settings/company/logo', { formData }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'company'] }),
+  });
+
+  if (!data) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Company letterhead</CardTitle>
+        <p className="text-xs text-fg-muted">
+          Printed on every invoice and receipt. Use the exact registered name and KRA PIN.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={data.name + (data.logoUrl ?? '')}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              name: fd.get('name'),
+              addressLines: String(fd.get('addressLines') ?? '')
+                .split('\n')
+                .map((l) => l.trim())
+                .filter(Boolean),
+              phone: fd.get('phone'),
+              email: fd.get('email'),
+              kraPin: fd.get('kraPin'),
+              vatRegistered: fd.get('vatRegistered') === 'on',
+              bank: {
+                name: fd.get('bankName'),
+                branch: fd.get('bankBranch'),
+                accountName: fd.get('accountName'),
+                accountNo: fd.get('accountNo'),
+                swift: fd.get('swift'),
+                mpesaPaybill: fd.get('mpesaPaybill'),
+              },
+            });
+          }}
+          className="space-y-3"
+        >
+          <div className="flex items-center gap-4">
+            {data.logoUrl ? (
+              <img
+                src={data.logoUrl}
+                alt="Company logo"
+                className="h-12 w-auto max-w-[9rem] object-contain"
+              />
+            ) : (
+              <div className="flex h-12 w-24 items-center justify-center rounded-lg border border-dashed border-hairline-strong text-xs text-fg-subtle">
+                No logo
+              </div>
+            )}
+            <Field label="Replace logo">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const fd = new FormData();
+                  fd.append('logo', file);
+                  uploadLogo.mutate(fd);
+                }}
+              />
+            </Field>
+          </div>
+          {uploadLogo.isError && (
+            <p className="text-sm text-red-600">
+              {uploadLogo.error instanceof ApiRequestError
+                ? uploadLogo.error.message
+                : 'Failed to upload the logo'}
+            </p>
+          )}
+
+          <Field label="Registered name">
+            <Input name="name" defaultValue={data.name} required />
+          </Field>
+          <Field label="Address (one line per row)">
+            <Textarea name="addressLines" defaultValue={data.addressLines.join('\n')} rows={3} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Phone">
+              <Input name="phone" defaultValue={data.phone} />
+            </Field>
+            <Field label="Email">
+              <Input name="email" type="email" defaultValue={data.email} />
+            </Field>
+            <Field label="KRA PIN">
+              <Input name="kraPin" defaultValue={data.kraPin} placeholder="P051XXXXXXX" />
+            </Field>
+            <label className="flex items-end gap-2 pb-2.5 text-sm text-fg">
+              <input
+                type="checkbox"
+                name="vatRegistered"
+                defaultChecked={data.vatRegistered}
+                className="h-4 w-4 rounded border-hairline-strong accent-brand-600"
+              />
+              VAT registered
+            </label>
+          </div>
+
+          <p className="pt-1 text-xs font-medium uppercase tracking-wide text-fg-subtle">
+            Bank details shown on invoices
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Bank">
+              <Input name="bankName" defaultValue={data.bank.name} />
+            </Field>
+            <Field label="Branch">
+              <Input name="bankBranch" defaultValue={data.bank.branch} />
+            </Field>
+            <Field label="Account name">
+              <Input name="accountName" defaultValue={data.bank.accountName} />
+            </Field>
+            <Field label="Account number">
+              <Input name="accountNo" defaultValue={data.bank.accountNo} />
+            </Field>
+            <Field label="SWIFT">
+              <Input name="swift" defaultValue={data.bank.swift} />
+            </Field>
+            <Field label="M-Pesa paybill">
+              <Input name="mpesaPaybill" defaultValue={data.bank.mpesaPaybill} />
+            </Field>
+          </div>
+
+          {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
+          {save.isError && (
+            <p className="text-sm text-red-600">
+              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" disabled={save.isPending}>
+            Save letterhead
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InvoicingCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'invoicing'],
+    queryFn: () => api<InvoicingConfig>('/settings/invoicing'),
+  });
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/settings/invoicing', { method: 'PUT', body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'invoicing'] }),
+  });
+
+  if (!data) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Invoicing</CardTitle>
+        <p className="text-xs text-fg-muted">
+          Numbering and the defaults applied to a new invoice. Changing a rate here never re-totals
+          an invoice that has already been issued.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={data.invoicePrefix + data.vatRatePct}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const start = String(fd.get('startNumber') ?? '').trim();
+            save.mutate({
+              invoicePrefix: fd.get('invoicePrefix'),
+              receiptPrefix: fd.get('receiptPrefix'),
+              numberPadding: Number(fd.get('numberPadding')),
+              vatRatePct: Number(fd.get('vatRatePct')),
+              defaultRetentionPct: Number(fd.get('defaultRetentionPct')),
+              defaultPaymentTermsDays: Number(fd.get('defaultPaymentTermsDays')),
+              footerNote: fd.get('footerNote'),
+              ...(start ? { startNumber: Number(start) } : {}),
+            });
+          }}
+          className="space-y-3"
+        >
+          <dl className="grid grid-cols-2 gap-3 rounded-lg border border-hairline bg-surface-muted/40 p-3 text-sm">
+            <div>
+              <dt className="text-xs text-fg-subtle">Next invoice number</dt>
+              <dd className="font-medium tabular-nums text-fg">{data.nextInvoiceNo}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-fg-subtle">Next receipt number</dt>
+              <dd className="font-medium tabular-nums text-fg">{data.nextReceiptNo}</dd>
+            </div>
+          </dl>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Invoice prefix">
+              <Input name="invoicePrefix" defaultValue={data.invoicePrefix} required />
+            </Field>
+            <Field label="Receipt prefix">
+              <Input name="receiptPrefix" defaultValue={data.receiptPrefix} required />
+            </Field>
+            <Field label="Digits">
+              <Input
+                name="numberPadding"
+                type="number"
+                min="3"
+                max="10"
+                defaultValue={data.numberPadding}
+                required
+              />
+            </Field>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="VAT rate (%)">
+              <Input
+                name="vatRatePct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                defaultValue={data.vatRatePct}
+                required
+              />
+            </Field>
+            <Field label="Default retention (%)">
+              <Input
+                name="defaultRetentionPct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                defaultValue={data.defaultRetentionPct}
+                required
+              />
+            </Field>
+            <Field label="Payment terms (days)">
+              <Input
+                name="defaultPaymentTermsDays"
+                type="number"
+                min="0"
+                max="365"
+                defaultValue={data.defaultPaymentTermsDays}
+                required
+              />
+            </Field>
+          </div>
+
+          <Field label="Invoice footer note">
+            <Textarea
+              name="footerNote"
+              defaultValue={data.footerNote}
+              rows={2}
+              placeholder="e.g. Payment due within 30 days."
+            />
+          </Field>
+
+          <Field label="Continue an existing series from (optional)">
+            <Input
+              name="startNumber"
+              type="number"
+              min="1"
+              placeholder="Leave blank to keep counting from where the system is"
+            />
+          </Field>
+
+          {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
+          {save.isError && (
+            <p className="text-sm text-red-600">
+              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" disabled={save.isPending}>
+            Save invoicing settings
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 

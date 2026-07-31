@@ -16,9 +16,11 @@ import { AttendancePanel } from '@/features/AttendancePanel';
 import { StockPanel } from '@/features/StockPanel';
 import { DocumentsPanel } from '@/features/DocumentsPanel';
 import { ReportsPanel } from '@/features/ReportsPanel';
+import { InvoicesPanel } from '@/features/InvoicesPanel';
 
 const TABS = [
   { id: 'financials', label: 'Financials' },
+  { id: 'invoices', label: 'Invoices' },
   { id: 'payments', label: 'Payments' },
   { id: 'budget', label: 'Budget' },
   { id: 'tasks', label: 'Tasks' },
@@ -123,6 +125,7 @@ export function ProjectDetailPage() {
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === 'financials' && <FinancialsPanel projectId={projectId} />}
+      {tab === 'invoices' && <InvoicesPanel projectId={projectId} />}
       {tab === 'payments' && <PaymentsPanel projectId={projectId} />}
       {tab === 'budget' && <BudgetPanel projectId={projectId} />}
       {tab === 'tasks' && <TasksPanel projectId={projectId} />}
