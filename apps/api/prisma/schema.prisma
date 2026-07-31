@@ -27,6 +27,34 @@ enum BudgetCategory {
   OTHER
 }
 
+// The granular category the field actually uses. Deliberately separate from
+// BudgetCategory: budget allocation and reporting stay coarse (four buckets an
+// owner can set a threshold against), while an expense claim wants to say what
+// it actually was. EXPENSE_CATEGORY_BUDGET_MAP in expenses.ts maps one to the
+// other so nothing downstream of BudgetCategory has to change.
+enum ExpenseCategory {
+  MATERIALS
+  LABOUR
+  TRANSPORT
+  EQUIPMENT_HIRE
+  SUBCONTRACTOR
+  SITE_OVERHEADS
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum MaterialRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FULFILLED
+}
+
 enum PaymentType {
   DEPOSIT
   INSTALLMENT
@@ -62,6 +90,39 @@ enum AttendanceSource {
   API
   IMPORT
   MANUAL
+}
+
+enum OverrideRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SnagStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  VERIFIED
+}
+
+enum SnagSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SafetyIncidentSeverity {
+  NEAR_MISS
+  MINOR
+  SERIOUS
+}
+
+enum CalendarEventType {
+  MILESTONE
+  INSPECTION
+  DELIVERY
+  MEETING
+  OTHER
 }
 
 enum StockMovementType {
@@ -149,7 +210,17 @@ model User {
   updatedAt    DateTime @updatedAt
 
   projects           Project[]          @relation("ProjectSupervisor")
-  expenses           Expense[]
+  expenses           Expense[]          @relation("ExpenseSubmittedBy")
+  expensesApproved   Expense[]          @relation("ExpenseApprovedBy")
+  materialRequests         MaterialRequest[] @relation("MaterialRequestedBy")
+  materialRequestsDecided  MaterialRequest[] @relation("MaterialRequestDecidedBy")
+  snagsReported      SnagItem[]         @relation("SnagReportedBy")
+  snagsAssigned      SnagItem[]         @relation("SnagAssignedTo")
+  snagsActioned      SnagItem[]         @relation("SnagLastActionBy")
+  safetyIncidents    SafetyIncident[]
+  overrideRequests        AttendanceOverrideRequest[] @relation("OverrideRequestedBy")
+  overrideRequestsDecided AttendanceOverrideRequest[] @relation("OverrideDecidedBy")
+  calendarEvents     CalendarEvent[]
   payments           Payment[]
   toolTransfers      ToolTransfer[]
   stockMovements     StockMovement[]
@@ -194,6 +265,13 @@ model Project {
   status             ProjectStatus @default(PLANNING)
   progressPct        Int           @default(0)
   balanceDueDate     DateTime? // contractual due date for the pending balance; independent of individual Payment rows
+  // Fraud-proofing for manual attendance overrides (see AttendanceOverrideRequest).
+  // Fingerprint terminals need no geofence — a device does not move — so this
+  // is null until an owner sets it, and override requests are still accepted
+  // without one; withinGeofence just stays null (unchecked) on the request.
+  geofenceLat        Decimal?      @db.Decimal(9, 6)
+  geofenceLng        Decimal?      @db.Decimal(9, 6)
+  geofenceRadiusM    Int?
   clientId           String?
   client             Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
   supervisorId       String?
@@ -216,6 +294,11 @@ model Project {
   toolsHere         Tool[]
   toolTransfersFrom ToolTransfer[]     @relation("ToolTransferFrom")
   toolTransfersTo   ToolTransfer[]     @relation("ToolTransferTo")
+  materialRequests  MaterialRequest[]
+  snags             SnagItem[]
+  safetyIncidents   SafetyIncident[]
+  overrideRequests  AttendanceOverrideRequest[]
+  calendarEvents    CalendarEvent[]
 
   @@index([supervisorId])
   @@index([clientId])
@@ -233,20 +316,65 @@ model BudgetLine {
 }
 
 model Expense {
-  id            String         @id @default(cuid())
-  projectId     String
-  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  category      BudgetCategory
-  amount        Decimal        @db.Decimal(14, 2)
-  description   String
-  receiptUrl    String?
-  expenseDate   DateTime
+  id        String @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // The granular category the submitter picks. `category` is derived from it
+  // via EXPENSE_CATEGORY_BUDGET_MAP (expenses.ts) and kept in step so budget
+  // rollups (finance.ts) never have to know ExpenseCategory exists.
+  expenseCategory ExpenseCategory
+  category        BudgetCategory
+
+  amount      Decimal  @db.Decimal(14, 2)
+  description String
+  receiptUrl  String?
+  expenseDate DateTime
+
+  // Only APPROVED expenses count as actual spend against the budget — see
+  // projectFinancials() in finance.ts. A submitted-but-undecided claim is real
+  // money that left someone's hand on site, but it is not yet an approved cost.
+  status        ExpenseStatus @default(PENDING)
+  approvedById  String?
+  approvedBy    User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt    DateTime?
+  rejectReason  String?
+
   submittedById String
-  submittedBy   User           @relation(fields: [submittedById], references: [id])
-  createdAt     DateTime       @default(now())
+  submittedBy   User     @relation("ExpenseSubmittedBy", fields: [submittedById], references: [id])
+  createdAt     DateTime @default(now())
 
   @@index([projectId, expenseDate])
   @@index([projectId, category])
+  @@index([projectId, status])
+}
+
+// Material requests: a supervisor asks for stock, the office decides, and once
+// bought it is logged as a StockMovement IN — the request itself never moves
+// stock, keeping "what was asked for" separate from "what actually arrived".
+model MaterialRequest {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  itemName String
+  quantity Decimal @db.Decimal(12, 2)
+  unit     String
+  neededBy DateTime? @db.Date
+  notes    String?
+
+  status       MaterialRequestStatus @default(PENDING)
+  decidedById  String?
+  decidedBy    User?                 @relation("MaterialRequestDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt    DateTime?
+  rejectReason String?
+  fulfilledAt  DateTime?
+
+  requestedById String
+  requestedBy   User     @relation("MaterialRequestedBy", fields: [requestedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@index([projectId, status])
 }
 
 // Exactly one DEPOSIT payment per project is expected; this is enforced in
@@ -416,9 +544,10 @@ model Worker {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  assignments WorkerAssignment[]
-  attendance  AttendanceRecord[]
-  syncIssues  AttendanceSyncIssue[]
+  assignments      WorkerAssignment[]
+  attendance       AttendanceRecord[]
+  syncIssues       AttendanceSyncIssue[]
+  overrideRequests AttendanceOverrideRequest[]
 }
 
 model WorkerAssignment {
@@ -453,9 +582,54 @@ model AttendanceRecord {
   recordedBy   User?            @relation("AttendanceRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
   createdAt    DateTime         @default(now())
 
+  sourceOverrideRequest AttendanceOverrideRequest?
+
   @@unique([workerId, projectId, date])
   @@unique([deviceId, externalId])
   @@index([projectId, date])
+}
+
+// The only path to a manually-entered attendance record. A supervisor cannot
+// write AttendanceRecord directly — they can only ask for one, with the GPS
+// coordinates their device reports at the moment of asking, and a superadmin
+// decides. That is what "supervisors locked out of editing hours" means in
+// practice: the exception path is now a request, not an edit.
+model AttendanceOverrideRequest {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  workerId  String
+  worker    Worker  @relation(fields: [workerId], references: [id], onDelete: Cascade)
+
+  date     DateTime  @db.Date
+  checkIn  DateTime
+  checkOut DateTime?
+  reason   String
+
+  // Captured client-side at submission. A phone GPS can be spoofed, so this is
+  // fraud-DETERRENT rather than fraud-PROOF — it gives the approving
+  // superadmin a fact to weigh, not an automatic gate. withinGeofence stays
+  // null when the project has no geofence configured to check against.
+  latitude       Decimal? @db.Decimal(9, 6)
+  longitude      Decimal? @db.Decimal(9, 6)
+  withinGeofence Boolean?
+
+  status        OverrideRequestStatus @default(PENDING)
+  requestedById String
+  requestedBy   User                  @relation("OverrideRequestedBy", fields: [requestedById], references: [id])
+  decidedById   String?
+  decidedBy     User?                 @relation("OverrideDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt     DateTime?
+  rejectReason  String?
+
+  // The record created on approval, kept for traceability from the request
+  // that authorised it. SetNull rather than cascading a delete backwards.
+  resultingRecordId String?           @unique
+  resultingRecord    AttendanceRecord? @relation(fields: [resultingRecordId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId, status])
 }
 
 model StockItem {
@@ -564,9 +738,20 @@ model DailyReport {
   materialsUsed  String?
   challenges     String?
   photoUrls      String[] @default([])
-  submittedById  String
-  submittedBy    User     @relation(fields: [submittedById], references: [id])
-  createdAt      DateTime @default(now())
+
+  // Richer site-diary fields, all optional so the form stays quick to fill on
+  // an ordinary day — a supervisor should not have to type "none" seven times.
+  weather             String?
+  visitors            String?
+  materialsDelivered  String?
+  instructionsGiven   String?
+  delays              String?
+  safetyNotes         String?
+  equipmentOnSite     String?
+
+  submittedById String
+  submittedBy   User     @relation(fields: [submittedById], references: [id])
+  createdAt     DateTime @default(now())
 
   @@unique([projectId, date])
 }
@@ -782,6 +967,77 @@ model Variation {
 
   @@unique([contractId, reference])
   @@index([contractId, status])
+}
+
+// The defect/snag list. A photo with a pin is how a site actually communicates
+// "this corner, this crack" — a text description alone forces the reader to
+// go and find it. annotation is {x, y} as fractions (0-1) of photoUrl's
+// dimensions, so it survives the image being viewed at any size.
+model SnagItem {
+  id          String       @id @default(cuid())
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  location    String? // "3rd floor, unit 3B, bathroom" — free text, not geocoded
+  severity    SnagSeverity @default(MEDIUM)
+  status      SnagStatus   @default(OPEN)
+  photoUrl    String?
+  annotation  Json?
+  dueDate     DateTime?    @db.Date
+
+  assignedToId String?
+  assignedTo   User?   @relation("SnagAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  // Set when work is marked done; a photo of the fix is how the office
+  // verifies it without a return site visit.
+  resolvedPhotoUrl String?
+  resolvedAt       DateTime?
+  verifiedAt        DateTime? // office confirms the fix from resolvedPhotoUrl
+  lastActionById    String?
+  lastActionBy      User?     @relation("SnagLastActionBy", fields: [lastActionById], references: [id], onDelete: SetNull)
+
+  reportedById String
+  reportedBy   User     @relation("SnagReportedBy", fields: [reportedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([projectId, status])
+}
+
+model SafetyIncident {
+  id           String                  @id @default(cuid())
+  projectId    String
+  project      Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  occurredAt   DateTime
+  severity     SafetyIncidentSeverity
+  description  String
+  actionTaken  String?
+  photoUrl     String?
+  reportedById String
+  reportedBy   User                    @relation(fields: [reportedById], references: [id])
+  createdAt    DateTime                @default(now())
+
+  @@index([projectId, occurredAt])
+}
+
+// Site milestones, inspections, deliveries — the events behind the Calendar.
+// projectId null means a company-wide event (e.g. a public holiday, a head
+// office meeting) that shows on every project's calendar.
+model CalendarEvent {
+  id          String            @id @default(cuid())
+  projectId   String?
+  project     Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  type        CalendarEventType @default(OTHER)
+  date        DateTime          @db.Date
+  notes       String?
+  createdById String
+  createdBy   User              @relation(fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
+
+  @@index([projectId, date])
+  @@index([date])
 }
 
 model Setting {

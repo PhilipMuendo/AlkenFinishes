@@ -3,15 +3,29 @@ import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
 
-/** Hours × rate, capped at MAX_SHIFT_HOURS so a bad timestamp can't inflate cost. */
+/** A day beyond this is overtime, paid at OVERTIME_MULTIPLIER. */
+export const STANDARD_SHIFT_HOURS = 8;
+export const OVERTIME_MULTIPLIER = 1.5;
+
+/**
+ * Hours × rate, capped at MAX_SHIFT_HOURS so a bad timestamp can't inflate
+ * cost, with hours past STANDARD_SHIFT_HOURS paid at OVERTIME_MULTIPLIER.
+ * Overtime is computed here rather than left for a report to derive later,
+ * so labourCost — the figure finance.ts rolls into LABOUR actuals — is right
+ * the moment the record is written.
+ */
 export function computeCost(checkIn: Date, checkOut: Date | null, hourlyRate: Prisma.Decimal) {
   if (!checkOut) return { hoursWorked: null, labourCost: null };
   const raw = (checkOut.getTime() - checkIn.getTime()) / 3_600_000;
   const hours = Math.min(Math.max(0, raw), env.MAX_SHIFT_HOURS);
   const rounded = Math.round(hours * 100) / 100;
+  const regular = Math.min(rounded, STANDARD_SHIFT_HOURS);
+  const overtime = rounded - regular;
+  const rate = Number(hourlyRate);
+  const cost = regular * rate + overtime * rate * OVERTIME_MULTIPLIER;
   return {
     hoursWorked: rounded,
-    labourCost: Math.round(rounded * Number(hourlyRate) * 100) / 100,
+    labourCost: Math.round(cost * 100) / 100,
   };
 }
 
