@@ -66,8 +66,19 @@ const MAGIC: Record<string, (b: Buffer) => boolean> = {
 };
 
 /**
- * Verifies the file's magic bytes match its declared MIME type. Deletes the
- * file and throws on mismatch — call immediately after multer accepts it.
+ * Verifies the file's magic bytes match its declared MIME type, then — for
+ * images — recompresses it in place. Deletes the file and throws on a
+ * magic-byte mismatch; call immediately after multer accepts it.
+ *
+ * The recompression is the point: a phone camera photo routinely arrives at
+ * 3-8MB and 3000-4500px wide. Nothing in this app displays an image larger
+ * than a couple of hundred pixels (the largest on-screen use is a lightbox),
+ * and the generated report/invoice PDFs don't embed uploaded photos at all —
+ * only the company logo, which this same path also resizes. Every upload
+ * (receipts, site photos, defect photos, proof-of-transfer, the company logo)
+ * goes through this one function, so shrinking it here is a single change
+ * that caps disk use for the entire app rather than 13 separate call sites
+ * each remembering to do it.
  */
 export async function verifyUpload(file: Express.Multer.File | undefined): Promise<void> {
   if (!file) return;
@@ -85,6 +96,87 @@ export async function verifyUpload(file: Express.Multer.File | undefined): Promi
   if (!ok) {
     await fs.promises.unlink(file.path).catch(() => undefined);
     throw ApiError.badRequest('File content does not match its declared type');
+  }
+  if (file.mimetype.startsWith('image/')) {
+    await compressImageInPlace(file);
+  }
+}
+
+// Longest side any uploaded photo is kept at. Generous for on-screen use
+// (nothing renders larger than a lightbox) and for a receipt or defect photo
+// printed on a report — well beyond what a couple of hundred DPI needs at
+// normal photo-print sizes.
+const MAX_IMAGE_DIMENSION = 2000;
+const JPEG_QUALITY = 82;
+const PNG_COMPRESSION_LEVEL = 9;
+
+/**
+ * Resizes an uploaded image down to MAX_IMAGE_DIMENSION and re-encodes it,
+ * replacing the file on disk. An opaque PNG (the overwhelming majority of
+ * PNG uploads here — screenshots, some phone camera output) converts to JPEG,
+ * since lossless PNG on a photograph is routinely 5-10x the size for no
+ * visible benefit. A PNG WITH transparency is kept as PNG and only resized —
+ * that's the company logo path, and flattening it to JPEG would print a solid
+ * background onto every invoice, quotation and contract letterhead.
+ *
+ * Failure here must never fail the upload: a corrupt or unusual image (odd
+ * color profile, animated WebP, etc.) falls back to keeping the original
+ * file exactly as multer wrote it.
+ */
+async function compressImageInPlace(file: Express.Multer.File): Promise<void> {
+  try {
+    const img = sharp(file.path, { failOn: 'none' });
+    const meta = await img.metadata();
+    const resized = img
+      .rotate() // bakes in EXIF orientation before the dimensions below are read from it
+      .resize({
+        width: MAX_IMAGE_DIMENSION,
+        height: MAX_IMAGE_DIMENSION,
+        fit: 'inside',
+        withoutEnlargement: true,
+      });
+
+    // Only an opaque PNG converts to JPEG — a transparent one is the company
+    // logo path, and JPEG has no transparency to flatten it onto without
+    // printing a solid background on every letterhead. WebP round-trips as
+    // WebP either way; it already handles transparency natively.
+    const convertToJpeg = file.mimetype === 'image/png' && !meta.hasAlpha;
+    const outExt = convertToJpeg ? '.jpg' : path.extname(file.path);
+    const outPath = `${file.path}.tmp${outExt}`;
+
+    if (file.mimetype === 'image/jpeg' || convertToJpeg) {
+      await resized.jpeg({ quality: JPEG_QUALITY, mozjpeg: true }).toFile(outPath);
+    } else if (file.mimetype === 'image/webp') {
+      await resized.webp({ quality: JPEG_QUALITY }).toFile(outPath);
+    } else {
+      await resized.png({ compressionLevel: PNG_COMPRESSION_LEVEL }).toFile(outPath);
+    }
+
+    const originalSize = file.size;
+    const { size: newSize } = await fs.promises.stat(outPath);
+    // A tiny, already-optimized source (e.g. a re-upload of something this
+    // same pipeline already compressed) can come out fractionally larger
+    // after a second lossy pass. Keep whichever is actually smaller.
+    if (newSize >= originalSize) {
+      await fs.promises.unlink(outPath).catch(() => undefined);
+      return;
+    }
+
+    if (convertToJpeg) {
+      // Extension must match the re-encoded format — fileUrl()/serveUploads()
+      // both derive Content-Type from the on-disk extension.
+      await fs.promises.unlink(file.path).catch(() => undefined);
+      const newPath = `${file.path.slice(0, -path.extname(file.path).length)}.jpg`;
+      await fs.promises.rename(outPath, newPath);
+      file.path = newPath;
+      file.filename = path.basename(newPath);
+      file.mimetype = 'image/jpeg';
+    } else {
+      await fs.promises.rename(outPath, file.path);
+    }
+    file.size = newSize;
+  } catch (e) {
+    logger.warn({ filePath: file.path, err: e }, 'image compression failed, keeping original');
   }
 }
 
