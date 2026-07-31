@@ -127,8 +127,12 @@ export async function renderQuotationPdf(
       },
       ...(q.termsText
         ? ([
-            { text: 'TERMS', style: 'sectionLabel', margin: [0, 22, 0, 3] },
-            { text: q.termsText, fontSize: 8.5 },
+            { text: 'TERMS', style: 'sectionLabel', margin: [0, 22, 0, 5] },
+            {
+              ul: q.termsText.split('\n').filter((t) => t.trim()),
+              fontSize: 8.5,
+              markerColor: MUTED,
+            },
           ] as Content[])
         : []),
       ...(q.notes
@@ -137,11 +141,6 @@ export async function renderQuotationPdf(
             { text: q.notes, fontSize: 8.5 },
           ] as Content[])
         : []),
-      {
-        text: `This quotation is valid until ${printDate(q.validUntil)}. Prices are subject to re-quotation after that date.`,
-        style: 'companyMeta',
-        margin: [0, 20, 0, 0],
-      },
       ...bankBlock(company),
     ],
   };

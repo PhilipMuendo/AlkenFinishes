@@ -150,12 +150,7 @@ export async function renderContractPdf(
       ...scheduleOfWorks(c),
 
       // ---- Conditions ----
-      ...(config.contractTermsText
-        ? ([
-            { text: 'CONDITIONS OF CONTRACT', style: 'sectionLabel', margin: [0, 22, 0, 6] },
-            { text: config.contractTermsText, fontSize: 8.5, alignment: 'justify' },
-          ] as Content[])
-        : []),
+      ...(config.contractTermsText ? conditions(config.contractTermsText) : []),
       ...(c.notes
         ? ([
             { text: 'SPECIAL CONDITIONS', style: 'sectionLabel', margin: [0, 16, 0, 4] },
@@ -277,10 +272,49 @@ function scheduleOfWorks(c: ContractForPdf): Content[] {
               { text: money(Number(l.lineTotal)), alignment: 'right' },
             ],
           ),
+          // The schedule has to be seen to add up to the Contract Sum in the
+          // Particulars, or the two halves of the document look unrelated.
+          [
+            { text: 'Schedule total (excl. VAT)', bold: true, colSpan: 4 },
+            {},
+            {},
+            {},
+            { text: money(Number(c.quotation!.subtotal)), bold: true, alignment: 'right' },
+          ] as TableCell[],
         ],
       },
       layout: lineTableLayout,
     },
+  ];
+}
+
+/**
+ * The conditions, split into clauses so the first one stays with its heading.
+ *
+ * pdfmake will not break inside a single stack marked unbreakable, so the
+ * heading is bound to clause one and the rest flow normally — a section title
+ * stranded alone at the foot of a page is the giveaway of a generated document.
+ */
+function conditions(text: string): Content[] {
+  const clauses = text.split(/\n{2,}/).filter((c) => c.trim());
+  const [first, ...rest] = clauses;
+  return [
+    {
+      unbreakable: true,
+      margin: [0, 22, 0, 0],
+      stack: [
+        { text: 'CONDITIONS OF CONTRACT', style: 'sectionLabel', margin: [0, 0, 0, 6] },
+        { text: first, fontSize: 8.5, alignment: 'justify' },
+      ],
+    },
+    ...rest.map(
+      (clause): Content => ({
+        text: clause,
+        fontSize: 8.5,
+        alignment: 'justify',
+        margin: [0, 7, 0, 0],
+      }),
+    ),
   ];
 }
 
