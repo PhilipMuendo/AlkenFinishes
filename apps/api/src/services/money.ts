@@ -62,3 +62,84 @@ export function lineTotalCents(quantity: MoneyLike, unitPrice: MoneyLike): numbe
 }
 
 export const sumCents = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
+
+// ---- Amount in words ----
+
+const ONES = [
+  '',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
+];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+const SCALES: [number, string][] = [
+  [1_000_000_000, 'Billion'],
+  [1_000_000, 'Million'],
+  [1_000, 'Thousand'],
+];
+
+function underThousand(n: number): string {
+  if (n < 20) return ONES[n];
+  if (n < 100) {
+    const tens = TENS[Math.floor(n / 10)];
+    const ones = ONES[n % 10];
+    return ones ? `${tens} ${ones}` : tens;
+  }
+  const hundreds = `${ONES[Math.floor(n / 100)]} Hundred`;
+  const rest = n % 100;
+  return rest ? `${hundreds} and ${underThousand(rest)}` : hundreds;
+}
+
+function wholeInWords(n: number): string {
+  if (n === 0) return 'Zero';
+  const parts: string[] = [];
+  let left = n;
+  for (const [value, name] of SCALES) {
+    if (left >= value) {
+      parts.push(`${wholeInWords(Math.floor(left / value))} ${name}`);
+      left %= value;
+    }
+  }
+  if (left > 0) parts.push(underThousand(left));
+  return parts.join(' ');
+}
+
+/**
+ * Integer cents -> the sum written out in words, as a contract requires.
+ *
+ * Kenyan contract practice is that the words govern where words and figures
+ * disagree, which is exactly why this is generated from the same cents value
+ * the figures are printed from rather than typed in by hand.
+ *
+ * No currency lead-in, so the caller can choose one; ends in "Only", which is
+ * the convention.
+ */
+export function amountInWords(cents: number): string {
+  const negative = cents < 0;
+  const abs = Math.abs(Math.round(cents));
+  const shillings = Math.floor(abs / 100);
+  const remainder = abs % 100;
+  const words = [
+    wholeInWords(shillings),
+    shillings === 1 ? 'Shilling' : 'Shillings',
+    ...(remainder > 0 ? ['and', underThousand(remainder), remainder === 1 ? 'Cent' : 'Cents'] : []),
+    'Only',
+  ].join(' ');
+  return negative ? `Minus ${words}` : words;
+}

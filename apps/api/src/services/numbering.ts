@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { env } from '../config/env';
 
 /** Document series that draw from a year-scoped counter. */
-export type SeriesKind = 'INVOICE' | 'RECEIPT';
+export type SeriesKind = 'INVOICE' | 'RECEIPT' | 'QUOTATION' | 'CONTRACT' | 'PROJECT';
 
 /**
  * The year a document number belongs to, in APP_TIMEZONE.
