@@ -131,6 +131,12 @@ enum StockMovementType {
   ADJUSTMENT
 }
 
+enum ToolStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
 enum DocumentType {
   CONTRACT
   APPROVAL
@@ -668,15 +674,20 @@ model StockMovement {
 // in two places at once should be registered as two separate catalog rows
 // (e.g. "Paint brushes (Batch A)" / "(Batch B)").
 model Tool {
-  id               String   @id @default(cuid())
+  id               String     @id @default(cuid())
   name             String
   category         String? // e.g. "Power tools", "Hand tools" — free text, not an enum
-  unit             String   @default("pcs")
-  quantity         Decimal  @default(0) @db.Decimal(12, 2)
+  unit             String     @default("pcs")
+  quantity         Decimal    @default(0) @db.Decimal(12, 2)
   currentProjectId String? // null = central store / unassigned
-  currentProject   Project? @relation(fields: [currentProjectId], references: [id], onDelete: SetNull)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  currentProject   Project?   @relation(fields: [currentProjectId], references: [id], onDelete: SetNull)
+  // Separate from location: a tool can be AT a site and still be down for
+  // repair. MAINTENANCE/RETIRED are excluded from ToolTransfer's "available
+  // to move" list in the API, not from this table.
+  status           ToolStatus @default(ACTIVE)
+  conditionNotes   String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
   transfers ToolTransfer[]
 

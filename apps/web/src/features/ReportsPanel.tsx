@@ -10,6 +10,25 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 
+type DiaryTextField =
+  | 'weather'
+  | 'visitors'
+  | 'materialsDelivered'
+  | 'instructionsGiven'
+  | 'delays'
+  | 'safetyNotes'
+  | 'equipmentOnSite';
+
+const DIARY_FIELDS: [DiaryTextField, string][] = [
+  ['weather', 'Weather'],
+  ['visitors', 'Visitors'],
+  ['materialsDelivered', 'Materials delivered'],
+  ['instructionsGiven', 'Instructions given'],
+  ['delays', 'Delays'],
+  ['safetyNotes', 'Safety'],
+  ['equipmentOnSite', 'Equipment on site'],
+];
+
 export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canSubmit: boolean }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -67,6 +86,12 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
                   <dd className="text-fg">{r.challenges}</dd>
                 </div>
               )}
+              {DIARY_FIELDS.filter(([key]) => r[key]).map(([key, label]) => (
+                <div key={key}>
+                  <dt className="text-xs font-medium uppercase text-fg-subtle">{label}</dt>
+                  <dd className="text-fg">{r[key]}</dd>
+                </div>
+              ))}
             </dl>
             {r.photoUrls.length > 0 && (
               <div className="mt-3 flex gap-2 overflow-x-auto">
@@ -110,6 +135,36 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
           <Field label="Challenges (optional)">
             <Textarea name="challenges" placeholder="Rain delayed exterior work" />
           </Field>
+
+          <details className="rounded-lg border border-hairline p-3">
+            <summary className="cursor-pointer text-sm font-medium text-fg-muted">
+              More detail (optional)
+            </summary>
+            <div className="mt-3 space-y-3">
+              <Field label="Weather">
+                <Input name="weather" placeholder="Sunny, light rain in the afternoon" />
+              </Field>
+              <Field label="Visitors">
+                <Textarea name="visitors" rows={2} placeholder="Client visited at 2pm" />
+              </Field>
+              <Field label="Materials delivered">
+                <Textarea name="materialsDelivered" rows={2} placeholder="50 bags cement, delivered 9am" />
+              </Field>
+              <Field label="Instructions given">
+                <Textarea name="instructionsGiven" rows={2} />
+              </Field>
+              <Field label="Delays">
+                <Textarea name="delays" rows={2} />
+              </Field>
+              <Field label="Safety notes">
+                <Textarea name="safetyNotes" rows={2} />
+              </Field>
+              <Field label="Equipment on site">
+                <Textarea name="equipmentOnSite" rows={2} placeholder="Mixer, scaffolding" />
+              </Field>
+            </div>
+          </details>
+
           <Field label="Photos (up to 6)">
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />
           </Field>

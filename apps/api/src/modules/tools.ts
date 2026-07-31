@@ -58,17 +58,20 @@ const toolPatchSchema = z.object({
   name: z.string().min(1).optional(),
   category: z.string().nullable().optional(),
   unit: z.string().min(1).optional(),
+  status: z.enum(['ACTIVE', 'MAINTENANCE', 'RETIRED']).optional(),
+  conditionNotes: z.string().nullable().optional(),
 });
 
 // Catalog fields only — quantity/currentProjectId only ever change via
-// /transfer, so every location change is guaranteed to be logged.
+// /transfer, so every location change is guaranteed to be logged. status is
+// the exception: a tool can go down for repair without moving anywhere.
 router.patch(
   '/:id',
   requireSuperadmin,
   asyncHandler(async (req, res) => {
     const data = toolPatchSchema.parse(req.body);
     const tool = await prisma.tool.update({ where: { id: req.params.id }, data, include });
-    audit(req, 'tool.update', 'Tool', tool.id);
+    audit(req, 'tool.update', 'Tool', tool.id, data.status ? { status: data.status } : undefined);
     res.json(tool);
   }),
 );
@@ -99,6 +102,9 @@ router.post(
     }
     if (Number(tool.quantity) <= 0) {
       throw ApiError.badRequest('Tool has no quantity to transfer');
+    }
+    if (tool.status !== 'ACTIVE') {
+      throw ApiError.conflict(`This tool is marked ${tool.status.toLowerCase()} and cannot be transferred`);
     }
 
     await verifyUpload(req.file);

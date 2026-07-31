@@ -368,6 +368,13 @@ export interface DailyReport {
   workersPresent: number;
   materialsUsed: string | null;
   challenges: string | null;
+  weather: string | null;
+  visitors: string | null;
+  materialsDelivered: string | null;
+  instructionsGiven: string | null;
+  delays: string | null;
+  safetyNotes: string | null;
+  equipmentOnSite: string | null;
   photoUrls: string[];
   submittedBy: { id: string; name: string };
 }

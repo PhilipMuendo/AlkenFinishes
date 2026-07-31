@@ -16,6 +16,15 @@ const reportSchema = z.object({
   workersPresent: z.coerce.number().int().nonnegative(),
   materialsUsed: z.string().optional(),
   challenges: z.string().optional(),
+  // All optional — a supervisor should not have to type "none" seven times
+  // on an ordinary day for the diary to feel worth filling in.
+  weather: z.string().optional(),
+  visitors: z.string().optional(),
+  materialsDelivered: z.string().optional(),
+  instructionsGiven: z.string().optional(),
+  delays: z.string().optional(),
+  safetyNotes: z.string().optional(),
+  equipmentOnSite: z.string().optional(),
 });
 
 router.get(

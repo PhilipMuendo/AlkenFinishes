@@ -14,6 +14,8 @@ import quotationsRouter from './modules/quotations';
 import contractsRouter from './modules/contracts';
 import expensesRouter from './modules/expenses';
 import materialRequestsRouter from './modules/materialRequests';
+import snagsRouter from './modules/snags';
+import safetyRouter from './modules/safety';
 import paymentsRouter from './modules/payments';
 import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
 import tasksRouter from './modules/tasks';
@@ -54,6 +56,8 @@ export function createApp() {
   v1.use('/projects', projectsRouter);
   v1.use('/projects/:projectId/expenses', expensesRouter);
   v1.use('/projects/:projectId/material-requests', materialRequestsRouter);
+  v1.use('/projects/:projectId/snags', snagsRouter);
+  v1.use('/projects/:projectId/safety-incidents', safetyRouter);
   v1.use('/projects/:projectId/payments', paymentsRouter);
   v1.use('/projects/:projectId/invoices', invoicesRouter);
   v1.use('/projects/:projectId/tasks', tasksRouter);
