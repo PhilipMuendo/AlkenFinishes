@@ -10,7 +10,8 @@ Monorepo (npm workspaces) with two deployable services behind Nginx:
 │ (PWA)    │     │ SPA + proxy   │     │ Prisma ORM   │
 └──────────┘     └───────────────┘     └──────┬───────┘
                                               │
-   Fingerprint devices ──▶ /attendance/device-sync (API key)
+      ZKTeco terminals ──push──▶ /iclock, /attendance/device-sync (API key)
+      Suprema terminals ◀──poll── BioStar 2 REST API, every 2 min
 ```
 
 - `apps/api` — Node.js 22, Express 4, TypeScript (strict), Prisma, Zod, Pino
@@ -46,21 +47,36 @@ Monorepo (npm workspaces) with two deployable services behind Nginx:
 - **Worker identity is separate from assignment.** `WorkerAssignment` rows have
   `endDate = null` for the current site; reassignment closes the old row in the
   same transaction, preserving history.
-- **Attendance is device-first.** Idempotency is scoped per device — unique
-  `(deviceId, externalId)` — so offline devices re-upload safely but cannot
-  overwrite each other's records. Devices can be bound to one site (records for
-  other sites are rejected), sync is rate-limited, and batches are processed
-  with three grouped queries instead of per-record round trips. Manual entry
-  exists only as `MANUAL_OVERRIDE`: restricted to workers currently assigned to
-  the site, attributed, audit-logged, and surfaced on the owner's dashboard
-  (override count per project, last 30 days). `(workerId, projectId, date)` is
-  unique — one record per worker per site per day.
-- **Labour cost is materialized at check-out** (`hours × hourlyRate` at that
-  time). Check-out uses the server clock only, closed records cannot be
-  re-checked-out, and shift length is capped (`MAX_SHIFT_HOURS`, default 14) on
-  every path, so timestamps cannot inflate labour cost. To avoid
-  double-counting wages, the owner picks the LABOUR source in Settings:
-  attendance-accrued cost, labour expenses, or both (conservative default).
+- **Attendance is device-first, from either vendor.** Idempotency is scoped
+  per device — unique `(deviceId, externalId)` — so offline ZKTeco devices
+  re-upload safely but cannot overwrite each other's records; Suprema/BioStar 2
+  ingestion uses a persisted event-ID cursor for the same reason. Devices can
+  be bound to one site (records for other sites are rejected), sync is
+  rate-limited, and batches are processed with grouped queries instead of
+  per-record round trips. `(workerId, projectId, date)` is unique — one record
+  per worker per site per day.
+- **A supervisor cannot write attendance directly at all.** The only manual
+  path is `AttendanceOverrideRequest`: a supervisor files a request (GPS
+  captured client-side at submission), and only a superadmin's decision
+  creates the actual `AttendanceRecord` (`method: MANUAL_OVERRIDE`). Approving
+  and closing an open check-in (`POST /:id/checkout`) are both
+  `requireSuperadmin` — "supervisors can't edit hours" means the write path
+  itself, not just a UI restriction. A project's optional geofence
+  (`geofenceLat/Lng/RadiusM`) is checked against the submitted coordinates and
+  shown to the approver as `withinGeofence` — a signal to weigh, not an
+  automatic gate, since client-reported GPS can be spoofed.
+- **Overtime is computed where labour cost is written**
+  (`services/attendanceIngest.ts`), not derived later in a report: hours past
+  `STANDARD_SHIFT_HOURS` (8) are paid at `OVERTIME_MULTIPLIER` (1.5×), for
+  every ingestion path — ZKTeco push, Suprema poll, and approved manual
+  overrides all go through the same `computeCost()`.
+- **Labour cost is materialized at check-out or event ingestion**
+  (`hours × hourlyRate`, overtime-adjusted, at that time). Check-out uses the
+  server clock only, closed records cannot be re-checked-out, and shift length
+  is capped (`MAX_SHIFT_HOURS`, default 14) on every path, so timestamps
+  cannot inflate labour cost. To avoid double-counting wages, the owner picks
+  the LABOUR source in Settings: attendance-accrued cost, labour expenses, or
+  both (conservative default).
 - **Stock is append-only.** Item quantity is only changed through
   `StockMovement` rows (IN / OUT / ADJUSTMENT) carrying user, date, quantity,
   reason; the movement and the quantity update commit in one transaction and
@@ -76,8 +92,21 @@ Monorepo (npm workspaces) with two deployable services behind Nginx:
 
 ## Attendance device integration
 
-Portable fingerprint devices (or a bridge app on the supervisor's phone) push
-batches:
+Two integrations exist because the two vendors have fundamentally different
+connection models — one is push, the other is poll — and that shape is
+reflected in the code (`modules/iclock.ts` / `modules/attendance.ts`'s
+`deviceRouter` for ZKTeco, `services/biostar.ts` for Suprema) rather than
+forced into one interface. Both funnel into the same
+`services/attendanceIngest.ts` core (`ingestPunches`, `computeCost`), so a
+worker's attendance record looks identical regardless of which vendor produced
+it.
+
+### ZKTeco / ADMS (push)
+
+A ZKTeco terminal is configured with this server's address and pushes its own
+protocol to `/iclock` (`GET /cdata` for handshake/config, `POST /cdata` for
+the attendance log upload — see `modules/iclock.ts`), authenticating by serial
+number. A custom bridge can instead `POST` JSON batches:
 
 ```
 POST /api/v1/attendance/device-sync
@@ -93,6 +122,46 @@ X-Device-Key: <per-device api key>
   `duplicate_day`) so the bridge can surface enrolment problems.
 - Re-sending a batch is safe (upsert on `externalId`) — supports offline
   devices that sync when connectivity returns.
+
+### Suprema / BioStar 2 (poll)
+
+A Suprema terminal (BioLite Net, BioEntry W, and others) doesn't push to a URL
+at all — it's designed to report into **BioStar 2**, Suprema's own access
+control server, running on the site LAN. There is no way for a BioLite Net to
+call this app directly without Suprema's proprietary device SDK (a much
+heavier integration than a documented REST API affords). So instead,
+`services/biostar.ts` logs into that BioStar 2 server's REST API and polls it:
+
+```
+POST {biostarBaseUrl}/api/login            -> bs-session-id header
+POST {biostarBaseUrl}/api/events/search    -> events since the stored cursor
+```
+
+- One `AttendanceDevice` row is one **BioStar 2 server**, not one physical
+  terminal — `biostarDeviceId` optionally narrows polling to a single terminal
+  when more than one reports to the same BioStar 2 instance.
+- A worker's `biometricId` is matched against the BioStar 2 **User ID**
+  (`user_id` on the event), the same convention as a ZKTeco PIN.
+- The cursor is the highest BioStar 2 event ID already ingested
+  (`biostarLastEventId`), not a timestamp — immune to clock drift between this
+  server and the BioStar 2 box.
+- The credentials needed are a BioStar 2 login, not a device-side secret — the
+  password is encrypted at rest (`services/crypto.ts`, AES-256-GCM,
+  `ENCRYPTION_KEY`) and never returned by the API after creation. A read-only
+  BioStar 2 operator account is recommended over sharing the admin login.
+- Polling runs every 2 minutes (`server.ts`); `POST /api/v1/devices/:id/sync`
+  triggers an immediate one-off pull, used by the Settings page's "Sync now".
+- **Event-type codes may need tuning per deployment.** `SUCCESS_EVENT_TYPES`
+  in `services/biostar.ts` defaults to BioStar 2's standard "Verify Success"
+  (4864) and "Identify Success" (4865) codes — the same two authentication
+  modes a BioLite Net supports (1:1 with a card/PIN, or fingerprint alone). If
+  events aren't showing up, check that BioStar 2 install's Monitoring > Event
+  log for the exact `event_type_id` a successful match logs, the same way
+  `iclock.ts` flags that ZKTeco firmware handshake details vary by model.
+- BioStar 2's cert is commonly self-signed on a LAN appliance;
+  `biostarInsecureTls` skips verification for that one device only (never a
+  process-wide setting — see the `undici` per-request dispatcher in
+  `services/biostar.ts`), and is off by default.
 
 ## Frontend UX
 

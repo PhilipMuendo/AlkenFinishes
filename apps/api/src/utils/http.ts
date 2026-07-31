@@ -24,6 +24,10 @@ export class ApiError extends Error {
   static conflict(msg = 'Conflict') {
     return new ApiError(409, msg);
   }
+  /** An upstream system (e.g. a BioStar 2 server) couldn't be reached or rejected us. */
+  static badGateway(msg = 'Upstream request failed') {
+    return new ApiError(502, msg);
+  }
 }
 
 export const asyncHandler =

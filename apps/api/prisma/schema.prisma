@@ -788,14 +788,38 @@ model WeeklyReport {
 }
 
 model AttendanceDevice {
-  id           String    @id @default(cuid())
+  id           String       @id @default(cuid())
   name         String
-  apiKeyHash   String    @unique
-  serialNumber String?   @unique // ZKTeco/ADMS push devices identify by serial number
-  active       Boolean   @default(true)
+  vendor       DeviceVendor @default(ZKTECO)
+  apiKeyHash   String       @unique // generated for every device; unused by SUPREMA (poll, not push)
+  serialNumber String?      @unique // ZKTeco/ADMS push devices identify by serial number
+  active       Boolean      @default(true)
   projectId    String? // when set, the device may only submit records for this site
   lastSyncAt   DateTime?
-  createdAt    DateTime  @default(now())
+  createdAt    DateTime     @default(now())
+
+  // Suprema BioLite Net (and other BioStar 2 terminals) don't push to a URL —
+  // they report into a BioStar 2 server on the LAN, which we poll over its
+  // REST API. One row here is one BioStar 2 endpoint; biostarDeviceId narrows
+  // it to a single physical terminal when more than one reports to the same
+  // BioStar 2 instance.
+  biostarBaseUrl     String? // e.g. https://192.168.1.50 (the BioStar 2 server, not the terminal)
+  biostarLoginId     String?
+  biostarPasswordEnc String? // AES-256-GCM, see services/crypto.ts — never returned by the API
+  biostarDeviceId    String?
+  // BioStar 2's self-issued TLS cert is normally self-signed on a LAN
+  // appliance. Off by default; turning it on is a real security tradeoff the
+  // admin makes knowingly, not a default.
+  biostarInsecureTls Boolean @default(false)
+  // Cursor: highest BioStar 2 event ID already ingested. An ID cursor survives
+  // clock drift between our server and theirs in a way a timestamp cursor
+  // would not.
+  biostarLastEventId String?
+}
+
+enum DeviceVendor {
+  ZKTECO
+  SUPREMA
 }
 
 // Punches a sync could not turn into attendance (unknown fingerprint, worker

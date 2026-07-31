@@ -40,11 +40,28 @@ npm run dev:web     # http://localhost:5173 (proxies /api)
 
 ## Attendance devices
 
-Register a device under **Settings → Fingerprint attendance devices** to get a
-one-time API key, then point the device (or its sync bridge) at
-`POST /api/v1/attendance/device-sync` with the `X-Device-Key` header. Batches
-are idempotent — offline devices can safely re-upload after reconnecting.
-Enroll each worker's device ID in **Workers → Biometric ID**.
+Two ways a fingerprint terminal gets attendance into the system, depending on
+what it speaks — register either under **Settings → Fingerprint attendance
+devices**.
+
+**ZKTeco / ADMS push terminals.** Registering one issues a one-time API key.
+Point the terminal's server address at this app; it pushes to `/iclock`
+automatically, or a custom bridge can `POST /api/v1/attendance/device-sync`
+with the `X-Device-Key` header. Batches are idempotent — offline devices can
+safely re-upload after reconnecting.
+
+**Suprema (BioLite Net, BioEntry W, and other BioStar 2 terminals).** These
+don't push to a URL — they report into a BioStar 2 server on the site LAN, and
+this app polls that server's REST API for new events every 2 minutes (or on
+demand via **Sync now**). Registering one needs the BioStar 2 server's own
+address and a login (a read-only BioStar 2 operator account is recommended
+over sharing the admin login) — see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#attendance-device-integration)
+for the full setup and the event-code caveat.
+
+Either way, enroll each worker's device-side ID (ZKTeco PIN, or the BioStar 2
+User ID) in **Workers → Biometric ID** — that's the field both integrations
+match punches against.
 
 ## Quality gates
 

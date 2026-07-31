@@ -9,6 +9,8 @@ import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { deviceSyncLimiter } from '../middleware/rateLimit';
 import { computeCost, recordIssue } from '../services/attendanceIngest';
+import { encrypt } from '../services/crypto';
+import { BiostarError, syncSupremaDevice } from '../services/biostar';
 
 /**
  * Attendance design:
@@ -409,69 +411,131 @@ router.post(
 export const adminDeviceRouter = Router();
 adminDeviceRouter.use(requireAuth, requireSuperadmin);
 
+// Never includes biostarPasswordEnc — that column exists to be decrypted for
+// login, never to be read back out over the API.
+const deviceSelect = {
+  id: true,
+  name: true,
+  vendor: true,
+  active: true,
+  projectId: true,
+  serialNumber: true,
+  lastSyncAt: true,
+  createdAt: true,
+  biostarBaseUrl: true,
+  biostarLoginId: true,
+  biostarDeviceId: true,
+  biostarInsecureTls: true,
+} as const;
+
 adminDeviceRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
     res.json(
-      await prisma.attendanceDevice.findMany({
-        select: {
-          id: true,
-          name: true,
-          active: true,
-          projectId: true,
-          serialNumber: true,
-          lastSyncAt: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      }),
+      await prisma.attendanceDevice.findMany({ select: deviceSelect, orderBy: { createdAt: 'desc' } }),
     );
   }),
 );
 
+const biostarFieldsSchema = z.object({
+  biostarBaseUrl: z.string().url().optional(),
+  biostarLoginId: z.string().trim().min(1).optional(),
+  biostarPassword: z.string().min(1).optional(), // plaintext in; encrypted before storage
+  biostarDeviceId: z.string().trim().min(1).optional(),
+  biostarInsecureTls: z.boolean().optional(),
+});
+
 adminDeviceRouter.post(
   '/',
   asyncHandler(async (req, res) => {
-    const { name, projectId, serialNumber } = z
+    const { name, projectId, serialNumber, vendor, ...biostar } = z
       .object({
         name: z.string().min(1),
         projectId: z.string().nullable().optional(),
+        vendor: z.enum(['ZKTECO', 'SUPREMA']).default('ZKTECO'),
         // ZKTeco/ADMS push devices identify by serial number.
         serialNumber: z.string().trim().min(1).optional(),
       })
+      .and(biostarFieldsSchema)
       .parse(req.body);
+
+    if (vendor === 'SUPREMA' && (!biostar.biostarBaseUrl || !biostar.biostarLoginId || !biostar.biostarPassword)) {
+      throw ApiError.badRequest('A Suprema device needs the BioStar 2 server address, login and password');
+    }
+
     const apiKey = crypto.randomBytes(32).toString('hex');
     const device = await prisma.attendanceDevice.create({
       data: {
         name,
+        vendor,
         projectId: projectId ?? null,
         serialNumber: serialNumber ?? null,
         apiKeyHash: crypto.createHash('sha256').update(apiKey).digest('hex'),
+        biostarBaseUrl: biostar.biostarBaseUrl,
+        biostarLoginId: biostar.biostarLoginId,
+        biostarPasswordEnc: biostar.biostarPassword ? encrypt(biostar.biostarPassword) : undefined,
+        biostarDeviceId: biostar.biostarDeviceId,
+        biostarInsecureTls: biostar.biostarInsecureTls ?? false,
       },
     });
-    audit(req, 'device.create', 'AttendanceDevice', device.id, { name, projectId, serialNumber });
-    // The plaintext key is returned exactly once.
-    res.status(201).json({ id: device.id, name: device.name, apiKey });
+    audit(req, 'device.create', 'AttendanceDevice', device.id, { name, vendor, projectId, serialNumber });
+    // The plaintext API key is returned exactly once — ZKTeco's bridge auth
+    // path only, unused by a Suprema device but harmless to hand back.
+    res.status(201).json({ id: device.id, name: device.name, vendor: device.vendor, apiKey });
   }),
 );
 
 adminDeviceRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const data = z
+    const { active, projectId, serialNumber, ...biostar } = z
       .object({
         active: z.boolean().optional(),
         projectId: z.string().nullable().optional(),
         serialNumber: z.string().trim().min(1).nullable().optional(),
       })
+      .and(biostarFieldsSchema)
       .parse(req.body);
     const device = await prisma.attendanceDevice.update({
       where: { id: req.params.id },
-      data,
-      select: { id: true, name: true, active: true, projectId: true, serialNumber: true },
+      data: {
+        active,
+        projectId,
+        serialNumber,
+        biostarBaseUrl: biostar.biostarBaseUrl,
+        biostarLoginId: biostar.biostarLoginId,
+        // Only overwritten when a new password is actually sent — omitting it
+        // on every routine edit (e.g. just re-binding the site) must not wipe
+        // stored credentials.
+        ...(biostar.biostarPassword && { biostarPasswordEnc: encrypt(biostar.biostarPassword) }),
+        biostarDeviceId: biostar.biostarDeviceId,
+        biostarInsecureTls: biostar.biostarInsecureTls,
+      },
+      select: deviceSelect,
     });
-    audit(req, 'device.update', 'AttendanceDevice', device.id, data);
+    audit(req, 'device.update', 'AttendanceDevice', device.id, { active, projectId, serialNumber });
     res.json(device);
+  }),
+);
+
+/** Manual, on-demand pull from BioStar 2 — the scheduled poll runs this same path automatically. */
+adminDeviceRouter.post(
+  '/:id/sync',
+  asyncHandler(async (req, res) => {
+    const device = await prisma.attendanceDevice.findUnique({ where: { id: req.params.id } });
+    if (!device) throw ApiError.notFound();
+    if (device.vendor !== 'SUPREMA') {
+      throw ApiError.badRequest('Only Suprema/BioStar 2 devices are synced this way — ZKTeco devices push on their own');
+    }
+    const summary = await syncSupremaDevice(device.id).catch((err) => {
+      if (err instanceof BiostarError) throw ApiError.badGateway(err.message);
+      throw err;
+    });
+    audit(req, 'device.sync', 'AttendanceDevice', device.id, {
+      received: summary.received,
+      accepted: summary.accepted,
+    });
+    res.json(summary);
   }),
 );
 

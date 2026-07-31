@@ -39,15 +39,27 @@ description, expenseDate`, optional `receipt` file); `DELETE .../expenses/:id` (
 (`photo`); `DELETE` (A). Project `progressPct` auto-recomputes.
 
 ## Attendance
+A supervisor cannot write an `AttendanceRecord` directly at all — only file a
+request; a superadmin's decision is what creates one.
+
 | Method | Path | Auth |
 |---|---|---|
-| POST | `/attendance/device-sync` | `X-Device-Key` header — idempotent batch upsert |
+| POST | `/attendance/device-sync` | `X-Device-Key` header — idempotent batch upsert (ZKTeco/bridge) |
+| GET | `/iclock/cdata`, `POST /iclock/cdata` | Device (SN-authenticated) — ZKTeco ADMS push |
 | GET | `/projects/:projectId/attendance?from&to` | P |
-| POST | `/projects/:projectId/attendance/manual-override` | P — flagged + audited |
-| POST | `/projects/:projectId/attendance/:id/checkout` | P |
+| POST | `/projects/:projectId/attendance/override-requests` | P — `{workerId, date, checkIn, checkOut?, reason, latitude?, longitude?}` |
+| GET | `/projects/:projectId/attendance/override-requests?status=` | P |
+| POST | `.../override-requests/:id/decision` | A — `{outcome: APPROVED\|REJECTED, reason?}`; APPROVED creates the record |
+| POST | `/projects/:projectId/attendance/:id/checkout` | A |
 
-Devices (A): `GET/POST /devices` (POST returns plaintext `apiKey` once),
-`PATCH /devices/:id` (`{active}`).
+Devices (A): `GET/POST /devices` (`{name, vendor: ZKTECO\|SUPREMA, ...}` —
+ZKTeco takes `serialNumber`; Suprema takes `biostarBaseUrl, biostarLoginId,
+biostarPassword, biostarDeviceId?, biostarInsecureTls?`; POST returns
+plaintext `apiKey` once, unused by Suprema), `PATCH /devices/:id` (`{active,
+projectId, ...same fields}` — `biostarPassword` only overwrites when sent),
+`POST /devices/:id/sync` (Suprema only — on-demand BioStar 2 pull; 502 if the
+BioStar 2 server rejects the login or is unreachable). `biostarPasswordEnc` is
+never returned by any of these.
 
 ## Stock (P)
 `GET/POST /projects/:projectId/stock` (`name, unit`);

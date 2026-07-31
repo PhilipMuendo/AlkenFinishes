@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Fingerprint, Plus, ScrollText } from 'lucide-react';
+import { AlertTriangle, Fingerprint, Plus, RefreshCw, ScrollText } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import type {
   AuditLogPage,
@@ -30,13 +30,20 @@ function humanizeAction(action: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+type DeviceVendor = 'ZKTECO' | 'SUPREMA';
+
 interface Device {
   id: string;
   name: string;
+  vendor: DeviceVendor;
   active: boolean;
   projectId: string | null;
   serialNumber: string | null;
   lastSyncAt: string | null;
+  biostarBaseUrl: string | null;
+  biostarLoginId: string | null;
+  biostarDeviceId: string | null;
+  biostarInsecureTls: boolean;
 }
 
 interface SyncIssue {
@@ -60,6 +67,7 @@ type LabourSource = 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
 export function SettingsPage() {
   const qc = useQueryClient();
   const [deviceOpen, setDeviceOpen] = useState(false);
+  const [deviceVendor, setDeviceVendor] = useState<DeviceVendor>('ZKTECO');
   const [newKey, setNewKey] = useState<string | null>(null);
   const [yellowPct, setYellowPct] = useState('80');
   const [redPct, setRedPct] = useState('100');
@@ -120,10 +128,10 @@ export function SettingsPage() {
   });
 
   const createDevice = useMutation({
-    mutationFn: (body: { name: string; serialNumber?: string; projectId?: string | null }) =>
-      api<{ apiKey: string }>('/devices', { body }),
+    mutationFn: (body: Record<string, unknown>) => api<{ apiKey: string; vendor: DeviceVendor }>('/devices', { body }),
     onSuccess: (data) => {
-      setNewKey(data.apiKey);
+      if (data.vendor === 'ZKTECO') setNewKey(data.apiKey);
+      else setDeviceOpen(false); // Suprema needs no key handoff screen
       void qc.invalidateQueries({ queryKey: ['devices'] });
     },
   });
@@ -131,6 +139,11 @@ export function SettingsPage() {
   const toggleDevice = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/devices/${id}`, { method: 'PATCH', body: { active } }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+  });
+
+  const syncDevice = useMutation({
+    mutationFn: (id: string) => api<{ received: number; accepted: number }>(`/devices/${id}/sync`, { body: {} }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
   });
 
@@ -254,11 +267,21 @@ export function SettingsPage() {
               <div className="flex items-center gap-3">
                 <Fingerprint size={18} className="text-brand-600" />
                 <div>
-                  <p className="text-sm font-medium text-fg">{d.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-fg">{d.name}</p>
+                    <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : 'slate'}>
+                      {d.vendor === 'SUPREMA' ? 'Suprema · BioStar 2' : 'ZKTeco'}
+                    </Badge>
+                  </div>
                   <p className="text-xs text-fg-subtle">
                     {d.serialNumber && (
                       <>
                         SN <span className="font-mono">{d.serialNumber}</span> ·{' '}
+                      </>
+                    )}
+                    {d.vendor === 'SUPREMA' && d.biostarBaseUrl && (
+                      <>
+                        <span className="font-mono">{d.biostarBaseUrl}</span> ·{' '}
                       </>
                     )}
                     Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}
@@ -266,6 +289,16 @@ export function SettingsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {d.vendor === 'SUPREMA' && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={syncDevice.isPending}
+                    onClick={() => syncDevice.mutate(d.id)}
+                  >
+                    <RefreshCw size={14} /> Sync now
+                  </Button>
+                )}
                 <Select
                   value={d.projectId ?? ''}
                   onChange={(e) =>
@@ -394,6 +427,8 @@ export function SettingsPage() {
         onClose={() => {
           setDeviceOpen(false);
           setNewKey(null);
+          setDeviceVendor('ZKTECO');
+          createDevice.reset();
         }}
         title="Register attendance device"
       >
@@ -431,23 +466,85 @@ export function SettingsPage() {
           </div>
         ) : (
           <form
+            key={String(deviceVendor)}
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               createDevice.mutate({
-                name: fd.get('name') as string,
+                name: fd.get('name'),
+                vendor: deviceVendor,
                 serialNumber: (fd.get('serialNumber') as string) || undefined,
                 projectId: (fd.get('projectId') as string) || null,
+                ...(deviceVendor === 'SUPREMA' && {
+                  biostarBaseUrl: fd.get('biostarBaseUrl'),
+                  biostarLoginId: fd.get('biostarLoginId'),
+                  biostarPassword: fd.get('biostarPassword'),
+                  biostarDeviceId: fd.get('biostarDeviceId') || undefined,
+                  biostarInsecureTls: fd.get('biostarInsecureTls') === 'on',
+                }),
               });
             }}
             className="space-y-3"
           >
+            <Field label="Terminal make">
+              <Select
+                value={deviceVendor}
+                onChange={(e) => setDeviceVendor(e.target.value as DeviceVendor)}
+              >
+                <option value="ZKTECO">ZKTeco / ADMS push terminal</option>
+                <option value="SUPREMA">Suprema (BioLite Net, via BioStar 2)</option>
+              </Select>
+            </Field>
             <Field label="Device name">
               <Input name="name" required placeholder="Karen site — gate terminal" />
             </Field>
-            <Field label="Serial number (ZKTeco / ADMS push devices)">
-              <Input name="serialNumber" placeholder="Printed on the device, e.g. ZK9988" />
-            </Field>
+
+            {deviceVendor === 'ZKTECO' ? (
+              <Field label="Serial number (printed on the device)">
+                <Input name="serialNumber" placeholder="e.g. ZK9988" />
+              </Field>
+            ) : (
+              <>
+                <p className="rounded-lg bg-brand-50 p-3 text-xs text-brand-800">
+                  A BioLite Net doesn&rsquo;t connect to this app directly — it reports into a
+                  BioStar 2 server on your network, and this app polls that server for new
+                  fingerprint events. Enter the BioStar 2 server&rsquo;s own login here (create a
+                  read-only operator account for it if you&rsquo;d rather not share the admin
+                  login).
+                </p>
+                <Field label="BioStar 2 server address">
+                  <Input
+                    name="biostarBaseUrl"
+                    type="url"
+                    required
+                    placeholder="https://192.168.1.50"
+                  />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Login ID">
+                    <Input name="biostarLoginId" required />
+                  </Field>
+                  <Field label="Password">
+                    <Input name="biostarPassword" type="password" required />
+                  </Field>
+                </div>
+                <Field label="Device ID (optional — narrows to one terminal)">
+                  <Input
+                    name="biostarDeviceId"
+                    placeholder="Leave blank to sync every terminal on this server"
+                  />
+                </Field>
+                <label className="flex items-center gap-2 text-xs text-fg-muted">
+                  <input
+                    type="checkbox"
+                    name="biostarInsecureTls"
+                    className="h-3.5 w-3.5 rounded border-hairline-strong accent-brand-600"
+                  />
+                  Skip certificate verification (self-signed BioStar 2 cert on your LAN)
+                </label>
+              </>
+            )}
+
             <Field label="Bind to site (optional)">
               <Select name="projectId" defaultValue="">
                 <option value="">Any site</option>
@@ -460,7 +557,9 @@ export function SettingsPage() {
             </Field>
             {createDevice.isError && (
               <p className="text-sm text-red-600">
-                Couldn&rsquo;t register — is that serial number already in use?
+                {createDevice.error instanceof ApiRequestError
+                  ? createDevice.error.message
+                  : "Couldn't register — is that serial number already in use?"}
               </p>
             )}
             <Button type="submit" className="w-full" disabled={createDevice.isPending}>

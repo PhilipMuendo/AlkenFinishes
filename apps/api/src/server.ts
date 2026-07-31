@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
+import { syncAllSupremaDevices } from './services/biostar';
 
 const app = createApp();
 
@@ -23,6 +24,13 @@ async function pruneRefreshTokens() {
 void pruneRefreshTokens();
 const pruneTimer = setInterval(() => void pruneRefreshTokens(), 24 * 3600_000);
 pruneTimer.unref();
+
+// Suprema/BioStar 2 terminals are polled, not pushed to — see services/biostar.ts.
+// Every 2 minutes keeps attendance close to real-time without hammering a
+// LAN appliance; a manual "Sync now" (POST /devices/:id/sync) covers anyone
+// who doesn't want to wait.
+const biostarTimer = setInterval(() => void syncAllSupremaDevices(), 2 * 60_000);
+biostarTimer.unref();
 
 async function shutdown(signal: string) {
   logger.info(`${signal} received, shutting down`);
