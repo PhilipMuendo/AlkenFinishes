@@ -8,6 +8,8 @@ import { errorHandler, notFoundHandler } from './middleware/error';
 import authRouter from './modules/auth';
 import usersRouter from './modules/users';
 import projectsRouter from './modules/projects';
+import clientsRouter from './modules/clients';
+import leadsRouter from './modules/leads';
 import expensesRouter from './modules/expenses';
 import paymentsRouter from './modules/payments';
 import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
@@ -42,6 +44,8 @@ export function createApp() {
   const v1 = express.Router();
   v1.use('/auth', authRouter);
   v1.use('/users', usersRouter);
+  v1.use('/clients', clientsRouter);
+  v1.use('/leads', leadsRouter);
   v1.use('/projects', projectsRouter);
   v1.use('/projects/:projectId/expenses', expensesRouter);
   v1.use('/projects/:projectId/payments', paymentsRouter);
