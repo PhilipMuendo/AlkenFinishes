@@ -63,14 +63,47 @@ export interface ExpenseSeriesRow {
   cumulative: number;
 }
 
+export type ExpenseCategory =
+  | 'MATERIALS'
+  | 'LABOUR'
+  | 'TRANSPORT'
+  | 'EQUIPMENT_HIRE'
+  | 'SUBCONTRACTOR'
+  | 'SITE_OVERHEADS'
+  | 'OTHER';
+export type ExpenseStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export interface Expense {
   id: string;
   category: BudgetCategory;
-  amount: string;
+  expenseCategory: ExpenseCategory;
+  amount: number;
   description: string;
   receiptUrl: string | null;
   expenseDate: string;
+  status: ExpenseStatus;
+  approvedBy: { id: string; name: string } | null;
+  approvedAt: string | null;
+  rejectReason: string | null;
   submittedBy: { id: string; name: string };
+  createdAt: string;
+}
+
+export type MaterialRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'FULFILLED';
+
+export interface MaterialRequest {
+  id: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  neededBy: string | null;
+  notes: string | null;
+  status: MaterialRequestStatus;
+  requestedBy: { id: string; name: string };
+  decidedBy: { id: string; name: string } | null;
+  decidedAt: string | null;
+  rejectReason: string | null;
+  fulfilledAt: string | null;
   createdAt: string;
 }
 

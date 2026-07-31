@@ -91,9 +91,13 @@ export async function projectFinancials(projectId: string, settings?: FinanceSet
   const [project, budgetLines, expenseAgg, labourAgg] = await Promise.all([
     prisma.project.findUniqueOrThrow({ where: { id: projectId } }),
     prisma.budgetLine.findMany({ where: { projectId } }),
+    // Only APPROVED expenses are actual spend. A PENDING claim is real money
+    // that left someone's hand on site, but it has not yet been accepted as
+    // a cost — counting it here would let an unreviewed claim move a budget
+    // into the red before anyone has looked at it.
     prisma.expense.groupBy({
       by: ['category'],
-      where: { projectId },
+      where: { projectId, status: 'APPROVED' },
       _sum: { amount: true },
     }),
     prisma.attendanceRecord.aggregate({

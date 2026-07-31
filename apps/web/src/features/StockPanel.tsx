@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
+import { MaterialRequestsPanel } from './MaterialRequestsPanel';
 
 export function StockPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
@@ -47,8 +48,11 @@ export function StockPanel({ projectId }: { projectId: string }) {
   });
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
+    <div className="space-y-6">
+      <MaterialRequestsPanel projectId={projectId} />
+
+      <div className="flex items-center justify-between border-t border-hairline pt-4">
+        <h3 className="text-sm font-semibold text-fg">Materials on hand</h3>
         <Button onClick={() => setAddOpen(true)}>
           <Plus size={16} /> New material
         </Button>

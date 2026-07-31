@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Plus, Receipt } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { BudgetCategory, Expense } from '@/lib/types';
+import type { Expense, ExpenseCategory, ExpenseStatus } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,7 +12,21 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 
-const CATEGORIES: BudgetCategory[] = ['MATERIALS', 'LABOUR', 'TRANSPORT', 'OTHER'];
+const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: 'MATERIALS', label: 'Materials' },
+  { value: 'LABOUR', label: 'Labour (cash payout)' },
+  { value: 'TRANSPORT', label: 'Transport' },
+  { value: 'EQUIPMENT_HIRE', label: 'Equipment hire' },
+  { value: 'SUBCONTRACTOR', label: 'Subcontractor' },
+  { value: 'SITE_OVERHEADS', label: 'Site overheads' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+const STATUS_TONE: Record<ExpenseStatus, 'yellow' | 'green' | 'red'> = {
+  PENDING: 'yellow',
+  APPROVED: 'green',
+  REJECTED: 'red',
+};
 
 export function ExpensesPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
@@ -20,19 +34,29 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   const canBrowse = user?.role === 'SUPERADMIN';
   const [open, setOpen] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [rejecting, setRejecting] = useState<Expense | null>(null);
 
   const { data: expenses } = useQuery({
     queryKey: ['expenses', projectId],
     queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses`),
     enabled: canBrowse,
   });
+  const { data: mine } = useQuery({
+    queryKey: ['expenses', projectId, 'mine'],
+    queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses/mine`),
+    enabled: !canBrowse,
+  });
+
+  const invalidate = () => {
+    void qc.invalidateQueries({ queryKey: ['expenses', projectId] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
+    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+  };
 
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/expenses`, { formData }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['expenses', projectId] });
-      void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
-      void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+      invalidate();
       setOpen(false);
       if (!canBrowse) {
         setJustSubmitted(true);
@@ -41,9 +65,24 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
     },
   });
 
-  // Supervisors can log a purchase (money leaves their hand on site and
-  // needs a receipt captured there) but don't get a ledger to browse —
-  // project spend history is office-only. Just a submit form + confirmation.
+  const approve = useMutation({
+    mutationFn: (id: string) => api(`/projects/${projectId}/expenses/${id}/approve`, { body: {} }),
+    onSuccess: invalidate,
+  });
+
+  const reject = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api(`/projects/${projectId}/expenses/${id}/reject`, { body: { reason } }),
+    onSuccess: () => {
+      invalidate();
+      setRejecting(null);
+    },
+  });
+
+  // Supervisors can log a purchase (money leaves their hand on site and needs
+  // a receipt captured there) but don't get the project's full ledger — that's
+  // office-only. They see their own claims and whether the office accepted
+  // them, so a rejection doesn't vanish without a trace.
   if (!canBrowse) {
     return (
       <div className="space-y-4">
@@ -53,21 +92,48 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
             Expense recorded and sent to the office.
           </div>
         )}
-        <Card>
-          <div className="flex flex-col items-center gap-3 p-8 text-center">
-            <Receipt size={28} className="text-fg-subtle" />
-            <div>
-              <p className="font-medium text-fg">Log a site purchase</p>
-              <p className="mt-1 max-w-xs text-sm text-fg-muted">
-                Record what you spent and attach a receipt. The office handles the project&rsquo;s
-                budget and spending history from here.
+        <div className="flex justify-end">
+          <Button onClick={() => setOpen(true)}>
+            <Plus size={16} /> Record expense
+          </Button>
+        </div>
+
+        {mine?.length === 0 ? (
+          <Card>
+            <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <Receipt size={28} className="text-fg-subtle" />
+              <p className="font-medium text-fg">No expenses logged yet</p>
+              <p className="max-w-xs text-sm text-fg-muted">
+                Record what you spent and attach a receipt. The office reviews it from here.
               </p>
             </div>
-            <Button size="lg" onClick={() => setOpen(true)}>
-              <Plus size={16} /> Record expense
-            </Button>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {mine?.map((e) => (
+              <Card key={e.id} className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-fg">{e.description}</p>
+                    <p className="text-xs text-fg-subtle">
+                      {fmtDate(e.expenseDate)} ·{' '}
+                      {CATEGORIES.find((c) => c.value === e.expenseCategory)?.label}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="font-semibold tabular-nums text-fg">{fmtMoney(e.amount)}</p>
+                    <Badge tone={STATUS_TONE[e.status]} className="mt-1 capitalize">
+                      {e.status.toLowerCase()}
+                    </Badge>
+                  </div>
+                </div>
+                {e.rejectReason && (
+                  <p className="mt-2 text-xs text-red-600">Declined: {e.rejectReason}</p>
+                )}
+              </Card>
+            ))}
           </div>
-        </Card>
+        )}
 
         <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
           <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
@@ -95,7 +161,9 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
               <Th>Description</Th>
               <Th className="text-right">Amount</Th>
               <Th>By</Th>
+              <Th>Status</Th>
               <Th>Receipt</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>
@@ -103,13 +171,17 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
               <tr key={e.id}>
                 <Td className="whitespace-nowrap">{fmtDate(e.expenseDate)}</Td>
                 <Td>
-                  <Badge>{e.category}</Badge>
+                  <Badge>{CATEGORIES.find((c) => c.value === e.expenseCategory)?.label ?? e.expenseCategory}</Badge>
                 </Td>
                 <Td>{e.description}</Td>
-                <Td className="text-right font-medium tabular-nums">
-                  {fmtMoney(Number(e.amount))}
-                </Td>
+                <Td className="text-right font-medium tabular-nums">{fmtMoney(e.amount)}</Td>
                 <Td>{e.submittedBy.name}</Td>
+                <Td>
+                  <Badge tone={STATUS_TONE[e.status]} className="capitalize">
+                    {e.status.toLowerCase()}
+                  </Badge>
+                  {e.rejectReason && <p className="mt-0.5 text-xs text-fg-subtle">{e.rejectReason}</p>}
+                </Td>
                 <Td>
                   {e.receiptUrl ? (
                     <a
@@ -124,6 +196,18 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                     <span className="text-fg-subtle">—</span>
                   )}
                 </Td>
+                <Td className="text-right">
+                  {e.status === 'PENDING' && (
+                    <div className="flex justify-end gap-1.5">
+                      <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate(e.id)}>
+                        Approve
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setRejecting(e)}>
+                        Reject
+                      </Button>
+                    </div>
+                  )}
+                </Td>
               </tr>
             ))}
           </tbody>
@@ -132,6 +216,32 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
         <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
+      </Dialog>
+
+      <Dialog open={!!rejecting} onClose={() => setRejecting(null)} title="Decline this claim">
+        <form
+          key={rejecting?.id ?? 'none'}
+          onSubmit={(e) => {
+            e.preventDefault();
+            reject.mutate({
+              id: rejecting!.id,
+              reason: String(new FormData(e.currentTarget).get('reason')),
+            });
+          }}
+          className="space-y-3"
+        >
+          <Field label="Why?">
+            <Textarea name="reason" required rows={2} autoFocus />
+          </Field>
+          {reject.isError && (
+            <p className="text-sm text-red-600">
+              {reject.error instanceof ApiRequestError ? reject.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" className="w-full" disabled={reject.isPending}>
+            Decline claim
+          </Button>
+        </form>
       </Dialog>
     </div>
   );
@@ -156,10 +266,10 @@ function ExpenseForm({
       className="space-y-3"
     >
       <Field label="Category">
-        <Select name="category" required>
+        <Select name="expenseCategory" required>
           {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c.charAt(0) + c.slice(1).toLowerCase()}
+            <option key={c.value} value={c.value}>
+              {c.label}
             </option>
           ))}
         </Select>

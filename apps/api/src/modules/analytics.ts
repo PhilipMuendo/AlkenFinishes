@@ -125,7 +125,11 @@ router.get(
           orderBy: { createdAt: 'asc' },
         }),
         prisma.budgetLine.findMany(),
-        prisma.expense.groupBy({ by: ['projectId', 'category'], _sum: { amount: true } }),
+        prisma.expense.groupBy({
+          by: ['projectId', 'category'],
+          where: { status: 'APPROVED' },
+          _sum: { amount: true },
+        }),
         prisma.attendanceRecord.groupBy({
           by: ['projectId'],
           where: { labourCost: { not: null } },
@@ -251,7 +255,11 @@ router.get(
           include: { supervisor: { select: { id: true, name: true } } },
         }),
         prisma.budgetLine.findMany(),
-        prisma.expense.groupBy({ by: ['projectId', 'category'], _sum: { amount: true } }),
+        prisma.expense.groupBy({
+          by: ['projectId', 'category'],
+          where: { status: 'APPROVED' },
+          _sum: { amount: true },
+        }),
         prisma.attendanceRecord.groupBy({
           by: ['projectId'],
           where: { labourCost: { not: null } },
