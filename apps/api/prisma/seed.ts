@@ -35,6 +35,46 @@ async function main() {
     create: { key: 'budgetThresholds', value: { yellowPct: 80, redPct: 100 } },
   });
 
+  // Invoice numbering and tax defaults. `update: {}` keeps this idempotent —
+  // once the owner edits these in Settings, re-seeding never overwrites them.
+  await prisma.setting.upsert({
+    where: { key: 'invoicing' },
+    update: {},
+    create: {
+      key: 'invoicing',
+      value: {
+        invoicePrefix: 'ALK',
+        receiptPrefix: 'RCT',
+        numberPadding: 6,
+        vatRatePct: 16, // Kenyan standard rate
+        defaultRetentionPct: 5,
+        defaultPaymentTermsDays: 30,
+        footerNote: '',
+      },
+    },
+  });
+
+  // Letterhead for generated invoices and receipts. Seeded empty on purpose:
+  // these are legal identifiers (registered name, KRA PIN, bank account) that
+  // must be entered by the owner, never guessed by a seed script.
+  await prisma.setting.upsert({
+    where: { key: 'companyProfile' },
+    update: {},
+    create: {
+      key: 'companyProfile',
+      value: {
+        name: 'Alken Decor',
+        addressLines: [],
+        phone: '',
+        email: '',
+        kraPin: '',
+        vatRegistered: true,
+        bank: { name: '', branch: '', accountName: '', accountNo: '', swift: '', mpesaPaybill: '' },
+        logoUrl: null,
+      },
+    },
+  });
+
   console.log(`Seeded superadmin ${email}`);
 }
 

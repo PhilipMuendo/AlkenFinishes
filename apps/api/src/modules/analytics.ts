@@ -6,6 +6,13 @@ import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { projectFinancials, getFinanceSettings, buildCategories, health } from '../services/finance';
+import {
+  companyReceivables,
+  daysOverdue,
+  invoiceBalanceCents,
+  LIVE_INVOICE_STATUSES,
+} from '../services/invoicing';
+import { toCents } from '../services/money';
 
 const router = Router();
 router.use(requireAuth);
@@ -128,7 +135,13 @@ router.get(
           where: { method: 'MANUAL_OVERRIDE', date: { gte: since30d } },
           _count: true,
         }),
-        prisma.payment.groupBy({ by: ['projectId'], _sum: { amount: true } }),
+        // voidedAt: null — a voided receipt is not money received. Omitting
+        // this filter silently overstates collections across the dashboard.
+        prisma.payment.groupBy({
+          by: ['projectId'],
+          where: { voidedAt: null },
+          _sum: { amount: true },
+        }),
         monthlyTotals(settings.labourCostSource),
       ]);
 
@@ -199,10 +212,17 @@ router.get(
       totals.totalBudget > 0 ? Math.round((totals.totalActual / totals.totalBudget) * 100) : null;
 
     const spendTrend = toSeries(months).map(({ month, total }) => ({ month, total }));
+    // Receivables answer a different question from pendingBalance: this is what
+    // has been *billed* and not yet paid, whereas pendingBalance is everything
+    // still owed on the contract including work not yet invoiced.
+    const receivables = await companyReceivables(perProject.map((p) => p.id));
     res.json({
       totals: {
         ...totals,
         totalPendingBalance: totals.contractValue - totals.totalCollected,
+        arOutstanding: receivables.totalAr,
+        arOverdue: receivables.totalOverdue,
+        retentionHeld: receivables.retentionHeld,
         overallHealth: health(overallPct, settings.thresholds),
       },
       projects: perProject,
@@ -236,7 +256,13 @@ router.get(
           where: { labourCost: { not: null } },
           _sum: { labourCost: true },
         }),
-        prisma.payment.groupBy({ by: ['projectId'], _sum: { amount: true } }),
+        // voidedAt: null — a voided receipt is not money received. Omitting
+        // this filter silently overstates collections across the dashboard.
+        prisma.payment.groupBy({
+          by: ['projectId'],
+          where: { voidedAt: null },
+          _sum: { amount: true },
+        }),
         prisma.dailyReport.groupBy({ by: ['projectId'], _max: { date: true } }),
         prisma.weeklyReport.groupBy({ by: ['projectId'], _max: { weekEnding: true } }),
       ]);
@@ -318,17 +344,53 @@ router.get(
       }
     }
 
+    // Overdue *invoices*, a different question from paymentOverdue above:
+    // that flags a whole site past its contractual balance date, this flags an
+    // individual issued invoice past its own due date. Both matter.
+    const projectNames = new Map(projects.map((p) => [p.id, p.name]));
+    const liveInvoices = await prisma.invoice.findMany({
+      where: {
+        status: { in: LIVE_INVOICE_STATUSES },
+        dueDate: { lt: new Date(now) },
+        projectId: { in: projects.map((p) => p.id) },
+      },
+      include: { payments: { where: { voidedAt: null }, select: { amount: true } } },
+      orderBy: { dueDate: 'asc' },
+    });
+    const invoiceOverdue = liveInvoices
+      .map((inv) => {
+        const paid = inv.payments.reduce((s, pm) => s + toCents(pm.amount), 0);
+        const balanceCents = invoiceBalanceCents(toCents(inv.netPayable), paid);
+        return {
+          id: inv.id,
+          projectId: inv.projectId,
+          name: projectNames.get(inv.projectId) ?? '',
+          invoiceNo: inv.invoiceNo,
+          clientName: inv.clientName,
+          balance: balanceCents / 100,
+          dueDate: inv.dueDate,
+          daysOverdue: daysOverdue(inv.dueDate, balanceCents, new Date(now)),
+        };
+      })
+      .filter((r) => r.balance > 0)
+      .sort((a, b) => b.daysOverdue - a.daysOverdue);
+
     paymentOverdue.sort((a: any, b: any) => b.daysOverdue - a.daysOverdue);
     finishingSoon.sort((a: any, b: any) => a.daysLeft - b.daysLeft);
 
     const totalFlags =
-      paymentOverdue.length + overBudget.length + unassigned.length + wentQuiet.length + finishingSoon.length;
+      paymentOverdue.length +
+      invoiceOverdue.length +
+      overBudget.length +
+      unassigned.length +
+      wentQuiet.length +
+      finishingSoon.length;
 
     res.json({
       activeCount,
       portfolioCount: projects.length,
       allClear: totalFlags === 0,
-      groups: { paymentOverdue, overBudget, unassigned, wentQuiet, finishingSoon },
+      groups: { invoiceOverdue, paymentOverdue, overBudget, unassigned, wentQuiet, finishingSoon },
     });
   }),
 );

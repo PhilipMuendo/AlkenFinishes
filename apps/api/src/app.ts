@@ -10,6 +10,7 @@ import usersRouter from './modules/users';
 import projectsRouter from './modules/projects';
 import expensesRouter from './modules/expenses';
 import paymentsRouter from './modules/payments';
+import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
 import tasksRouter from './modules/tasks';
 import workersRouter from './modules/workers';
 import toolsRouter from './modules/tools';
@@ -44,12 +45,14 @@ export function createApp() {
   v1.use('/projects', projectsRouter);
   v1.use('/projects/:projectId/expenses', expensesRouter);
   v1.use('/projects/:projectId/payments', paymentsRouter);
+  v1.use('/projects/:projectId/invoices', invoicesRouter);
   v1.use('/projects/:projectId/tasks', tasksRouter);
   v1.use('/projects/:projectId/attendance', attendanceRouter);
   v1.use('/projects/:projectId/stock', stockRouter);
   v1.use('/projects/:projectId/documents', documentsRouter);
   v1.use('/projects/:projectId/daily-reports', dailyReportsRouter);
   v1.use('/projects/:projectId/weekly-reports', weeklyReportsRouter);
+  v1.use('/invoices', companyInvoicesRouter); // cross-project A/R register
   v1.use('/reports', reportsRouter);
   v1.use('/workers', workersRouter);
   v1.use('/tools', toolsRouter);
