@@ -19,6 +19,7 @@ import { ReportsPanel } from '@/features/ReportsPanel';
 import { InvoicesPanel } from '@/features/InvoicesPanel';
 import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
+import { BusinessReportsPanel } from '@/features/BusinessReportsPanel';
 
 const TABS = [
   { id: 'financials', label: 'Financials' },
@@ -33,6 +34,7 @@ const TABS = [
   { id: 'reports', label: 'Daily reports' },
   { id: 'snags', label: 'Snag list' },
   { id: 'safety', label: 'Safety' },
+  { id: 'export', label: 'Export' },
 ];
 
 const STATUSES: ProjectStatus[] = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
@@ -152,6 +154,7 @@ export function ProjectDetailPage() {
       {tab === 'reports' && <ReportsPanel projectId={projectId} canSubmit={false} />}
       {tab === 'snags' && <SnagsPanel projectId={projectId} />}
       {tab === 'safety' && <SafetyPanel projectId={projectId} />}
+      {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}
     </div>
   );
 }

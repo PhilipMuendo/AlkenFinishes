@@ -17,6 +17,7 @@ import materialRequestsRouter from './modules/materialRequests';
 import snagsRouter from './modules/snags';
 import safetyRouter from './modules/safety';
 import calendarRouter from './modules/calendar';
+import businessReportsRouter from './modules/businessReports';
 import paymentsRouter from './modules/payments';
 import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
 import tasksRouter from './modules/tasks';
@@ -76,6 +77,7 @@ export function createApp() {
   v1.use('/analytics', analyticsRouter);
   v1.use('/settings', settingsRouter);
   v1.use('/calendar', calendarRouter);
+  v1.use('/projects/:projectId/business-reports', businessReportsRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);
