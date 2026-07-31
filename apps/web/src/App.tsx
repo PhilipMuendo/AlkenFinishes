@@ -17,6 +17,18 @@ const CompanyDashboard = lazy(() =>
 const ProjectsPage = lazy(() =>
   import('./pages/admin/Projects').then((m) => ({ default: m.ProjectsPage })),
 );
+const ClientsPage = lazy(() =>
+  import('./pages/admin/Clients').then((m) => ({ default: m.ClientsPage })),
+);
+const LeadsPage = lazy(() =>
+  import('./pages/admin/Leads').then((m) => ({ default: m.LeadsPage })),
+);
+const QuotationsPage = lazy(() =>
+  import('./pages/admin/Quotations').then((m) => ({ default: m.QuotationsPage })),
+);
+const ContractsPage = lazy(() =>
+  import('./pages/admin/Contracts').then((m) => ({ default: m.ContractsPage })),
+);
 const ProjectDetailPage = lazy(() =>
   import('./pages/admin/ProjectDetail').then((m) => ({ default: m.ProjectDetailPage })),
 );
@@ -68,6 +80,10 @@ export default function App() {
         <Routes>
           <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<CompanyDashboard />} />
+            <Route path="clients" element={<ClientsPage />} />
+            <Route path="leads" element={<LeadsPage />} />
+            <Route path="quotations" element={<QuotationsPage />} />
+            <Route path="contracts" element={<ContractsPage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:projectId" element={<ProjectDetailPage />} />
             <Route path="workers" element={<WorkersPage />} />

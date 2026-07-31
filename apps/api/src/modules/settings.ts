@@ -9,6 +9,7 @@ import { audit } from '../middleware/audit';
 import { getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { peekNextNumber } from '../services/numbering';
+import { getPipelineConfig } from '../services/pipeline';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 import { ApiError } from '../utils/http';
 
@@ -194,6 +195,69 @@ router.put(
     }
     audit(req, 'settings.invoicing', 'Setting', 'invoicing', { startNumber });
     res.json(value);
+  }),
+);
+
+const pipelineSchema = z.object({
+  quotationPrefix: z.string().min(1).max(8),
+  contractPrefix: z.string().min(1).max(8),
+  projectPrefix: z.string().min(1).max(8),
+  quotationValidityDays: z.coerce.number().int().min(1).max(365),
+  quotationTermsText: z.string().default(''),
+  contractTermsText: z.string().default(''),
+});
+
+router.get(
+  '/pipeline',
+  asyncHandler(async (_req, res) => {
+    const config = await getPipelineConfig();
+    const invoicing = await getInvoicingConfig();
+    const year = new Date().getFullYear();
+    const [nextQuotationNo, nextContractNo, nextProjectCode] = await Promise.all([
+      peekNextNumber(prisma, 'QUOTATION', {
+        prefix: config.quotationPrefix,
+        year,
+        pad: invoicing.numberPadding,
+      }),
+      peekNextNumber(prisma, 'CONTRACT', {
+        prefix: config.contractPrefix,
+        year,
+        pad: invoicing.numberPadding,
+      }),
+      peekNextNumber(prisma, 'PROJECT', { prefix: config.projectPrefix, year, pad: 4 }),
+    ]);
+    res.json({ ...config, nextQuotationNo, nextContractNo, nextProjectCode });
+  }),
+);
+
+router.put(
+  '/pipeline',
+  asyncHandler(async (req, res) => {
+    const value = pipelineSchema.parse(req.body);
+    await prisma.setting.upsert({
+      where: { key: 'pipeline' },
+      create: { key: 'pipeline', value },
+      update: { value },
+    });
+    audit(req, 'settings.pipeline', 'Setting', 'pipeline');
+    res.json(value);
+  }),
+);
+
+/**
+ * What a new quotation should start with. Its own endpoint because the editor
+ * needs one call, not three — the VAT rate lives in the invoicing settings and
+ * the validity and terms live in the pipeline settings.
+ */
+router.get(
+  '/quotation-defaults',
+  asyncHandler(async (_req, res) => {
+    const [invoicing, pipeline] = await Promise.all([getInvoicingConfig(), getPipelineConfig()]);
+    res.json({
+      vatRatePct: invoicing.vatRatePct,
+      validityDays: pipeline.quotationValidityDays,
+      termsText: pipeline.quotationTermsText,
+    });
   }),
 );
 

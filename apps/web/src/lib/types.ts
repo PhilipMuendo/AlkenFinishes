@@ -460,3 +460,163 @@ export interface AuditLogPage {
   page: number;
   hasMore: boolean;
 }
+
+// ---- Pre-project pipeline: Lead -> Quotation -> Contract -> Project ----
+
+export type LeadStage = 'NEW' | 'CONTACTED' | 'SITE_VISIT' | 'QUOTED' | 'WON' | 'LOST';
+export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
+export type ContractStatus =
+  | 'DRAFT'
+  | 'ISSUED'
+  | 'SIGNED'
+  | 'ACTIVE'
+  | 'COMPLETED'
+  | 'TERMINATED';
+export type VariationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface Client {
+  id: string;
+  name: string;
+  contactPerson: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  kraPin: string | null;
+  notes: string | null;
+  createdAt: string;
+  _count: { leads: number; quotations: number; contracts: number; projects: number };
+  totalContractValue: number;
+}
+
+export interface Lead {
+  id: string;
+  clientId: string;
+  client: { id: string; name: string; phone: string | null; email: string | null };
+  title: string;
+  description: string | null;
+  estimatedValue: number | null;
+  stage: LeadStage;
+  source: string | null;
+  expectedCloseDate: string | null;
+  lostReason: string | null;
+  owner: { id: string; name: string } | null;
+  createdAt: string;
+  quotations: { id: string; quotationNo: string | null; status: QuotationStatus; total: number }[];
+}
+
+export interface LeadPipeline {
+  open: number;
+  openValue: number;
+  byStage: Record<string, { count: number; value: number }>;
+}
+
+export interface QuotationLine {
+  id: string;
+  sortOrder: number;
+  description: string;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  lineTotal: number;
+  taxable: boolean;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNo: string | null;
+  clientId: string;
+  client: { id: string; name: string; phone: string | null; email: string | null };
+  leadId: string | null;
+  lead: { id: string; title: string; stage: LeadStage } | null;
+  title: string;
+  status: QuotationStatus;
+  issueDate: string;
+  validUntil: string;
+  clientNameSnapshot: string;
+  vatRatePct: number;
+  subtotal: number;
+  vatAmount: number;
+  total: number;
+  termsText: string | null;
+  notes: string | null;
+  pdfUrl: string | null;
+  sentAt: string | null;
+  decidedAt: string | null;
+  rejectReason: string | null;
+  preparedBy: { id: string; name: string };
+  lines: QuotationLine[];
+  contract: { id: string; contractNo: string | null; status: ContractStatus } | null;
+  /** Derived on read: SENT and past its validity date. */
+  expired: boolean;
+}
+
+export interface Variation {
+  id: string;
+  reference: string;
+  description: string;
+  amount: number;
+  status: VariationStatus;
+  requestedDate: string;
+  approvedDate: string | null;
+  approvedBy: { id: string; name: string } | null;
+  rejectReason: string | null;
+  documentUrl: string | null;
+}
+
+/**
+ * All ex-VAT except grossValue — matching the contract itself, where the
+ * Contract Sum is stated exclusive of VAT and retention is calculated on it.
+ */
+export interface ContractPosition {
+  originalValue: number;
+  approvedVariations: number;
+  pendingVariations: number;
+  currentValue: number;
+  vatRatePct: number;
+  vatAmount: number;
+  grossValue: number;
+  retentionPct: number;
+  retentionAmount: number;
+  defectsLiabilityMonths: number;
+  defectsLiabilityEnds: string | null;
+}
+
+export interface Contract {
+  id: string;
+  contractNo: string | null;
+  clientId: string;
+  client: Client;
+  quotationId: string | null;
+  quotation: {
+    id: string;
+    quotationNo: string | null;
+    title: string;
+    issueDate: string;
+    total: number;
+  } | null;
+  projectId: string | null;
+  project: {
+    id: string;
+    code: string | null;
+    name: string;
+    status: ProjectStatus;
+    progressPct: number;
+  } | null;
+  title: string;
+  status: ContractStatus;
+  originalValue: number;
+  vatRatePct: number;
+  retentionPct: number;
+  defectsLiabilityMonths: number;
+  startDate: string;
+  expectedCompletion: string;
+  signedDate: string | null;
+  practicalCompletionDate: string | null;
+  generatedPdfUrl: string | null;
+  signedPdfUrl: string | null;
+  boqUrl: string | null;
+  specsUrl: string | null;
+  notes: string | null;
+  variations: Variation[];
+  position: ContractPosition;
+}

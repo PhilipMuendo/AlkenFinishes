@@ -2,28 +2,48 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   BarChart3,
   Building2,
+  ClipboardList,
+  Contact,
+  FileSignature,
   FileText,
-  ReceiptText,
   HardHat,
   LogOut,
   Menu,
+  ReceiptText,
   Settings,
+  Target,
   Users,
   Wrench,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Wordmark } from '@/components/Wordmark';
 
-const nav = [
+/**
+ * Grouped in the order work actually moves through the business: win it, agree
+ * it, run it, get paid for it. Without the headings this is thirteen
+ * undifferentiated links, which is where a sidebar stops being navigable.
+ */
+type NavEntry = { heading: string } | { to: string; label: string; icon: LucideIcon; end?: boolean };
+
+const nav: NavEntry[] = [
   { to: '/admin', label: 'Overview', icon: BarChart3, end: true },
+  { heading: 'Winning work' },
+  { to: '/admin/clients', label: 'Clients', icon: Contact },
+  { to: '/admin/leads', label: 'Leads', icon: Target },
+  { to: '/admin/quotations', label: 'Quotations', icon: FileText },
+  { to: '/admin/contracts', label: 'Contracts', icon: FileSignature },
+  { heading: 'On site' },
   { to: '/admin/projects', label: 'Projects', icon: Building2 },
   { to: '/admin/workers', label: 'Workers', icon: HardHat },
   { to: '/admin/tools', label: 'Tools', icon: Wrench },
+  { to: '/admin/reports', label: 'Reports', icon: ClipboardList },
+  { heading: 'Money' },
   { to: '/admin/invoices', label: 'Receivables', icon: ReceiptText },
-  { to: '/admin/reports', label: 'Reports', icon: FileText },
+  { heading: 'Admin' },
   { to: '/admin/users', label: 'Team', icon: Users },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];
@@ -36,36 +56,48 @@ function initials(name?: string) {
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav className="flex flex-1 flex-col gap-0.5 px-3 py-3">
-      {nav.map(({ to, label, icon: Icon, end }) => (
-        <NavLink
-          key={to}
-          to={to}
-          end={end}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            cn(
-              'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-              isActive
-                ? 'bg-brand-50 text-brand-700'
-                : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
-            )
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <Icon
-                size={18}
-                className={cn(
-                  'shrink-0',
-                  isActive ? 'text-brand-600' : 'text-fg-subtle group-hover:text-fg-muted',
-                )}
-              />
-              {label}
-            </>
-          )}
-        </NavLink>
-      ))}
+    <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
+      {nav.map((item, i) =>
+        'heading' in item ? (
+          <p
+            key={item.heading}
+            className={cn(
+              'px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-fg-subtle',
+              i === 0 ? 'pt-1' : 'pt-4',
+            )}
+          >
+            {item.heading}
+          </p>
+        ) : (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.end}
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              cn(
+                'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-brand-50 text-brand-700'
+                  : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
+              )
+            }
+          >
+            {({ isActive }) => (
+              <>
+                <item.icon
+                  size={18}
+                  className={cn(
+                    'shrink-0',
+                    isActive ? 'text-brand-600' : 'text-fg-subtle group-hover:text-fg-muted',
+                  )}
+                />
+                {item.label}
+              </>
+            )}
+          </NavLink>
+        ),
+      )}
     </nav>
   );
 }
