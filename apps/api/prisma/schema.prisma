@@ -353,6 +353,10 @@ model Expense {
   @@index([projectId, expenseDate])
   @@index([projectId, category])
   @@index([projectId, status])
+  // Company-wide "what's pending" digests (analytics.ts) filter by status
+  // alone, across every project — the (projectId, status) index above can't
+  // serve that without a leading projectId, so it needs its own.
+  @@index([status])
 }
 
 // Material requests: a supervisor asks for stock, the office decides, and once
@@ -381,6 +385,7 @@ model MaterialRequest {
   createdAt     DateTime @default(now())
 
   @@index([projectId, status])
+  @@index([status]) // company-wide pending digest — see Expense's index comment
 }
 
 // Exactly one DEPOSIT payment per project is expected; this is enforced in
@@ -636,6 +641,7 @@ model AttendanceOverrideRequest {
   createdAt DateTime @default(now())
 
   @@index([projectId, status])
+  @@index([status]) // company-wide pending digest — see Expense's index comment
 }
 
 model StockItem {
