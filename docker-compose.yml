@@ -1,3 +1,13 @@
+# Docker's default json-file log driver has NO size cap — pino-http logs every
+# request, and with nothing bounding it, container logs grow forever until
+# the VPS disk fills. This is a classic silent-storage-killer on a long-running
+# box; capped here rather than left to be discovered as an outage.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
 services:
   db:
     image: postgres:16-alpine
@@ -13,6 +23,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    logging: *default-logging
 
   api:
     build:
@@ -40,6 +51,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    logging: *default-logging
 
   web:
     build:
@@ -51,6 +63,7 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    logging: *default-logging
 
 volumes:
   pgdata:
