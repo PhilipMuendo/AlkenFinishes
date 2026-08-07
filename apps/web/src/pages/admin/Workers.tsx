@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
-import { Badge } from '@/components/ui/badge';
+import { Badge, StatusBadge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { HardHat } from 'lucide-react';
@@ -169,7 +169,7 @@ export function WorkersPage() {
                   )}
                 </Td>
                 <Td>
-                  <Badge tone={w.status === 'ACTIVE' ? 'green' : 'slate'}>{w.status}</Badge>
+                  <StatusBadge status={w.status} />
                 </Td>
                 <Td className="text-right">
                   <div className="flex justify-end gap-1.5">

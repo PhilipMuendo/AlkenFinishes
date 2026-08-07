@@ -378,7 +378,7 @@ function LeadCard({
     !settled && lead.expectedCloseDate && new Date(lead.expectedCloseDate) < new Date();
 
   return (
-    <article className="rounded-lg border border-hairline bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <article className="rounded-lg border border-hairline bg-surface p-3 shadow-xs">
       <button onClick={onEdit} className="block w-full text-left">
         <p className="text-sm font-medium leading-snug text-fg">{lead.title}</p>
         <p className="mt-0.5 text-xs text-fg-subtle">{lead.client.name}</p>
