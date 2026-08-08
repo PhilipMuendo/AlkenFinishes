@@ -123,11 +123,17 @@ enum SafetyIncidentSeverity {
   SERIOUS
 }
 
+// Only the types someone actually books. Deadlines, payroll, service dates,
+// birthdays, retention and warranty expiry are NOT here on purpose: they are
+// derived from records that already exist (see services/calendarFeeds.ts), and
+// storing a copy would let the two disagree the moment the source moves.
 enum CalendarEventType {
   MILESTONE
   INSPECTION
   DELIVERY
   MEETING
+  SITE_VISIT
+  CLIENT_APPOINTMENT
   OTHER
 }
 

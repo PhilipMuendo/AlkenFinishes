@@ -28,6 +28,7 @@ import { ToolsReadOnlyPanel } from '@/features/ToolsReadOnlyPanel';
 import { WorkersPanel } from '@/features/WorkersPanel';
 import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
+import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
@@ -115,6 +116,11 @@ export function SiteDetailPage() {
         </div>
         {!view && <p className="mt-0.5 text-sm text-fg-muted">{project.location}</p>}
       </div>
+
+      {/* The same control room the office sees, minus the money — the server
+          omits the financial sections for a supervisor, so nothing is being
+          hidden client-side here. */}
+      {!view && <CommandCentrePanel projectId={projectId} linked={false} />}
 
       {!view && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

@@ -2,7 +2,12 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, Trash2 } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
-import type { CalendarEvent, CalendarEventType, Project } from '@/lib/types';
+import type {
+  AnyCalendarEventType,
+  CalendarEvent,
+  CalendarEventType,
+  Project,
+} from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,19 +17,43 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 
-const TYPE_LABEL: Record<CalendarEventType, string> = {
+/** Only these can be created — the rest are computed from other records. */
+const BOOKABLE_TYPE_LABEL: Record<CalendarEventType, string> = {
   MILESTONE: 'Milestone',
   INSPECTION: 'Inspection',
   DELIVERY: 'Delivery',
   MEETING: 'Meeting',
+  SITE_VISIT: 'Site visit',
+  CLIENT_APPOINTMENT: 'Client appointment',
   OTHER: 'Other',
 };
-const TYPE_TONE: Record<CalendarEventType, 'blue' | 'yellow' | 'green' | 'slate'> = {
+
+const TYPE_LABEL: Record<AnyCalendarEventType, string> = {
+  ...BOOKABLE_TYPE_LABEL,
+  PROJECT_DEADLINE: 'Deadline',
+  PAYROLL: 'Payroll',
+  EQUIPMENT_SERVICE: 'Service due',
+  BIRTHDAY: 'Birthday',
+  RETENTION_DUE: 'Retention due',
+  WARRANTY_EXPIRY: 'Warranty ends',
+};
+
+type Tone = 'blue' | 'yellow' | 'green' | 'slate' | 'red';
+const TYPE_TONE: Record<AnyCalendarEventType, Tone> = {
   MILESTONE: 'blue',
   INSPECTION: 'yellow',
   DELIVERY: 'green',
   MEETING: 'slate',
+  SITE_VISIT: 'blue',
+  CLIENT_APPOINTMENT: 'blue',
   OTHER: 'slate',
+  // Dates with money or a deadline behind them read louder than a meeting.
+  PROJECT_DEADLINE: 'red',
+  RETENTION_DUE: 'green',
+  WARRANTY_EXPIRY: 'yellow',
+  EQUIPMENT_SERVICE: 'yellow',
+  PAYROLL: 'green',
+  BIRTHDAY: 'slate',
 };
 
 function startOfToday(): string {
@@ -128,17 +157,26 @@ export function CalendarPage() {
                       <p className="truncate font-medium text-fg">{e.title}</p>
                     </div>
                     <p className="mt-0.5 text-xs text-fg-subtle">
-                      {e.project ? e.project.name : 'Company-wide'} · added by {e.createdBy.name}
+                      {e.project ? e.project.name : 'Company-wide'}
+                      {e.derived
+                        ? ' · from the record itself'
+                        : e.createdBy
+                          ? ` · added by ${e.createdBy.name}`
+                          : ''}
                     </p>
                     {e.notes && <p className="mt-1 text-sm text-fg-muted">{e.notes}</p>}
                   </div>
-                  <button
-                    onClick={() => remove.mutate(e.id)}
-                    aria-label={`Delete ${e.title}`}
-                    className="shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {/* A derived entry has no row to delete. The way to move a
+                      deadline is to move the deadline. */}
+                  {!e.derived && (
+                    <button
+                      onClick={() => remove.mutate(e.id)}
+                      aria-label={`Delete ${e.title}`}
+                      className="shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </Card>
               ))}
             </div>
@@ -168,9 +206,9 @@ export function CalendarPage() {
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type">
               <Select name="type" defaultValue="OTHER">
-                {(Object.keys(TYPE_LABEL) as CalendarEventType[]).map((t) => (
+                {(Object.keys(BOOKABLE_TYPE_LABEL) as CalendarEventType[]).map((t) => (
                   <option key={t} value={t}>
-                    {TYPE_LABEL[t]}
+                    {BOOKABLE_TYPE_LABEL[t]}
                   </option>
                 ))}
               </Select>

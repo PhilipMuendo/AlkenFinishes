@@ -1,10 +1,10 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { AppUser, Project, ProjectStatus } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { Tabs } from '@/components/ui/tabs';
 import { Select } from '@/components/ui/input';
 import { FinancialsPanel } from '@/features/FinancialsPanel';
@@ -22,22 +22,59 @@ import { SafetyPanel } from '@/features/SafetyPanel';
 import { BusinessReportsPanel } from '@/features/BusinessReportsPanel';
 import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 
-const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'financials', label: 'Financials' },
-  { id: 'invoices', label: 'Invoices' },
-  { id: 'payments', label: 'Payments' },
-  { id: 'budget', label: 'Budget' },
-  { id: 'tasks', label: 'Tasks' },
-  { id: 'expenses', label: 'Expenses' },
-  { id: 'attendance', label: 'Attendance' },
-  { id: 'stock', label: 'Stock' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'reports', label: 'Daily reports' },
-  { id: 'snags', label: 'Snag list' },
-  { id: 'safety', label: 'Safety' },
-  { id: 'export', label: 'Export' },
-];
+/**
+ * Fourteen flat tabs overflowed the bar and made everything equally important.
+ * Grouping them puts the Command Centre first and lets the rest sort into the
+ * four questions actually asked of a site: what is happening on it, is the work
+ * any good, where is the money, and what is on it.
+ *
+ * The tab ids are unchanged, so every existing deep link still resolves.
+ */
+const GROUPS = [
+  { id: 'command', label: 'Command Centre', tabs: [{ id: 'overview', label: 'Command Centre' }] },
+  {
+    id: 'site',
+    label: 'Site',
+    tabs: [
+      { id: 'tasks', label: 'Tasks & programme' },
+      { id: 'reports', label: 'Daily reports' },
+      { id: 'attendance', label: 'Attendance' },
+      { id: 'documents', label: 'Photos & documents' },
+    ],
+  },
+  {
+    id: 'quality',
+    label: 'Quality & safety',
+    tabs: [
+      { id: 'snags', label: 'Snag list' },
+      { id: 'safety', label: 'Safety' },
+    ],
+  },
+  {
+    id: 'money',
+    label: 'Money',
+    tabs: [
+      { id: 'financials', label: 'Financials' },
+      { id: 'budget', label: 'Budget' },
+      { id: 'invoices', label: 'Invoices' },
+      { id: 'payments', label: 'Payments' },
+      { id: 'expenses', label: 'Expenses' },
+    ],
+  },
+  {
+    id: 'resources',
+    label: 'Resources',
+    tabs: [
+      { id: 'stock', label: 'Stock' },
+      { id: 'export', label: 'Export' },
+    ],
+  },
+] as const;
+
+const TAB_TO_GROUP: Map<string, string> = new Map(
+  GROUPS.flatMap((g) => g.tabs.map((t) => [t.id as string, g.id as string])),
+);
+const VALID_TABS = new Set<string>(TAB_TO_GROUP.keys());
 
 const STATUSES: ProjectStatus[] = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
 const STATUS_LABEL: Record<ProjectStatus, string> = {
@@ -51,7 +88,24 @@ const STATUS_LABEL: Record<ProjectStatus, string> = {
 export function ProjectDetailPage() {
   const { projectId = '' } = useParams();
   const qc = useQueryClient();
-  const [tab, setTab] = useState('overview');
+  // The tab lives in the URL so a Command Centre card can link straight to the
+  // tab that owns its data, and so a tab is shareable and survives a reload.
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab') ?? 'overview';
+  const tab = VALID_TABS.has(requested) ? requested : 'overview';
+  const activeGroup = TAB_TO_GROUP.get(tab) ?? 'command';
+
+  const setTab = (id: string) => {
+    const next = new URLSearchParams(params);
+    if (id === 'overview') next.delete('tab');
+    else next.set('tab', id);
+    setParams(next, { replace: true });
+  };
+
+  const selectGroup = (groupId: string) => {
+    const group = GROUPS.find((g) => g.id === groupId);
+    if (group) setTab(group.tabs[0].id);
+  };
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
@@ -80,6 +134,8 @@ export function ProjectDetailPage() {
     mutationFn: (supervisorId: string | null) => patchProject({ supervisorId }),
     onSuccess: onProjectChange,
   });
+
+  const currentGroup = GROUPS.find((g) => g.id === activeGroup) ?? GROUPS[0];
 
   if (!project) return <p className="text-sm text-fg-muted">Loading project…</p>;
 
@@ -142,7 +198,34 @@ export function ProjectDetailPage() {
         </p>
       </div>
 
-      <Tabs tabs={TABS} active={tab} onChange={setTab} />
+      <div className="space-y-2">
+        <Tabs
+          tabs={GROUPS.map((g) => ({ id: g.id, label: g.label }))}
+          active={activeGroup}
+          onChange={selectGroup}
+        />
+        {/* A single-tab group is its own heading — a second row repeating it
+            would be noise. */}
+        {currentGroup.tabs.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {currentGroup.tabs.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                aria-current={tab === t.id ? 'page' : undefined}
+                className={cn(
+                  'rounded-lg px-2.5 py-1 text-sm font-medium transition-colors',
+                  tab === t.id
+                    ? 'bg-brand-50 text-brand-700'
+                    : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {tab === 'overview' && <CommandCentrePanel projectId={projectId} />}
       {tab === 'financials' && <FinancialsPanel projectId={projectId} />}

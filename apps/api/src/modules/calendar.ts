@@ -5,6 +5,7 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { projectScope, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
+import { derivedEvents } from '../services/calendarFeeds';
 
 /**
  * Company-wide calendar: milestones, inspections, deliveries, meetings.
@@ -17,7 +18,22 @@ import { audit } from '../middleware/audit';
 const router = Router();
 router.use(requireAuth);
 
-const EVENT_TYPES = ['MILESTONE', 'INSPECTION', 'DELIVERY', 'MEETING', 'OTHER'] as const;
+const EVENT_TYPES = [
+  'MILESTONE',
+  'INSPECTION',
+  'DELIVERY',
+  'MEETING',
+  'SITE_VISIT',
+  'CLIENT_APPOINTMENT',
+  'OTHER',
+] as const;
+
+/**
+ * How far a request with no dates looks. Derived feeds are generated per day
+ * over the range, so an unbounded window is not merely slow — it is unbounded.
+ */
+const DEFAULT_WINDOW_DAYS = 90;
+const DAY = 86_400_000;
 
 const eventSchema = z.object({
   projectId: z.string().nullable().optional(),
@@ -54,19 +70,39 @@ router.get(
           ? {}
           : { OR: [{ project: projectScope(req.user!) }, { projectId: null }] };
 
-    const events = await prisma.calendarEvent.findMany({
-      where: {
-        ...projectFilter,
-        date: {
-          ...(from && { gte: from }),
-          ...(to && { lte: to }),
+    // Derived events are computed across the window rather than stored, so the
+    // window has to be finite even when the caller does not say so.
+    const rangeFrom = from ?? new Date();
+    const rangeTo = to ?? new Date(rangeFrom.getTime() + DEFAULT_WINDOW_DAYS * DAY);
+
+    const isSuperadmin = req.user!.role === 'SUPERADMIN';
+    const [stored, derived] = await Promise.all([
+      prisma.calendarEvent.findMany({
+        where: {
+          ...projectFilter,
+          date: { gte: rangeFrom, lte: rangeTo },
         },
-      },
-      include,
-      orderBy: { date: 'asc' },
-      take: 500,
-    });
-    res.json(events);
+        include,
+        orderBy: { date: 'asc' },
+        take: 500,
+      }),
+      derivedEvents({
+        from: rangeFrom,
+        to: rangeTo,
+        projectFilter: isSuperadmin ? null : projectScope(req.user!),
+        projectId,
+        // Payroll and birthdays are company-wide facts; a supervisor has no
+        // use for them and no business seeing the roster's dates of birth.
+        includeCompanyWide: isSuperadmin && projectId == null,
+      }),
+    ]);
+
+    const merged = [
+      ...stored.map((e) => ({ ...e, derived: false as const })),
+      ...derived,
+    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    res.json(merged);
   }),
 );
 
@@ -88,6 +124,14 @@ router.delete(
   '/:id',
   requireSuperadmin,
   asyncHandler(async (req, res) => {
+    // Derived ids carry a "kind:sourceId" shape and have no row behind them.
+    // A bare 404 would read as a bug; the real answer is that the way to move
+    // a deadline is to move the deadline.
+    if (req.params.id.includes(':')) {
+      throw ApiError.badRequest(
+        'This entry is generated from a project, contract, tool or worker record — change that record instead',
+      );
+    }
     const event = await prisma.calendarEvent.findUnique({ where: { id: req.params.id } });
     if (!event) throw ApiError.notFound();
     await prisma.calendarEvent.delete({ where: { id: event.id } });

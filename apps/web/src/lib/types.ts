@@ -754,26 +754,147 @@ export interface SafetyIncident {
 
 export type ToolStatus = 'ACTIVE' | 'MAINTENANCE' | 'RETIRED';
 
-export type CalendarEventType = 'MILESTONE' | 'INSPECTION' | 'DELIVERY' | 'MEETING' | 'OTHER';
+/** Types someone books, and can therefore create. */
+export type CalendarEventType =
+  | 'MILESTONE'
+  | 'INSPECTION'
+  | 'DELIVERY'
+  | 'MEETING'
+  | 'SITE_VISIT'
+  | 'CLIENT_APPOINTMENT'
+  | 'OTHER';
+
+/**
+ * Types the server computes from records that already exist. They have no row
+ * behind them, so they cannot be edited or deleted from the calendar.
+ */
+export type DerivedEventType =
+  | 'PROJECT_DEADLINE'
+  | 'PAYROLL'
+  | 'EQUIPMENT_SERVICE'
+  | 'BIRTHDAY'
+  | 'RETENTION_DUE'
+  | 'WARRANTY_EXPIRY';
+
+export type AnyCalendarEventType = CalendarEventType | DerivedEventType;
 
 export interface CalendarEvent {
   id: string;
   projectId: string | null;
   project: { id: string; name: string } | null;
   title: string;
-  type: CalendarEventType;
+  type: AnyCalendarEventType;
   date: string;
   notes: string | null;
-  createdBy: { id: string; name: string };
-  createdAt: string;
+  /** True for server-computed entries; they have no createdBy. */
+  derived: boolean;
+  createdBy?: { id: string; name: string };
+  createdAt?: string;
 }
 
+export type InsightSeverity = 'CRITICAL' | 'WARNING' | 'INFO' | 'GOOD';
+
+export interface Insight {
+  id: string;
+  severity: InsightSeverity;
+  message: string;
+  action?: string;
+  financial?: boolean;
+}
+
+export interface CommandCentreProgramme {
+  actualPct: number;
+  /** Null until enough of the programme has elapsed to extrapolate from. */
+  plannedPct: number | null;
+  slipDays: number | null;
+  projectedFinish: string | null;
+  startDate: string;
+  expectedCompletion: string;
+  daysRemaining: number;
+}
+
+export interface CommandCentreAttendance {
+  assignedWorkers: number;
+  checkedInToday: number;
+  late: number;
+  /** Null when there is no roster to compare against. */
+  absent: number | null;
+  stillOpen: number;
+  firstCheckIn: string | null;
+  lastCheckOut: string | null;
+  dayStart: string;
+}
+
+export interface CommandCentreEquipmentItem {
+  id: string;
+  name: string;
+  category: string | null;
+  status: ToolStatus;
+  nextServiceDate: string | null;
+  serviceOverdue: boolean;
+}
+
+export interface CommandCentrePhoto {
+  id: string;
+  url: string;
+  takenAt: string;
+  caption: string | null;
+}
+
+/**
+ * Money sections are null for a supervisor — the server omits them rather than
+ * zeroing them, so `canSeeMoney` is what the UI branches on, never a 0.
+ */
 export interface CommandCentreData {
-  financials: ProjectFinancials;
-  contractPosition: ContractPosition | null;
-  latestDailyReport: { date: string; workersPresent: number } | null;
-  snags: { open: number; bySeverity: Record<string, number>; overdue: number };
+  project: { id: string; name: string; status: ProjectStatus };
+  canSeeMoney: boolean;
+
+  programme: CommandCentreProgramme;
+  attendance: CommandCentreAttendance;
+  snags: { open: number; bySeverity: Record<string, number>; overdue: number; rework: number };
+  equipment: {
+    total: number;
+    active: number;
+    down: number;
+    serviceOverdue: number;
+    items: CommandCentreEquipmentItem[];
+  };
+  safety: {
+    windowDays: number;
+    total: number;
+    bySeverity: Record<'SERIOUS' | 'MINOR' | 'NEAR_MISS', number>;
+    recent: { id: string; severity: SafetyIncidentSeverity; description: string; occurredAt: string }[];
+  };
+  photos: CommandCentrePhoto[];
+  insights: Insight[];
   pendingApprovals: { expenses: number; materialRequests: number; attendanceOverrides: number };
   upcomingEvents: CalendarEvent[];
-  attendance: { assignedWorkers: number; checkedInToday: number; stillOpen: number };
+  latestDailyReport: { date: string; workersPresent: number } | null;
+  daysSinceLastReport: number | null;
+
+  financials: ProjectFinancials | null;
+  contractPosition: ContractPosition | null;
+  materials: {
+    allocated: number;
+    actual: number;
+    remaining: number;
+    consumedPct: number | null;
+    health: Health;
+  } | null;
+  profit: {
+    revenueEarned: number;
+    totalCost: number;
+    grossProfit: number;
+    marginPct: number | null;
+    estimatedProfit: number;
+  } | null;
+  invoices: {
+    invoiced: number;
+    collected: number;
+    outstanding: number;
+    overdue: number;
+    overdueCount: number;
+    oldestOverdueDays: number | null;
+    retentionHeld: number;
+  } | null;
 }
