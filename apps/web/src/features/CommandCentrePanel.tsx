@@ -183,7 +183,16 @@ export function CommandCentrePanel({
       <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {/* 1 — Progress against programme */}
         <Panel n={next()} title="Progress against programme" icon={TrendingUp} to={tabHref('tasks')} linkLabel="View programme">
-          <Big value={`${programme.actualPct}%`} sub="Overall progress" />
+          <Big
+            value={`${programme.actualPct}%`}
+            sub={
+              programme.taskCount === 0
+                ? 'No tasks yet'
+                : programme.weighted
+                  ? 'Weighted by task size'
+                  : 'Every task counted equally'
+            }
+          />
           <Progress value={programme.actualPct} className="my-2.5" />
           <Row label="Planned" value={programme.plannedPct != null ? `${programme.plannedPct}%` : '—'} />
           <Row label="Actual" value={`${programme.actualPct}%`} />
@@ -196,6 +205,11 @@ export function CommandCentrePanel({
               <Badge tone="green">Ahead by {Math.abs(programme.slipDays)}d</Badge>
             ) : (
               <Badge tone="green">On programme</Badge>
+            )}
+            {programme.unweightedTaskCount > 0 && (
+              <p className="mt-1.5 text-xs text-amber-700">
+                {programme.unweightedTaskCount} of {programme.taskCount} tasks have no size set
+              </p>
             )}
           </div>
         </Panel>

@@ -32,6 +32,12 @@ export interface InsightInput {
   expectedCompletion: Date;
   /** 0–100, as recorded against the programme. */
   progressPct: number;
+  /**
+   * Whether progressPct is weighted by task size. When it is not, every task
+   * counted the same, and the projection built on it is worth correspondingly
+   * less — so the engine says so rather than implying a precision it lacks.
+   */
+  progressIsWeighted: boolean;
   supervisorAssigned: boolean;
   /** Days since the last daily/weekly report; null when there has never been one. */
   daysSinceLastReport: number | null;
@@ -116,16 +122,27 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
  */
 type Rule = (i: InsightInput) => Insight | null;
 
+/**
+ * Appended wherever a figure is derived from an unweighted progress percentage.
+ * A projection off a mean that counts a door stop the same as a whole floor is
+ * a guess wearing a number's clothes, and it should say so.
+ */
+const UNWEIGHTED_CAVEAT =
+  'Progress counts every task equally, so treat this as rough — set task sizes to sharpen it.';
+
 const scheduleProjection: Rule = (i) => {
   const p = projectCompletion(i);
   if (!p) return null;
 
   if (p.slipDays >= MIN_SLIP_DAYS_TO_REPORT) {
+    const recovery = `${pct(i.progressPct)} done against ${pct(p.plannedPct)} planned — recover about ${pct(p.plannedPct - i.progressPct)} to get back on programme.`;
     return {
       id: 'schedule.slipping',
-      severity: p.slipDays > 14 ? 'CRITICAL' : 'WARNING',
+      // An unweighted projection is not evidence enough to call anything
+      // critical, however large the number it produces.
+      severity: !i.progressIsWeighted ? 'WARNING' : p.slipDays > 14 ? 'CRITICAL' : 'WARNING',
       message: `At the current rate of progress, this project is projected to finish ${plural(p.slipDays, 'day')} late.`,
-      action: `${pct(i.progressPct)} done against ${pct(p.plannedPct)} planned — recover about ${pct(p.plannedPct - i.progressPct)} to get back on programme.`,
+      action: i.progressIsWeighted ? recovery : `${recovery} ${UNWEIGHTED_CAVEAT}`,
     };
   }
   if (p.slipDays <= -MIN_SLIP_DAYS_TO_REPORT) {

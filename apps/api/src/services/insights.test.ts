@@ -13,6 +13,7 @@ function baseInput(over: Partial<InsightInput> = {}): InsightInput {
     startDate: start,
     expectedCompletion: new Date('2026-05-01T00:00:00Z'), // 120-day programme
     progressPct: 50,
+    progressIsWeighted: true,
     supervisorAssigned: true,
     daysSinceLastReport: 1,
     budget: { totalBudget: 1_000_000, totalActual: 500_000, consumedPct: 50 },
@@ -66,6 +67,24 @@ test('slipping schedule is reported with the projected number of days', () => {
   assert.ok(slip);
   assert.match(slip.message, /projected to finish 120 days late/);
   assert.equal(slip.severity, 'CRITICAL');
+});
+
+test('an unweighted projection is caveated and never called critical', () => {
+  // 120 days late is a big number, but off a mean that counts a door stop the
+  // same as a whole floor it is not evidence enough to escalate on.
+  const weighted = buildInsights(baseInput({ progressPct: 25, progressIsWeighted: true }));
+  const w = weighted.find((i) => i.id === 'schedule.slipping');
+  assert.ok(w);
+  assert.equal(w.severity, 'CRITICAL');
+  assert.ok(!/counts every task equally/.test(w.action ?? ''));
+
+  const unweighted = buildInsights(baseInput({ progressPct: 25, progressIsWeighted: false }));
+  const u = unweighted.find((i) => i.id === 'schedule.slipping');
+  assert.ok(u);
+  assert.equal(u.severity, 'WARNING', 'downgraded because the input is rough');
+  assert.match(u.action ?? '', /counts every task equally/);
+  // The projection itself is unchanged — only the confidence in it.
+  assert.equal(u.message, w.message);
 });
 
 test('spend running ahead of progress fires only past the tolerance', () => {

@@ -537,6 +537,14 @@ model Task {
   name          String // e.g. "Primer", "Grouting"
   status        TaskStatus @default(NOT_STARTED)
   completionPct Int        @default(0)
+  // How much of the job this task represents, relative to the others. The
+  // recommended value is the task's amount from the priced schedule, since that
+  // is what a progress claim is measured on, but any consistent unit works
+  // (planned days, area, crew-days) — only the ratios matter.
+  //
+  // Defaults to 1 so a project where nobody has set weights produces exactly
+  // the plain mean it produced before this field existed.
+  weight        Decimal    @default(1) @db.Decimal(14, 2)
   notes         String?
   sortOrder     Int        @default(0)
   updatedAt     DateTime   @updatedAt

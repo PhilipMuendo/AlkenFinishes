@@ -50,11 +50,21 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   );
 }
 
-export function Field({ label, children }: { label: string; children: React.ReactNode }) {
+export function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  /** Sits under the control, where it is read after a failed guess rather than before. */
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <Label>{label}</Label>
       {children}
+      {hint && <p className="mt-1 text-xs text-fg-subtle">{hint}</p>}
     </div>
   );
 }

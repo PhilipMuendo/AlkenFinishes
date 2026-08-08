@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Camera, Plus } from 'lucide-react';
+import { AlertTriangle, Camera, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { thumbUrl } from '@/lib/format';
-import type { Task, TaskStatus } from '@/lib/types';
+import type { Task, TaskStatus, TasksResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -19,10 +19,12 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
 
-  const { data: tasks } = useQuery({
+  const { data } = useQuery({
     queryKey: ['tasks', projectId],
-    queryFn: () => api<Task[]>(`/projects/${projectId}/tasks`),
+    queryFn: () => api<TasksResponse>(`/projects/${projectId}/tasks`),
   });
+  const tasks = data?.tasks;
+  const progress = data?.progress;
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['tasks', projectId] });
@@ -61,19 +63,57 @@ export function TasksPanel({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        {progress && progress.taskCount > 0 ? (
+          <p className="text-sm text-fg-muted">
+            <span className="font-semibold tabular-nums text-fg">{progress.pct}% complete</span>
+            {progress.weighted ? (
+              <> · weighted by task size</>
+            ) : (
+              <> · every task counted equally</>
+            )}
+          </p>
+        ) : (
+          <span />
+        )}
         <Button onClick={() => setAddOpen(true)}>
           <Plus size={16} /> Add task
         </Button>
       </div>
 
+      {/* A part-finished weighting job is worse than none: a task left on the
+          default weight of 1 is invisible beside tasks priced in hundreds of
+          thousands, and the headline figure silently ignores it. */}
+      {progress && progress.unweightedTaskCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <p>
+            {progress.unweightedTaskCount} of {progress.taskCount} tasks still have no size set, so
+            they barely move the figure above. Give every task a size — or none of them — for it to
+            mean anything.
+          </p>
+        </div>
+      )}
+
+      {progress?.weighted && progress.pct !== progress.unweightedPct && (
+        <p className="text-xs text-fg-subtle">
+          Counting every task equally would have said {progress.unweightedPct}%.
+        </p>
+      )}
+
       {tasks?.length === 0 && <Empty>No tasks yet. Break the work into phases and tasks.</Empty>}
 
       {phases.map((phase) => {
         const phaseTasks = (tasks ?? []).filter((t) => t.phase === phase);
-        const avg = Math.round(
-          phaseTasks.reduce((s, t) => s + t.completionPct, 0) / phaseTasks.length,
-        );
+        // Same rule as the project figure: a phase is as done as its weight is.
+        const phaseWeight = phaseTasks.reduce((s, t) => s + (t.weight > 0 ? t.weight : 0), 0);
+        const avg =
+          phaseWeight > 0
+            ? Math.round(
+                phaseTasks.reduce((s, t) => s + t.completionPct * (t.weight > 0 ? t.weight : 0), 0) /
+                  phaseWeight,
+              )
+            : Math.round(phaseTasks.reduce((s, t) => s + t.completionPct, 0) / phaseTasks.length);
         return (
           <Card key={phase} className="p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -94,6 +134,11 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                       <span className="text-xs tabular-nums text-fg-muted">
                         {t.completionPct}%
                       </span>
+                      {t.weight !== 1 && (
+                        <span className="text-xs tabular-nums text-fg-subtle">
+                          size {t.weight.toLocaleString()}
+                        </span>
+                      )}
                       {t.photos.length > 0 && (
                         <span className="flex items-center gap-1 text-xs text-fg-subtle">
                           <Camera size={12} /> {t.photos.length}
@@ -115,7 +160,12 @@ export function TasksPanel({ projectId }: { projectId: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
-            create.mutate({ phase: fd.get('phase'), name: fd.get('name') });
+            const weight = fd.get('weight');
+            create.mutate({
+              phase: fd.get('phase'),
+              name: fd.get('name'),
+              ...(weight ? { weight: Number(weight) } : {}),
+            });
           }}
           className="space-y-3"
         >
@@ -129,6 +179,19 @@ export function TasksPanel({ projectId }: { projectId: string }) {
           </Field>
           <Field label="Task name">
             <Input name="name" required placeholder="First coat" />
+          </Field>
+          <Field
+            label="Size (optional)"
+            hint="What this task is worth from the priced schedule. Any consistent unit works — only the ratios matter. Leave blank to count it the same as every other task."
+          >
+            <Input
+              name="weight"
+              type="number"
+              min="0"
+              step="any"
+              inputMode="decimal"
+              placeholder="e.g. 250000"
+            />
           </Field>
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Add task
@@ -147,12 +210,14 @@ export function TasksPanel({ projectId }: { projectId: string }) {
             onSubmit={(e) => {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
+              const weight = fd.get('weight');
               update.mutate({
                 id: editing.id,
                 body: {
                   status: fd.get('status'),
                   completionPct: Number(fd.get('completionPct')),
                   notes: fd.get('notes') || null,
+                  ...(weight ? { weight: Number(weight) } : {}),
                 },
               });
             }}
@@ -175,6 +240,19 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 max="100"
                 inputMode="numeric"
                 defaultValue={editing.completionPct}
+              />
+            </Field>
+            <Field
+              label="Size"
+              hint="What this task is worth relative to the others — its amount from the priced schedule is the usual choice. 1 means it has not been sized."
+            >
+              <Input
+                name="weight"
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                defaultValue={editing.weight}
               />
             </Field>
             <Field label="Notes">

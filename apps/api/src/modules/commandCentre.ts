@@ -9,6 +9,7 @@ import { contractPosition } from '../services/pipeline';
 import { projectReceivables } from '../services/invoicing';
 import { buildInsights, projectCompletion, type InsightInput } from '../services/insights';
 import { getSiteDaySettings, isLateCheckIn } from '../services/siteDay';
+import { weightedProgress } from '../services/progress';
 
 /**
  * One project's mission control: the figures and open items that would
@@ -57,6 +58,7 @@ router.get(
       photoReports,
       photoDocuments,
       latestWeekly,
+      projectTasks,
     ] = await Promise.all([
       prisma.project.findUniqueOrThrow({
         where: { id: projectId },
@@ -130,6 +132,10 @@ router.get(
         orderBy: { weekEnding: 'desc' },
         select: { weekEnding: true },
       }),
+      prisma.task.findMany({
+        where: { projectId },
+        select: { completionPct: true, weight: true },
+      }),
     ]);
 
     // ---- Money, superadmin only -------------------------------------------
@@ -163,12 +169,19 @@ router.get(
     const { financials, contract, receivables } = money;
 
     // ---- 1. Progress against programme ------------------------------------
+    // Recomputed here rather than trusted from project.progressPct alone,
+    // because the card needs to say whether the figure is weighted — a
+    // projection off an unweighted mean is worth a good deal less.
+    const taskProgress = weightedProgress(
+      projectTasks.map((t) => ({ completionPct: t.completionPct, weight: Number(t.weight) })),
+    );
     const insightInputBase = {
       today: now,
       status: project.status,
       startDate: project.startDate,
       expectedCompletion: project.expectedCompletion,
       progressPct: project.progressPct,
+      progressIsWeighted: taskProgress.weighted,
       supervisorAssigned: project.supervisorId != null,
     };
     const completion = projectCompletion({
@@ -183,6 +196,9 @@ router.get(
     });
     const programme = {
       actualPct: project.progressPct,
+      weighted: taskProgress.weighted,
+      unweightedTaskCount: taskProgress.unweightedTaskCount,
+      taskCount: taskProgress.taskCount,
       plannedPct: completion?.plannedPct ?? null,
       slipDays: completion?.slipDays ?? null,
       projectedFinish: completion?.projectedFinish ?? null,

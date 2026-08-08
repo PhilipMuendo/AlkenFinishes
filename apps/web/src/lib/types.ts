@@ -309,8 +309,25 @@ export interface Task {
   name: string;
   status: TaskStatus;
   completionPct: number;
+  /** Relative size of this task. 1 is the default — i.e. "not yet weighted". */
+  weight: number;
   notes: string | null;
   photos: { id: string; fileUrl: string; caption: string | null }[];
+}
+
+/** Server-computed weighting summary — never recalculated in the browser. */
+export interface TaskProgress {
+  pct: number;
+  unweightedPct: number;
+  weighted: boolean;
+  totalWeight: number;
+  taskCount: number;
+  unweightedTaskCount: number;
+}
+
+export interface TasksResponse {
+  tasks: Task[];
+  progress: TaskProgress;
 }
 
 export interface Worker {
@@ -804,6 +821,10 @@ export interface Insight {
 
 export interface CommandCentreProgramme {
   actualPct: number;
+  /** False when every task counted equally — the projection is rougher. */
+  weighted: boolean;
+  unweightedTaskCount: number;
+  taskCount: number;
   /** Null until enough of the programme has elapsed to extrapolate from. */
   plannedPct: number | null;
   slipDays: number | null;

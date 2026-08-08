@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import { weightedProgress } from '../services/progress';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -15,23 +16,30 @@ const taskSchema = z.object({
   name: z.string().min(1),
   status: z.enum(['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'DONE']).optional(),
   completionPct: z.coerce.number().int().min(0).max(100).optional(),
+  // Rejected rather than silently coerced: a zero-weight task would be dropped
+  // from progress entirely, which is not what anyone typing 0 intends.
+  weight: z.coerce.number().positive('Weight must be greater than zero').optional(),
   notes: z.string().nullable().optional(),
   sortOrder: z.coerce.number().int().optional(),
 });
 
-/** Recompute overall project progress as the mean of task completion. */
+/**
+ * Recompute overall project progress, weighted by task size.
+ *
+ * Called after any task mutation. The weighting itself lives in
+ * services/progress.ts so it can be reasoned about and tested without a
+ * database — see the tests there for what this protects against.
+ */
 async function syncProjectProgress(projectId: string) {
-  const agg = await prisma.task.aggregate({
+  const tasks = await prisma.task.findMany({
     where: { projectId },
-    _avg: { completionPct: true },
-    _count: true,
+    select: { completionPct: true, weight: true },
   });
-  if (agg._count > 0) {
-    await prisma.project.update({
-      where: { id: projectId },
-      data: { progressPct: Math.round(agg._avg.completionPct ?? 0) },
-    });
-  }
+  if (tasks.length === 0) return;
+  const { pct } = weightedProgress(
+    tasks.map((t) => ({ completionPct: t.completionPct, weight: Number(t.weight) })),
+  );
+  await prisma.project.update({ where: { id: projectId }, data: { progressPct: pct } });
 }
 
 router.get(
@@ -42,12 +50,20 @@ router.get(
       include: { photos: true },
       orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
-    res.json(
-      tasks.map((t) => ({
+    // The weighting summary comes from the server rather than being recomputed
+    // in the browser: one implementation, one set of tests, no chance of the
+    // page and the project record disagreeing about the same number.
+    const progress = weightedProgress(
+      tasks.map((t) => ({ completionPct: t.completionPct, weight: Number(t.weight) })),
+    );
+    res.json({
+      tasks: tasks.map((t) => ({
         ...t,
+        weight: Number(t.weight),
         photos: t.photos.map((p) => ({ ...p, fileUrl: signFileUrl(p.fileUrl) })),
       })),
-    );
+      progress,
+    });
   }),
 );
 
