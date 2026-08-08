@@ -16,7 +16,10 @@ const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
 
 const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH'] as const;
-const STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED'] as const;
+const STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'VERIFIED', 'REJECTED'] as const;
+// What a supervisor may set directly. VERIFIED and REJECTED are the office's
+// verdict on a claimed fix and have their own routes.
+const SETTABLE_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED'] as const;
 
 const annotationSchema = z
   .object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) })
@@ -41,12 +44,32 @@ const include = {
   reportedBy: { select: { id: true, name: true } },
   assignedTo: { select: { id: true, name: true } },
   lastActionBy: { select: { id: true, name: true } },
+  attempts: {
+    orderBy: { attempt: 'asc' },
+    include: {
+      submittedBy: { select: { id: true, name: true } },
+      reviewedBy: { select: { id: true, name: true } },
+    },
+  },
 } as const;
 
-const serialize = (s: { photoUrl: string | null; resolvedPhotoUrl: string | null; [k: string]: unknown }) => ({
+interface SerialisableAttempt {
+  photoUrl: string | null;
+  [k: string]: unknown;
+}
+
+const serialize = (s: {
+  photoUrl: string | null;
+  resolvedPhotoUrl: string | null;
+  attempts?: SerialisableAttempt[];
+  [k: string]: unknown;
+}) => ({
   ...s,
   photoUrl: signFileUrl(s.photoUrl),
   resolvedPhotoUrl: signFileUrl(s.resolvedPhotoUrl),
+  ...(s.attempts && {
+    attempts: s.attempts.map((a) => ({ ...a, photoUrl: signFileUrl(a.photoUrl) })),
+  }),
 });
 
 router.get(
@@ -112,68 +135,169 @@ router.put(
   }),
 );
 
-const statusChangeSchema = z.object({ status: z.enum(STATUSES) });
+const statusChangeSchema = z.object({
+  status: z.enum(SETTABLE_STATUSES),
+  notes: z.string().optional(),
+});
 
 /**
  * IN_PROGRESS / OPEN are plain status moves. RESOLVED requires the fix photo
- * so verification (see /:id/verify) has something to check. VERIFIED is not
- * settable here — it is its own step, because "marked done" and "office has
- * confirmed it" are different facts and collapsing them defeats the point of
- * a verification step at all.
+ * so verification (see /:id/verify) has something to check, and opens a new
+ * SnagAttempt row — the second time a trade claims the same defect is fixed,
+ * the first attempt's photo must still be there to compare against.
+ *
+ * VERIFIED and REJECTED are not settable here: they are the office's verdict,
+ * and collapsing "marked done" into "confirmed done" defeats the point of
+ * having a verification step at all.
  */
 router.post(
   '/:id/status',
   upload.single('resolvedPhoto'),
   asyncHandler(async (req, res) => {
-    const { status } = statusChangeSchema.parse(req.body);
-    const existing = await prisma.snagItem.findUnique({ where: { id: req.params.id } });
+    const { status, notes } = statusChangeSchema.parse(req.body);
+    const existing = await prisma.snagItem.findUnique({
+      where: { id: req.params.id },
+      include: { attempts: { orderBy: { attempt: 'desc' }, take: 1 } },
+    });
     if (!existing || existing.projectId !== req.params.projectId) {
       if (req.file) removeUploadedFile(`/uploads/${req.file.filename}`);
       throw ApiError.notFound();
     }
-    if (status === 'VERIFIED') {
-      if (req.file) removeUploadedFile(`/uploads/${req.file.filename}`);
-      throw ApiError.badRequest('Use /verify to confirm a fix');
-    }
     if (status === 'RESOLVED' && !req.file && !existing.resolvedPhotoUrl) {
       throw ApiError.badRequest('Attach a photo of the fix to mark this resolved');
     }
-    const snag = await prisma.snagItem.update({
-      where: { id: existing.id },
-      data: {
-        status,
-        lastActionById: req.user!.id,
-        ...(status === 'RESOLVED' && {
+    await verifyUpload(req.file);
+
+    if (status !== 'RESOLVED') {
+      const snag = await prisma.snagItem.update({
+        where: { id: existing.id },
+        data: { status, lastActionById: req.user!.id },
+        include,
+      });
+      audit(req, 'snag.status', 'SnagItem', snag.id, { from: existing.status, to: status });
+      return res.json(serialize(snag));
+    }
+
+    // The attempt row and the status move are one fact: a claimed fix with no
+    // recorded attempt would be invisible to the rework count, so they commit
+    // together or not at all.
+    const photoUrl = req.file ? fileUrl(req.file.filename) : existing.resolvedPhotoUrl;
+    const nextAttempt = (existing.attempts[0]?.attempt ?? 0) + 1;
+    const snag = await prisma.$transaction(async (tx) => {
+      await tx.snagAttempt.create({
+        data: {
+          snagId: existing.id,
+          attempt: nextAttempt,
+          photoUrl,
+          notes,
+          submittedById: req.user!.id,
+        },
+      });
+      return tx.snagItem.update({
+        where: { id: existing.id },
+        data: {
+          status: 'RESOLVED',
           resolvedAt: new Date(),
-          ...(req.file && { resolvedPhotoUrl: fileUrl(req.file.filename) }),
-        }),
-      },
-      include,
+          resolvedPhotoUrl: photoUrl,
+          lastActionById: req.user!.id,
+        },
+        include,
+      });
     });
-    audit(req, 'snag.status', 'SnagItem', snag.id, { from: existing.status, to: status });
+    audit(req, 'snag.status', 'SnagItem', snag.id, {
+      from: existing.status,
+      to: 'RESOLVED',
+      attempt: nextAttempt,
+    });
     res.json(serialize(snag));
   }),
 );
 
+/** The office accepts the fix. Stamps the open attempt as accepted. */
 router.post(
   '/:id/verify',
   asyncHandler(async (req, res) => {
-    const existing = await prisma.snagItem.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.snagItem.findUnique({
+      where: { id: req.params.id },
+      include: { attempts: { where: { accepted: null }, orderBy: { attempt: 'desc' }, take: 1 } },
+    });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
     if (existing.status !== 'RESOLVED') {
       throw ApiError.conflict('Only a resolved item can be verified');
     }
-    const snag = await prisma.snagItem.update({
-      where: { id: existing.id },
-      data: { status: 'VERIFIED', verifiedAt: new Date(), lastActionById: req.user!.id },
-      include,
+    const open = existing.attempts[0];
+    const snag = await prisma.$transaction(async (tx) => {
+      if (open) {
+        await tx.snagAttempt.update({
+          where: { id: open.id },
+          data: { accepted: true, reviewedAt: new Date(), reviewedById: req.user!.id },
+        });
+      }
+      return tx.snagItem.update({
+        where: { id: existing.id },
+        data: { status: 'VERIFIED', verifiedAt: new Date(), lastActionById: req.user!.id },
+        include,
+      });
     });
-    audit(req, 'snag.verify', 'SnagItem', snag.id);
+    audit(req, 'snag.verify', 'SnagItem', snag.id, { attempt: open?.attempt ?? null });
     res.json(serialize(snag));
   }),
 );
 
-/** Verification failed the fix — reopen rather than leave it stuck. */
+/**
+ * The repeat job. The office looked at the evidence and the fix is not good
+ * enough, so the item goes back to the trade as REJECTED — deliberately not
+ * OPEN, because an item that has already failed an inspection is a different
+ * risk from one nobody has touched, and reworkCount is what makes a trade that
+ * keeps re-doing the same defect visible.
+ */
+router.post(
+  '/:id/reject',
+  asyncHandler(async (req, res) => {
+    const { reason } = z.object({ reason: z.string().min(1) }).parse(req.body);
+    const existing = await prisma.snagItem.findUnique({
+      where: { id: req.params.id },
+      include: { attempts: { where: { accepted: null }, orderBy: { attempt: 'desc' }, take: 1 } },
+    });
+    if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
+    if (existing.status !== 'RESOLVED') {
+      throw ApiError.conflict('Only a resolved item can be sent back');
+    }
+    const open = existing.attempts[0];
+    const snag = await prisma.$transaction(async (tx) => {
+      if (open) {
+        await tx.snagAttempt.update({
+          where: { id: open.id },
+          data: {
+            accepted: false,
+            rejectReason: reason,
+            reviewedAt: new Date(),
+            reviewedById: req.user!.id,
+          },
+        });
+      }
+      return tx.snagItem.update({
+        where: { id: existing.id },
+        data: {
+          status: 'REJECTED',
+          // The attempt keeps its own photo; clearing these puts the item back
+          // in the state where the next fix must supply fresh evidence.
+          resolvedAt: null,
+          resolvedPhotoUrl: null,
+          rejectedAt: new Date(),
+          rejectReason: reason,
+          reworkCount: { increment: 1 },
+          lastActionById: req.user!.id,
+        },
+        include,
+      });
+    });
+    audit(req, 'snag.reject', 'SnagItem', snag.id, { reason, reworkCount: snag.reworkCount });
+    res.json(serialize(snag));
+  }),
+);
+
+/** Reopen a closed item — a defect that came back after it was signed off. */
 router.post(
   '/:id/reopen',
   asyncHandler(async (req, res) => {
@@ -199,10 +323,16 @@ router.post(
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {
-    const existing = await prisma.snagItem.findUnique({ where: { id: req.params.id } });
+    const existing = await prisma.snagItem.findUnique({
+      where: { id: req.params.id },
+      include: { attempts: { select: { photoUrl: true } } },
+    });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
     removeUploadedFile(existing.photoUrl);
     removeUploadedFile(existing.resolvedPhotoUrl);
+    // Attempt rows cascade, but their photos are files on disk and would be
+    // orphaned by the cascade.
+    for (const a of existing.attempts) removeUploadedFile(a.photoUrl);
     await prisma.snagItem.delete({ where: { id: existing.id } });
     audit(req, 'snag.delete', 'SnagItem', existing.id);
     res.json({ ok: true });

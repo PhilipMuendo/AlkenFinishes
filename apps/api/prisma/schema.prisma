@@ -98,11 +98,17 @@ enum OverrideRequestStatus {
   REJECTED
 }
 
+// OPEN -> IN_PROGRESS -> RESOLVED -> VERIFIED is the happy path. REJECTED is
+// the rework loop: the office looked at the evidence photo and the fix is not
+// good enough, so the item goes back to the trade. It is deliberately a
+// distinct state from OPEN — a snag that has already failed one inspection is
+// not the same risk as one nobody has attempted.
 enum SnagStatus {
   OPEN
   IN_PROGRESS
   RESOLVED
   VERIFIED
+  REJECTED
 }
 
 enum SnagSeverity {
@@ -215,32 +221,34 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  projects           Project[]          @relation("ProjectSupervisor")
-  expenses           Expense[]          @relation("ExpenseSubmittedBy")
-  expensesApproved   Expense[]          @relation("ExpenseApprovedBy")
-  materialRequests         MaterialRequest[] @relation("MaterialRequestedBy")
-  materialRequestsDecided  MaterialRequest[] @relation("MaterialRequestDecidedBy")
-  snagsReported      SnagItem[]         @relation("SnagReportedBy")
-  snagsAssigned      SnagItem[]         @relation("SnagAssignedTo")
-  snagsActioned      SnagItem[]         @relation("SnagLastActionBy")
-  safetyIncidents    SafetyIncident[]
+  projects                Project[]                   @relation("ProjectSupervisor")
+  expenses                Expense[]                   @relation("ExpenseSubmittedBy")
+  expensesApproved        Expense[]                   @relation("ExpenseApprovedBy")
+  materialRequests        MaterialRequest[]           @relation("MaterialRequestedBy")
+  materialRequestsDecided MaterialRequest[]           @relation("MaterialRequestDecidedBy")
+  snagsReported           SnagItem[]                  @relation("SnagReportedBy")
+  snagsAssigned           SnagItem[]                  @relation("SnagAssignedTo")
+  snagsActioned           SnagItem[]                  @relation("SnagLastActionBy")
+  snagAttempts            SnagAttempt[]               @relation("SnagAttemptSubmittedBy")
+  snagAttemptsReviewed    SnagAttempt[]               @relation("SnagAttemptReviewedBy")
+  safetyIncidents         SafetyIncident[]
   overrideRequests        AttendanceOverrideRequest[] @relation("OverrideRequestedBy")
   overrideRequestsDecided AttendanceOverrideRequest[] @relation("OverrideDecidedBy")
-  calendarEvents     CalendarEvent[]
-  payments           Payment[]
-  toolTransfers      ToolTransfer[]
-  stockMovements     StockMovement[]
-  documents          Document[]
-  dailyReports       DailyReport[]
-  weeklyReports      WeeklyReport[]
-  auditLogs          AuditLog[]
-  refreshTokens      RefreshToken[]
-  attendanceEdits    AttendanceRecord[] @relation("AttendanceRecordedBy")
-  invoicesCreated    Invoice[]          @relation("InvoiceCreatedBy")
-  paymentsVoided     Payment[]          @relation("PaymentVoidedBy")
-  leadsOwned         Lead[]             @relation("LeadOwner")
-  quotations         Quotation[]        @relation("QuotationPreparedBy")
-  variationsApproved Variation[]        @relation("VariationApprovedBy")
+  calendarEvents          CalendarEvent[]
+  payments                Payment[]
+  toolTransfers           ToolTransfer[]
+  stockMovements          StockMovement[]
+  documents               Document[]
+  dailyReports            DailyReport[]
+  weeklyReports           WeeklyReport[]
+  auditLogs               AuditLog[]
+  refreshTokens           RefreshToken[]
+  attendanceEdits         AttendanceRecord[]          @relation("AttendanceRecordedBy")
+  invoicesCreated         Invoice[]                   @relation("InvoiceCreatedBy")
+  paymentsVoided          Payment[]                   @relation("PaymentVoidedBy")
+  leadsOwned              Lead[]                      @relation("LeadOwner")
+  quotations              Quotation[]                 @relation("QuotationPreparedBy")
+  variationsApproved      Variation[]                 @relation("VariationApprovedBy")
 }
 
 model RefreshToken {
@@ -298,8 +306,8 @@ model Project {
   dailyReports      DailyReport[]
   weeklyReports     WeeklyReport[]
   toolsHere         Tool[]
-  toolTransfersFrom ToolTransfer[]     @relation("ToolTransferFrom")
-  toolTransfersTo   ToolTransfer[]     @relation("ToolTransferTo")
+  toolTransfersFrom ToolTransfer[]              @relation("ToolTransferFrom")
+  toolTransfersTo   ToolTransfer[]              @relation("ToolTransferTo")
   materialRequests  MaterialRequest[]
   snags             SnagItem[]
   safetyIncidents   SafetyIncident[]
@@ -322,7 +330,7 @@ model BudgetLine {
 }
 
 model Expense {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -340,11 +348,11 @@ model Expense {
   // Only APPROVED expenses count as actual spend against the budget — see
   // projectFinancials() in finance.ts. A submitted-but-undecided claim is real
   // money that left someone's hand on site, but it is not yet an approved cost.
-  status        ExpenseStatus @default(PENDING)
-  approvedById  String?
-  approvedBy    User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvedAt    DateTime?
-  rejectReason  String?
+  status       ExpenseStatus @default(PENDING)
+  approvedById String?
+  approvedBy   User?         @relation("ExpenseApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt   DateTime?
+  rejectReason String?
 
   submittedById String
   submittedBy   User     @relation("ExpenseSubmittedBy", fields: [submittedById], references: [id])
@@ -368,7 +376,7 @@ model MaterialRequest {
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   itemName String
-  quantity Decimal @db.Decimal(12, 2)
+  quantity Decimal   @db.Decimal(12, 2)
   unit     String
   neededBy DateTime? @db.Date
   notes    String?
@@ -552,6 +560,9 @@ model Worker {
   hourlyRate  Decimal      @db.Decimal(10, 2)
   status      WorkerStatus @default(ACTIVE)
   biometricId String?      @unique // template/enrolment ID on fingerprint device
+  // Date only — the year is kept because it is on the ID anyway, but the
+  // calendar matches on month and day so a birthday recurs every year.
+  dateOfBirth DateTime?    @db.Date
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -636,7 +647,7 @@ model AttendanceOverrideRequest {
   // The record created on approval, kept for traceability from the request
   // that authorised it. SetNull rather than cascading a delete backwards.
   resultingRecordId String?           @unique
-  resultingRecord    AttendanceRecord? @relation(fields: [resultingRecordId], references: [id], onDelete: SetNull)
+  resultingRecord   AttendanceRecord? @relation(fields: [resultingRecordId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
 
@@ -692,6 +703,10 @@ model Tool {
   // to move" list in the API, not from this table.
   status           ToolStatus @default(ACTIVE)
   conditionNotes   String?
+  // Next scheduled service. Feeds the calendar and the equipment card; a date
+  // in the past is what makes a tool "service overdue" rather than a separate
+  // flag that someone would have to remember to clear.
+  nextServiceDate  DateTime?  @db.Date
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
@@ -758,13 +773,13 @@ model DailyReport {
 
   // Richer site-diary fields, all optional so the form stays quick to fill on
   // an ordinary day — a supervisor should not have to type "none" seven times.
-  weather             String?
-  visitors            String?
-  materialsDelivered  String?
-  instructionsGiven   String?
-  delays              String?
-  safetyNotes         String?
-  equipmentOnSite     String?
+  weather            String?
+  visitors           String?
+  materialsDelivered String?
+  instructionsGiven  String?
+  delays             String?
+  safetyNotes        String?
+  equipmentOnSite    String?
 
   submittedById String
   submittedBy   User     @relation(fields: [submittedById], references: [id])
@@ -957,8 +972,8 @@ model Contract {
   projectId   String?    @unique
   project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
-  title  String
-  status ContractStatus @default(DRAFT)
+  title                  String
+  status                 ContractStatus @default(DRAFT)
   // The Contract Sum, EXCLUSIVE of VAT — the standard way a construction
   // contract states it, and the base retention is calculated on. VAT is added
   // on each payment application. Project.contractValue holds the VAT-inclusive
@@ -1034,9 +1049,18 @@ model SnagItem {
   // verifies it without a return site visit.
   resolvedPhotoUrl String?
   resolvedAt       DateTime?
-  verifiedAt        DateTime? // office confirms the fix from resolvedPhotoUrl
-  lastActionById    String?
-  lastActionBy      User?     @relation("SnagLastActionBy", fields: [lastActionById], references: [id], onDelete: SetNull)
+  verifiedAt       DateTime? // office confirms the fix from resolvedPhotoUrl
+  lastActionById   String?
+  lastActionBy     User?     @relation("SnagLastActionBy", fields: [lastActionById], references: [id], onDelete: SetNull)
+
+  // The rework loop. reworkCount is how many times a claimed fix has been sent
+  // back — the number the office actually argues about, and cheap to read
+  // without walking the attempt history.
+  reworkCount  Int       @default(0)
+  rejectedAt   DateTime?
+  rejectReason String?
+
+  attempts SnagAttempt[]
 
   reportedById String
   reportedBy   User     @relation("SnagReportedBy", fields: [reportedById], references: [id])
@@ -1046,18 +1070,45 @@ model SnagItem {
   @@index([projectId, status])
 }
 
+// One attempt at fixing a snag, kept even after it is rejected. Without this
+// the evidence photo of a failed fix is overwritten by the next attempt, and
+// the argument about whether a trade fixed something twice becomes unwinnable.
+// Append-only: rows are never edited, only added.
+model SnagAttempt {
+  id       String   @id @default(cuid())
+  snagId   String
+  snag     SnagItem @relation(fields: [snagId], references: [id], onDelete: Cascade)
+  attempt  Int // 1-based, in order
+  photoUrl String?
+  notes    String?
+
+  // Null while the office has not looked at it yet; set on accept or reject.
+  accepted     Boolean?
+  rejectReason String?
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?     @relation("SnagAttemptReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  submittedById String
+  submittedBy   User     @relation("SnagAttemptSubmittedBy", fields: [submittedById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([snagId, attempt])
+  @@index([snagId])
+}
+
 model SafetyIncident {
-  id           String                  @id @default(cuid())
+  id           String                 @id @default(cuid())
   projectId    String
-  project      Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
   occurredAt   DateTime
   severity     SafetyIncidentSeverity
   description  String
   actionTaken  String?
   photoUrl     String?
   reportedById String
-  reportedBy   User                    @relation(fields: [reportedById], references: [id])
-  createdAt    DateTime                @default(now())
+  reportedBy   User                   @relation(fields: [reportedById], references: [id])
+  createdAt    DateTime               @default(now())
 
   @@index([projectId, occurredAt])
 }

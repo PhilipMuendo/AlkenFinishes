@@ -28,6 +28,7 @@ const workerSchema = z.object({
   hourlyRate: hourlyRateField,
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
   biometricId: z.string().nullable().optional(),
+  dateOfBirth: z.coerce.date().nullable().optional(),
 });
 
 // What a supervisor may set: roster/contact details for their own site's

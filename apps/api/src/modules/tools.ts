@@ -37,6 +37,7 @@ const toolSchema = z.object({
   unit: z.string().min(1).default('pcs'),
   quantity: z.coerce.number().nonnegative(),
   currentProjectId: z.string().nullable().optional(),
+  nextServiceDate: z.coerce.date().nullable().optional(),
 });
 
 router.post(
@@ -60,6 +61,7 @@ const toolPatchSchema = z.object({
   unit: z.string().min(1).optional(),
   status: z.enum(['ACTIVE', 'MAINTENANCE', 'RETIRED']).optional(),
   conditionNotes: z.string().nullable().optional(),
+  nextServiceDate: z.coerce.date().nullable().optional(),
 });
 
 // Catalog fields only — quantity/currentProjectId only ever change via
