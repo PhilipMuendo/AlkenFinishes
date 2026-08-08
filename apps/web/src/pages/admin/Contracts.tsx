@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Download, FileSignature, HardHat, Plus } from 'lucide-react';
+import { Download, FileSignature, HardHat, Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import type { AppUser, Contract, ContractStatus, Variation } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
 import { Dialog } from '@/components/ui/dialog';
@@ -109,6 +110,18 @@ export function ContractsPage() {
       setOpenId(null);
       navigate(`/admin/projects/${project.id}`);
     },
+  });
+
+  const uploadAttachments = useMutation({
+    mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
+      api(`/contracts/${id}/attachments`, { formData }),
+    onSuccess: invalidate,
+  });
+
+  const removeAttachment = useMutation({
+    mutationFn: ({ id, field }: { id: string; field: 'boq' | 'specs' }) =>
+      api(`/contracts/${id}/attachments/${field}`, { method: 'DELETE' }),
+    onSuccess: invalidate,
   });
 
   const openPdf = async (id: string) => {
@@ -281,6 +294,15 @@ export function ContractsPage() {
               )}
             </section>
 
+            <ContractDocuments
+              contract={contract}
+              onOpenPdf={() => void openPdf(contract.id)}
+              onUpload={(formData) => uploadAttachments.mutate({ id: contract.id, formData })}
+              onRemove={(field) => removeAttachment.mutate({ id: contract.id, field })}
+              busy={uploadAttachments.isPending || removeAttachment.isPending}
+              error={errorMessage(uploadAttachments.error ?? removeAttachment.error) ?? undefined}
+            />
+
             {contract.project && (
               <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
                 Running as site{' '}
@@ -300,19 +322,6 @@ export function ContractsPage() {
               {contract.status === 'DRAFT' && (
                 <Button disabled={issue.isPending} onClick={() => issue.mutate(contract.id)}>
                   Issue for signature
-                </Button>
-              )}
-              {contract.status !== 'DRAFT' && (
-                <Button variant="outline" onClick={() => void openPdf(contract.id)}>
-                  <Download size={16} /> PDF
-                </Button>
-              )}
-              {contract.signedPdfUrl && (
-                <Button
-                  variant="outline"
-                  onClick={() => window.open(contract.signedPdfUrl!, '_blank', 'noopener')}
-                >
-                  Signed copy
                 </Button>
               )}
               {contract.status === 'ISSUED' && (
@@ -456,6 +465,135 @@ export function ContractsPage() {
         )}
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * The four documents that make up a contract file: the copy we generated, the
+ * executed scan, the priced BOQ and the specification.
+ *
+ * They are listed together, present or not, because the useful question is
+ * "what is missing from this file" — a page that only renders what exists
+ * cannot answer it.
+ */
+function ContractDocuments({
+  contract,
+  onOpenPdf,
+  onUpload,
+  onRemove,
+  busy,
+  error,
+}: {
+  contract: Contract;
+  onOpenPdf: () => void;
+  onUpload: (formData: FormData) => void;
+  onRemove: (field: 'boq' | 'specs') => void;
+  busy: boolean;
+  error?: string;
+}) {
+  const uploadField = (field: 'boq' | 'specs', file: File) => {
+    const fd = new FormData();
+    fd.set(field, file);
+    onUpload(fd);
+  };
+
+  const rows: {
+    key: string;
+    label: string;
+    hint: string;
+    url: string | null;
+    onView?: () => void;
+    field?: 'boq' | 'specs';
+  }[] = [
+    {
+      key: 'generated',
+      label: 'Contract',
+      hint: 'Generated from the agreed figures',
+      url: contract.status === 'DRAFT' ? null : (contract.generatedPdfUrl ?? 'pending'),
+      onView: onOpenPdf,
+    },
+    {
+      key: 'signed',
+      label: 'Signed copy',
+      hint: 'Scan of the executed original',
+      url: contract.signedPdfUrl,
+      onView: () => window.open(contract.signedPdfUrl!, '_blank', 'noopener'),
+    },
+    {
+      key: 'boq',
+      label: 'Bill of quantities',
+      hint: 'The priced schedule the claims are measured against',
+      url: contract.boqUrl,
+      onView: () => window.open(contract.boqUrl!, '_blank', 'noopener'),
+      field: 'boq',
+    },
+    {
+      key: 'specs',
+      label: 'Specifications',
+      hint: 'What "finished" means for each trade',
+      url: contract.specsUrl,
+      onView: () => window.open(contract.specsUrl!, '_blank', 'noopener'),
+      field: 'specs',
+    },
+  ];
+
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-semibold text-fg">Contract documents</h3>
+      <ul className="divide-y divide-hairline overflow-hidden rounded-lg border border-hairline">
+        {rows.map((r) => (
+          <li key={r.key} className="flex items-center justify-between gap-3 px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-fg">{r.label}</p>
+              <p className="truncate text-xs text-fg-subtle">{r.hint}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {r.url ? (
+                <>
+                  <Button size="sm" variant="outline" onClick={r.onView}>
+                    <Download size={14} /> View
+                  </Button>
+                  {r.field && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => onRemove(r.field!)}
+                      aria-label={`Remove ${r.label}`}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  )}
+                </>
+              ) : r.field ? (
+                <label
+                  className={cn(
+                    buttonVariants({ size: 'sm', variant: 'outline' }),
+                    'cursor-pointer',
+                    busy && 'pointer-events-none opacity-50',
+                  )}
+                >
+                  <Upload size={14} /> Upload
+                  <input
+                    type="file"
+                    className="sr-only"
+                    disabled={busy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) uploadField(r.field!, file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              ) : (
+                <span className="text-xs text-fg-subtle">Not yet</span>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+    </section>
   );
 }
 

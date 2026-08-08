@@ -294,6 +294,86 @@ router.post(
   }),
 );
 
+/**
+ * The two documents that define what was actually agreed, as opposed to what
+ * it costs: the priced bill of quantities and the specification.
+ *
+ * Both are replaceable — a revised BOQ is normal mid-contract — so uploading
+ * over an existing one removes the old file rather than orphaning it on disk.
+ * Kept off /sign because they arrive at a different time and often separately
+ * from each other.
+ */
+const ATTACHMENT_FIELDS = ['boq', 'specs'] as const;
+type AttachmentField = (typeof ATTACHMENT_FIELDS)[number];
+const ATTACHMENT_COLUMN: Record<AttachmentField, 'boqUrl' | 'specsUrl'> = {
+  boq: 'boqUrl',
+  specs: 'specsUrl',
+};
+
+router.post(
+  '/:id/attachments',
+  upload.fields(ATTACHMENT_FIELDS.map((name) => ({ name, maxCount: 1 }))),
+  asyncHandler(async (req, res) => {
+    const files = (req.files ?? {}) as Record<string, Express.Multer.File[] | undefined>;
+    const incoming = ATTACHMENT_FIELDS.flatMap((field) => {
+      const file = files[field]?.[0];
+      return file ? [{ field, file }] : [];
+    });
+    const discard = () => incoming.forEach(({ file }) => removeUploadedFile(`/uploads/${file.filename}`));
+
+    if (incoming.length === 0) throw ApiError.badRequest('Attach a BOQ or a specification');
+    for (const { file } of incoming) await verifyUpload(file);
+
+    const existing = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      discard();
+      throw ApiError.notFound();
+    }
+
+    const data: Prisma.ContractUpdateInput = {};
+    const replaced: string[] = [];
+    for (const { field, file } of incoming) {
+      const column = ATTACHMENT_COLUMN[field];
+      if (existing[column]) replaced.push(existing[column]!);
+      data[column] = `/uploads/${file.filename}`;
+    }
+
+    const contract = await prisma.contract.update({
+      where: { id: existing.id },
+      data,
+      include,
+    });
+    // Only after the row is committed — a failed update must not leave the
+    // contract pointing at a file that has already been deleted.
+    replaced.forEach(removeUploadedFile);
+
+    audit(req, 'contract.attachments', 'Contract', contract.id, {
+      uploaded: incoming.map((i) => i.field),
+    });
+    res.json(serialize(contract));
+  }),
+);
+
+router.delete(
+  '/:id/attachments/:field',
+  asyncHandler(async (req, res) => {
+    const field = z.enum(ATTACHMENT_FIELDS).parse(req.params.field);
+    const column = ATTACHMENT_COLUMN[field];
+    const existing = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw ApiError.notFound();
+    if (!existing[column]) throw ApiError.notFound();
+
+    const contract = await prisma.contract.update({
+      where: { id: existing.id },
+      data: { [column]: null },
+      include,
+    });
+    removeUploadedFile(existing[column]);
+    audit(req, 'contract.attachments.remove', 'Contract', contract.id, { field });
+    res.json(serialize(contract));
+  }),
+);
+
 const CONTRACT_STATUS_FLOW = z.object({
   status: z.enum(STATUSES),
   practicalCompletionDate: z.coerce.date().optional(),
