@@ -8,6 +8,8 @@ import type {
   InvoicingConfig,
   PipelineConfig,
   Project,
+  PayeBand,
+  PayrollConfig,
   PurchaseTaxConfig,
   Worker,
 } from '@/lib/types';
@@ -244,6 +246,7 @@ export function SettingsPage() {
       <CompanyLetterheadCard />
       <InvoicingCard />
       <PurchaseTaxCard />
+      <PayrollCard />
       <PipelineCard />
 
       <Card>
@@ -861,6 +864,210 @@ function PurchaseTaxCard() {
           )}
           <Button type="submit" disabled={save.isPending}>
             Save tax settings
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Statutory deductions on wages.
+ *
+ * Every figure is the user's. The software applies them consistently and in
+ * the right order; it does not decide what the law requires, and it says so.
+ */
+function PayrollCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'payroll'],
+    queryFn: () => api<PayrollConfig>('/settings/payroll'),
+  });
+  const [bands, setBands] = useState<PayeBand[] | null>(null);
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/settings/payroll', { method: 'PUT', body }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'payroll'] }),
+  });
+
+  if (!data) return null;
+  const rows = bands ?? data.payeBands;
+  const on = enabled ?? data.enabled;
+
+  const setBand = (i: number, patch: Partial<PayeBand>) =>
+    setBands(rows.map((b, j) => (j === i ? { ...b, ...patch } : b)));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Payroll deductions</CardTitle>
+        <p className="text-xs text-fg-muted">
+          PAYE bands, relief, NSSF, SHIF and the housing levy. These are yours to set and check —
+          they change by finance act and by the nature of the engagement. Nothing is deducted from
+          anybody until you switch this on.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={String(data.enabled) + data.payeBands.length}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              enabled: on,
+              payeBands: rows,
+              personalReliefPerMonth: Number(fd.get('personalReliefPerMonth')),
+              nssfTiers: data.nssfTiers,
+              shifRatePct: Number(fd.get('shifRatePct')),
+              shifMinimum: Number(fd.get('shifMinimum')),
+              housingLevyEmployeePct: Number(fd.get('housingLevyEmployeePct')),
+              housingLevyEmployerPct: Number(fd.get('housingLevyEmployerPct')),
+            });
+          }}
+          className="space-y-3"
+        >
+          <label className="flex items-start gap-2.5 rounded-lg border border-hairline p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={on}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="mt-0.5 size-4"
+            />
+            <span>
+              <span className="font-medium text-fg">Apply statutory deductions</span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Off means every worker is paid their full wage and nothing is withheld — which is
+                what a company paying casuals in cash and filing nothing should see.
+              </span>
+            </span>
+          </label>
+
+          {on && (
+            <>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-fg-muted">
+                  PAYE bands — each rate applies only to the pay inside that band
+                </p>
+                <div className="space-y-2">
+                  {rows.map((b, i) => (
+                    <div key={i} className="flex flex-wrap items-end gap-2">
+                      <div className="min-w-[9rem] flex-1">
+                        <Field label={i === 0 ? 'Up to' : 'Then up to'}>
+                          <Input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={b.upTo ?? ''}
+                            placeholder="and above"
+                            onChange={(e) =>
+                              setBand(i, {
+                                upTo: e.target.value === '' ? null : Number(e.target.value),
+                              })
+                            }
+                          />
+                        </Field>
+                      </div>
+                      <div className="w-28">
+                        <Field label="Rate %">
+                          <Input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            value={b.ratePct}
+                            onChange={(e) => setBand(i, { ratePct: Number(e.target.value) })}
+                          />
+                        </Field>
+                      </div>
+                      {rows.length > 1 && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setBands(rows.filter((_, j) => j !== i))}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="mt-2"
+                  onClick={() => setBands([...rows, { upTo: null, ratePct: 30 }])}
+                >
+                  Add band
+                </Button>
+                <p className="mt-1.5 text-xs text-fg-subtle">
+                  Leave the last band&rsquo;s ceiling blank so it covers everything above.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Personal relief per month" hint="Credited against the tax, not pay">
+                  <Input
+                    name="personalReliefPerMonth"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={data.personalReliefPerMonth}
+                  />
+                </Field>
+                <Field label="SHIF rate %">
+                  <Input
+                    name="shifRatePct"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    defaultValue={data.shifRatePct}
+                  />
+                </Field>
+                <Field label="SHIF minimum" hint="Zero for no floor">
+                  <Input
+                    name="shifMinimum"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={data.shifMinimum}
+                  />
+                </Field>
+                <Field label="Housing levy % (employee)">
+                  <Input
+                    name="housingLevyEmployeePct"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    defaultValue={data.housingLevyEmployeePct}
+                  />
+                </Field>
+                <Field label="Housing levy % (employer)">
+                  <Input
+                    name="housingLevyEmployerPct"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    defaultValue={data.housingLevyEmployerPct}
+                  />
+                </Field>
+              </div>
+            </>
+          )}
+
+          {save.isError && (
+            <p className="text-sm text-red-600">
+              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" disabled={save.isPending}>
+            Save payroll settings
           </Button>
         </form>
       </CardContent>

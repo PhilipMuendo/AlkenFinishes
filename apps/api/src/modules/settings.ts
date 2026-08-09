@@ -9,6 +9,7 @@ import { audit } from '../middleware/audit';
 import { getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPurchaseTaxConfig } from '../services/payables';
+import { getPayrollConfig } from '../services/payroll';
 import { peekNextNumber } from '../services/numbering';
 import { getPipelineConfig } from '../services/pipeline';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
@@ -215,6 +216,56 @@ const purchaseTaxSchema = z.object({
   defaultWhtRatePct: z.coerce.number().min(0).max(100),
   defaultWhtVatRatePct: z.coerce.number().min(0).max(100),
 });
+
+const payrollSchema = z.object({
+  enabled: z.coerce.boolean(),
+  payeBands: z
+    .array(z.object({ upTo: z.coerce.number().positive().nullable(), ratePct: z.coerce.number().min(0).max(100) }))
+    .min(1, 'Keep at least one tax band'),
+  personalReliefPerMonth: z.coerce.number().min(0),
+  nssfTiers: z.array(
+    z.object({
+      upTo: z.coerce.number().positive().nullable(),
+      employeePct: z.coerce.number().min(0).max(100),
+      employerPct: z.coerce.number().min(0).max(100),
+    }),
+  ),
+  shifRatePct: z.coerce.number().min(0).max(100),
+  shifMinimum: z.coerce.number().min(0),
+  housingLevyEmployeePct: z.coerce.number().min(0).max(100),
+  housingLevyEmployerPct: z.coerce.number().min(0).max(100),
+});
+
+router.get(
+  '/payroll',
+  asyncHandler(async (_req, res) => {
+    res.json(await getPayrollConfig());
+  }),
+);
+
+router.put(
+  '/payroll',
+  asyncHandler(async (req, res) => {
+    const value = payrollSchema.parse(req.body);
+    // Bands must ascend, or a slice would be charged twice or skipped.
+    const bounds = value.payeBands.map((b) => b.upTo);
+    for (let i = 1; i < bounds.length; i += 1) {
+      const prev = bounds[i - 1];
+      const cur = bounds[i];
+      if (prev === null) throw ApiError.badRequest('Only the last band can be open-ended');
+      if (cur !== null && cur <= prev) {
+        throw ApiError.badRequest('Each tax band must end above the one before it');
+      }
+    }
+    await prisma.setting.upsert({
+      where: { key: 'payroll' },
+      create: { key: 'payroll', value },
+      update: { value },
+    });
+    audit(req, 'settings.payroll', 'Setting', 'payroll', { enabled: value.enabled });
+    res.json(value);
+  }),
+);
 
 router.get(
   '/purchase-tax',

@@ -256,6 +256,7 @@ model User {
   quotations              Quotation[]                 @relation("QuotationPreparedBy")
   variationsApproved      Variation[]                 @relation("VariationApprovedBy")
   supplierPayments        SupplierPayment[]           @relation("SupplierPaymentPaidBy")
+  payrollRuns             PayrollRun[]                @relation("PayrollRunCreatedBy")
 }
 
 model RefreshToken {
@@ -320,6 +321,7 @@ model Project {
   safetyIncidents   SafetyIncident[]
   overrideRequests  AttendanceOverrideRequest[]
   calendarEvents    CalendarEvent[]
+  payrollRuns       PayrollRun[]
 
   @@index([supervisorId])
   @@index([clientId])
@@ -409,6 +411,76 @@ model Expense {
 // A merchant we buy from. Kept company-wide rather than per-project because
 // the question that matters is "what do I owe Bamburi", and that answer spans
 // every site at once.
+enum PayrollRunStatus {
+  DRAFT
+  FINALISED
+}
+
+// A payroll run over a period.
+//
+// Gross comes from attendance already recorded — hours at the worker's rate —
+// so nobody retypes what the fingerprint reader already knows.
+//
+// The rates in force are SNAPSHOT onto the run. Bands and levies change by
+// finance act, and a payslip handed to a worker in July must still show July's
+// arithmetic when it is reopened in December. Recomputing an old run against
+// today's rates would quietly rewrite what somebody was paid.
+model PayrollRun {
+  id         String           @id @default(cuid())
+  // Company-wide when null: statutory returns are filed for the company, not
+  // per site, so a run has to be able to span every project at once.
+  projectId  String?
+  project    Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  periodFrom DateTime         @db.Date
+  periodTo   DateTime         @db.Date
+  status     PayrollRunStatus @default(DRAFT)
+  notes      String?
+
+  // The PayrollConfig used, verbatim. See the note above.
+  configSnapshot Json
+
+  lines       PayrollLine[]
+  createdById String
+  createdBy   User          @relation("PayrollRunCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime      @default(now())
+  finalisedAt DateTime?
+
+  @@index([projectId, periodFrom])
+  @@index([status])
+}
+
+// One worker's payslip within a run. Every figure is stored, never recomputed
+// on read, for the same reason the run snapshots its rates.
+model PayrollLine {
+  id       String     @id @default(cuid())
+  runId    String
+  run      PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  workerId String
+  worker   Worker     @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  // Denormalised so a payslip still reads correctly after a worker is renamed
+  // or their rate changes.
+  workerName String
+  trade      String
+
+  hoursWorked Decimal @db.Decimal(8, 2)
+  gross       Decimal @db.Decimal(14, 2)
+
+  nssf            Decimal @db.Decimal(14, 2)
+  paye            Decimal @db.Decimal(14, 2)
+  shif            Decimal @db.Decimal(14, 2)
+  housingLevy     Decimal @db.Decimal(14, 2)
+  totalDeductions Decimal @db.Decimal(14, 2)
+  netPay          Decimal @db.Decimal(14, 2)
+
+  // A cost to the company on top of the wage, never taken from the worker.
+  employerNssf        Decimal @db.Decimal(14, 2)
+  employerHousingLevy Decimal @db.Decimal(14, 2)
+
+  @@unique([runId, workerId])
+  @@index([workerId])
+}
+
 model Supplier {
   id          String  @id @default(cuid())
   name        String  @unique
@@ -718,6 +790,7 @@ model Worker {
   attendance       AttendanceRecord[]
   syncIssues       AttendanceSyncIssue[]
   overrideRequests AttendanceOverrideRequest[]
+  payrollLines     PayrollLine[]
 }
 
 model WorkerAssignment {

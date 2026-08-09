@@ -1116,3 +1116,90 @@ export interface CommandCentreData {
     retentionHeld: number;
   } | null;
 }
+
+// ---- Payroll ----
+
+export interface PayeBand {
+  /** Upper bound of this band. Null means "and above". */
+  upTo: number | null;
+  ratePct: number;
+}
+
+export interface NssfTier {
+  upTo: number | null;
+  employeePct: number;
+  employerPct: number;
+}
+
+/** GET /settings/payroll. Every figure is the user's to set. */
+export interface PayrollConfig {
+  enabled: boolean;
+  payeBands: PayeBand[];
+  /** Subtracted from the TAX due, never from pay. */
+  personalReliefPerMonth: number;
+  nssfTiers: NssfTier[];
+  shifRatePct: number;
+  shifMinimum: number;
+  housingLevyEmployeePct: number;
+  housingLevyEmployerPct: number;
+}
+
+export interface PayrollLine {
+  workerId: string;
+  workerName: string;
+  trade: string;
+  hoursWorked: number;
+  gross: number;
+  nssf: number;
+  paye: number;
+  shif: number;
+  housingLevy: number;
+  totalDeductions: number;
+  netPay: number;
+  employerNssf: number;
+  employerHousingLevy: number;
+}
+
+export interface PayrollTotals {
+  gross: number;
+  paye: number;
+  nssfEmployee: number;
+  nssfEmployer: number;
+  shif: number;
+  housingLevyEmployee: number;
+  housingLevyEmployer: number;
+  totalDeductions: number;
+  netPay: number;
+  /** Gross plus employer contributions: what the labour actually costs. */
+  employerCost: number;
+  remittances: { paye: number; nssf: number; shif: number; housingLevy: number };
+}
+
+/** POST /payroll/preview */
+export interface PayrollPreview {
+  config: PayrollConfig;
+  lines: PayrollLine[];
+  totals: PayrollTotals;
+}
+
+export type PayrollRunStatus = 'DRAFT' | 'FINALISED';
+
+export interface PayrollRunSummary {
+  id: string;
+  periodFrom: string;
+  periodTo: string;
+  status: PayrollRunStatus;
+  notes: string | null;
+  project: { id: string; name: string } | null;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+  finalisedAt: string | null;
+  workerCount: number;
+  totals: PayrollTotals;
+}
+
+export interface PayrollRunDetail extends Omit<PayrollRunSummary, 'workerCount'> {
+  lines: PayrollLine[];
+  /** The rates in force when the run was made, not today's. */
+  config: PayrollConfig;
+}
