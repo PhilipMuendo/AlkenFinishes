@@ -19,10 +19,17 @@ import {
   getInvoicingConfig,
   invoiceBalanceCents,
   isOverdue,
+  LIVE_INVOICE_STATUSES,
   projectReceivables,
   recalcDraft,
 } from '../services/invoicing';
 import { toCents } from '../services/money';
+import {
+  buildClaim,
+  claimPositions,
+  ClaimError,
+  type ScheduleLine,
+} from '../services/claims';
 import { renderInvoicePdf, type InvoiceWithLines } from '../services/documents/invoicePdf';
 
 /**
@@ -181,6 +188,186 @@ router.post(
     });
 
     audit(req, 'invoice.create', 'Invoice', invoice.id, { type: invoice.type });
+    res.status(201).json(serialize(invoice));
+  }),
+);
+
+/**
+ * The priced schedule this project is claimed against, with each item's
+ * position: what it is worth, what has already been claimed, what is left.
+ *
+ * The schedule comes from the accepted quotation behind the contract — the
+ * same lines the client agreed to — so a claim is measured against the
+ * document that was signed rather than against anything retyped since.
+ */
+async function loadClaimContext(projectId: string) {
+  const contract = await prisma.contract.findUnique({
+    where: { projectId },
+    select: {
+      id: true,
+      contractNo: true,
+      title: true,
+      quotation: { select: { id: true, lines: { orderBy: { sortOrder: 'asc' } } } },
+    },
+  });
+  const schedule: ScheduleLine[] = (contract?.quotation?.lines ?? []).map((l) => ({
+    id: l.id,
+    description: l.description,
+    quantity: Number(l.quantity),
+    unit: l.unit,
+    unitPrice: Number(l.unitPrice),
+    lineTotal: Number(l.lineTotal),
+    taxable: l.taxable,
+    sortOrder: l.sortOrder,
+  }));
+
+  // Only invoices that still count. A VOID invoice claimed nothing, and a
+  // DRAFT has not been issued to anyone — counting either would permanently
+  // suppress value that has not actually been billed.
+  const priorLines = await prisma.invoiceLine.findMany({
+    where: {
+      sourceLineId: { not: null },
+      invoice: { projectId, status: { in: LIVE_INVOICE_STATUSES } },
+    },
+    select: { sourceLineId: true, lineTotal: true },
+  });
+  const priors = priorLines.map((l) => ({
+    sourceLineId: l.sourceLineId!,
+    lineTotal: Number(l.lineTotal),
+  }));
+
+  return { contract, schedule, priors };
+}
+
+router.get(
+  '/claim-schedule',
+  asyncHandler(async (req, res) => {
+    const { contract, schedule, priors } = await loadClaimContext(req.params.projectId);
+    const positions = claimPositions(schedule, priors);
+    const contractValue = schedule.reduce((s, l) => s + l.lineTotal, 0);
+    const claimedToDate = positions.reduce((s, p) => s + p.previouslyClaimed, 0);
+    res.json({
+      contract: contract
+        ? { id: contract.id, contractNo: contract.contractNo, title: contract.title }
+        : null,
+      // An empty schedule is a real answer, not an error: a project raised
+      // without a quotation has nothing to measure a claim against, and the
+      // UI needs to say so rather than show a blank table.
+      hasSchedule: schedule.length > 0,
+      contractValue,
+      claimedToDate,
+      remainingToClaim: Math.max(0, contractValue - claimedToDate),
+      positions,
+    });
+  }),
+);
+
+const claimSchema = z.object({
+  issueDate: z.coerce.date(),
+  dueDate: z.coerce.date().optional(),
+  dueInDays: z.coerce.number().int().min(0).optional(),
+  title: z.string().optional(),
+  notes: z.string().optional(),
+  retentionRatePct: z.coerce.number().min(0).max(100).optional(),
+  /** Set only after the user has been shown the credits and accepted them. */
+  allowReversals: z.coerce.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        sourceLineId: z.string(),
+        cumulativePct: z.coerce.number().min(0).max(100),
+      }),
+    )
+    .min(1, 'Choose at least one item to claim'),
+});
+
+/**
+ * Raise a progress claim as a DRAFT.
+ *
+ * Always a draft, never issued directly: a claim is the document most likely
+ * to be argued over, and it should be read once by a human before it carries
+ * an invoice number.
+ */
+router.post(
+  '/claim',
+  asyncHandler(async (req, res) => {
+    const data = claimSchema.parse(req.body);
+    const projectId = req.params.projectId;
+    const { schedule, priors } = await loadClaimContext(projectId);
+    if (schedule.length === 0) {
+      throw ApiError.badRequest(
+        'This project has no priced schedule to claim against — link it to a contract with an accepted quotation first',
+      );
+    }
+
+    let claim;
+    try {
+      claim = buildClaim(schedule, priors, data.items);
+    } catch (e) {
+      if (e instanceof ClaimError) throw ApiError.badRequest(e.message);
+      throw e;
+    }
+
+    if (claim.lines.length === 0) {
+      throw ApiError.badRequest(
+        'Nothing to claim — every item is already claimed at the percentage given',
+      );
+    }
+    if (claim.reversals.length > 0 && !data.allowReversals) {
+      throw ApiError.conflict(
+        `${claim.reversals.length} item(s) are below what has already been claimed, which would raise a credit. Confirm to continue.`,
+      );
+    }
+
+    const [project, config] = await Promise.all([
+      prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { clientName: true } }),
+      getInvoicingConfig(),
+    ]);
+    const dueDate =
+      data.dueDate ??
+      new Date(
+        data.issueDate.getTime() + (data.dueInDays ?? config.defaultPaymentTermsDays) * 86_400_000,
+      );
+
+    const invoice = await prisma.$transaction(async (tx) => {
+      const created = await tx.invoice.create({
+        data: {
+          projectId,
+          type: 'PROGRESS_CLAIM',
+          title: data.title,
+          issueDate: data.issueDate,
+          dueDate,
+          clientName: project.clientName,
+          vatRatePct: config.vatRatePct,
+          retentionRatePct: data.retentionRatePct ?? config.defaultRetentionPct,
+          notes: data.notes,
+          createdById: req.user!.id,
+          lines: {
+            create: claim.lines.map((l, i) => ({
+              sortOrder: i,
+              description: l.description,
+              quantity: l.quantity,
+              unit: l.unit,
+              unitPrice: l.unitPrice,
+              taxable: l.taxable,
+              sourceLineId: l.sourceLineId,
+              cumulativePct: l.cumulativePct,
+              // Authoritative for a claim line — recalcDraft preserves it
+              // rather than recomputing a meaningless quantity × unitPrice.
+              lineTotal: l.lineTotal,
+            })),
+          },
+        },
+      });
+      await recalcDraft(tx, created.id);
+      return tx.invoice.findUniqueOrThrow({ where: { id: created.id }, include: lineInclude });
+    });
+
+    audit(req, 'invoice.claim', 'Invoice', invoice.id, {
+      items: claim.lines.length,
+      subtotal: claim.subtotal,
+      reversals: claim.reversals.length,
+    });
     res.status(201).json(serialize(invoice));
   }),
 );

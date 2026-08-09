@@ -77,6 +77,18 @@ export interface LineInput {
   quantity: MoneyLike;
   unitPrice: MoneyLike;
   taxable?: boolean;
+  /**
+   * Overrides quantity × unitPrice for this line.
+   *
+   * Only progress-claim lines use it. What a claim bills is a cumulative value
+   * minus what earlier claims took (services/claims.ts) — a difference, not a
+   * product — and forcing it back through quantity × unitPrice would need a
+   * fraction at more precision than the 3dp quantity column holds, losing
+   * cents on every claim. VAT, retention and the subtotal are unaffected and
+   * still computed here, so there is still exactly one implementation of
+   * invoice arithmetic.
+   */
+  fixedLineTotalCents?: number | null;
 }
 
 export interface InvoiceTotalsInput {
@@ -109,7 +121,9 @@ export function computeInvoiceTotals(input: InvoiceTotalsInput): InvoiceTotals {
   // 1. Round PER LINE, then sum — not "sum exactly, round once at the end".
   //    The invoice prints a line-total column; if that column does not add up
   //    to the printed subtotal, the client stops trusting the document.
-  const lineTotalsCents = input.lines.map((l) => lineTotalCents(l.quantity, l.unitPrice));
+  const lineTotalsCents = input.lines.map((l) =>
+    l.fixedLineTotalCents == null ? lineTotalCents(l.quantity, l.unitPrice) : l.fixedLineTotalCents,
+  );
 
   // 2. Subtotal is a plain sum of values already at 2dp — nothing to round.
   const grossOfLines = sumCents(lineTotalsCents);
@@ -230,7 +244,15 @@ export async function recalcDraft(tx: Prisma.TransactionClient, invoiceId: strin
     include: { lines: { orderBy: { sortOrder: 'asc' } } },
   });
   const totals = computeInvoiceTotals({
-    lines: inv.lines,
+    // A claim line's value was derived from the schedule and what earlier
+    // claims took; recomputing it from quantity × unitPrice here would
+    // overwrite it with a meaningless product.
+    lines: inv.lines.map((l) => ({
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      taxable: l.taxable,
+      fixedLineTotalCents: l.cumulativePct == null ? null : toCents(l.lineTotal),
+    })),
     vatRatePct: inv.vatRatePct,
     retentionRatePct: inv.retentionRatePct,
     vatInclusive: inv.vatInclusive,
