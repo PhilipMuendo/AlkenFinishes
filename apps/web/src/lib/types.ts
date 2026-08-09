@@ -1089,6 +1089,9 @@ export interface CommandCentreData {
 
   financials: ProjectFinancials | null;
   contractPosition: ContractPosition | null;
+  /** Null for a supervisor. False means the site was raised outside the
+   *  commercial chain, so claims and retention cannot work yet. */
+  contractLinked: boolean | null;
   materials: {
     allocated: number;
     actual: number;

@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardCheck,
+  FileSignature,
   HardHat,
   Image as ImageIcon,
   Info,
@@ -165,6 +166,7 @@ export function CommandCentrePanel({
     profit,
     invoices,
     financials,
+    contractLinked,
   } = data;
 
   // `undefined` makes Panel drop its footer link entirely.
@@ -180,6 +182,31 @@ export function CommandCentrePanel({
 
   return (
     <div className="space-y-4">
+      {/* A site with no contract behind it is missing the commercial half of
+          the system and otherwise gives no sign of it — you would find out
+          weeks later, at the claim screen. */}
+      {contractLinked === false && (
+        <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm sm:flex-row sm:items-start dark:border-amber-800 dark:bg-amber-950/40">
+          <FileSignature size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-fg">This site has no contract behind it</p>
+            <p className="mt-0.5 text-fg-muted">
+              Progress claims, retention, the defects liability period and the contract position
+              all read through a contract. Until one is linked, this site can be run and costed but
+              not claimed against.
+            </p>
+            {linked && (
+              <Link
+                to="/admin/contracts"
+                className="mt-1.5 inline-block font-medium text-brand-700 hover:underline"
+              >
+                Link a contract →
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {/* 1 — Progress against programme */}
         <Panel n={next()} title="Progress against programme" icon={TrendingUp} to={tabHref('tasks')} linkLabel="View programme">

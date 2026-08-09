@@ -481,6 +481,143 @@ router.post(
   }),
 );
 
+/**
+ * Sites this contract could be attached to: no contract of their own, and
+ * either this client's or not yet tied to any client.
+ */
+router.get(
+  '/:id/attachable-projects',
+  asyncHandler(async (req, res) => {
+    const c = await prisma.contract.findUnique({
+      where: { id: req.params.id },
+      select: { clientId: true },
+    });
+    if (!c) throw ApiError.notFound();
+
+    const projects = await prisma.project.findMany({
+      where: {
+        contract: null,
+        OR: [{ clientId: c.clientId }, { clientId: null }],
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+      },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        clientName: true,
+        location: true,
+        status: true,
+        startDate: true,
+        contractValue: true,
+      },
+      orderBy: { startDate: 'desc' },
+      take: 100,
+    });
+    res.json(projects.map((p) => ({ ...p, contractValue: Number(p.contractValue) })));
+  }),
+);
+
+/**
+ * Attach this contract to a site that already exists.
+ *
+ * The counterpart to convert-to-project, for the jobs that did not start in
+ * this system: work already running when the office came on board, and small
+ * jobs that only got a contract later. Without it, a project raised directly
+ * is permanently outside the commercial chain — no claim schedule, no contract
+ * position, no retention — and the only escape is to abandon it and convert
+ * the contract into a second, duplicate site.
+ *
+ * The contract sum becomes the project's, because from here on the contract is
+ * the authority on what the job is worth.
+ */
+router.post(
+  '/:id/attach-project',
+  asyncHandler(async (req, res) => {
+    const { projectId } = z
+      .object({ projectId: z.string().min(1, 'Choose a site') })
+      .parse(req.body);
+
+    const project = await prisma.$transaction(async (tx) => {
+      const c = await tx.contract.findUniqueOrThrow({
+        where: { id: req.params.id },
+        include: {
+          client: { select: { id: true, name: true } },
+          variations: { select: { amount: true, status: true } },
+        },
+      });
+      if (c.projectId) throw ApiError.conflict('This contract already has a site against it');
+      if (c.status === 'DRAFT') {
+        throw ApiError.conflict('Issue this contract before attaching it to a site');
+      }
+
+      const p = await tx.project.findUnique({
+        where: { id: projectId },
+        include: { contract: { select: { id: true, contractNo: true } } },
+      });
+      if (!p) throw ApiError.notFound('Site not found');
+      if (p.contract) {
+        throw ApiError.conflict(
+          `${p.name} is already under contract ${p.contract.contractNo ?? 'draft'}`,
+        );
+      }
+      // A contract for one client attached to another client's site would
+      // quietly misreport who owes the money on both sides.
+      if (p.clientId && p.clientId !== c.clientId) {
+        throw ApiError.conflict(
+          `${p.name} belongs to a different client. Attach this contract to one of ${c.client.name}'s sites.`,
+        );
+      }
+
+      const position = contractPosition(c, c.variations);
+      const updated = await tx.project.update({
+        where: { id: p.id },
+        data: {
+          contractValue: position.grossValue,
+          clientId: c.clientId,
+          clientName: c.client.name,
+        },
+      });
+      await tx.contract.update({
+        where: { id: c.id },
+        data: { projectId: p.id, status: c.status === 'SIGNED' ? 'ACTIVE' : c.status },
+      });
+      return updated;
+    });
+
+    audit(req, 'contract.attachProject', 'Project', project.id, { contractId: req.params.id });
+    res.json(project);
+  }),
+);
+
+/**
+ * Detach, for when the wrong site was picked.
+ *
+ * Refused once anything has been billed against the schedule: those invoice
+ * lines point at quotation lines that would no longer belong to the project
+ * they were raised on, and the claim history would stop reconciling.
+ */
+router.delete(
+  '/:id/attach-project',
+  asyncHandler(async (req, res) => {
+    const c = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!c) throw ApiError.notFound();
+    if (!c.projectId) throw ApiError.conflict('This contract has no site against it');
+
+    const claimed = await prisma.invoiceLine.count({
+      where: { sourceLineId: { not: null }, invoice: { projectId: c.projectId } },
+    });
+    if (claimed > 0) {
+      throw ApiError.conflict(
+        'Work has already been claimed against this contract on that site. Void those claims first if the link is genuinely wrong.',
+      );
+    }
+
+    await prisma.contract.update({ where: { id: c.id }, data: { projectId: null } });
+    audit(req, 'contract.detachProject', 'Contract', c.id, { projectId: c.projectId });
+    res.json({ ok: true });
+  }),
+);
+
 router.delete(
   '/:id',
   asyncHandler(async (req, res) => {

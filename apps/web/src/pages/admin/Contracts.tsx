@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Download, FileSignature, HardHat, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, FileSignature, HardHat, Link2, Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import type { AppUser, Contract, ContractStatus, Variation } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
@@ -38,6 +38,7 @@ export function ContractsPage() {
   const [signing, setSigning] = useState(false);
   const [varying, setVarying] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [attaching, setAttaching] = useState(false);
 
   const { data: contracts, isLoading } = useQuery({
     queryKey: ['contracts', status],
@@ -107,6 +108,17 @@ export function ContractsPage() {
     onSuccess: (project) => {
       invalidate();
       setConverting(false);
+      setOpenId(null);
+      navigate(`/admin/projects/${project.id}`);
+    },
+  });
+
+  const attachProject = useMutation({
+    mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
+      api<{ id: string }>(`/contracts/${id}/attach-project`, { body: { projectId } }),
+    onSuccess: (project) => {
+      invalidate();
+      setAttaching(false);
       setOpenId(null);
       navigate(`/admin/projects/${project.id}`);
     },
@@ -335,14 +347,27 @@ export function ContractsPage() {
                 </Button>
               )}
               {!contract.projectId && contract.status !== 'DRAFT' && (
-                <Button
-                  onClick={() => {
-                    toProject.reset();
-                    setConverting(true);
-                  }}
-                >
-                  <HardHat size={16} /> Open the site
-                </Button>
+                <>
+                  {/* For jobs already running when the office came on board:
+                      the site exists, it just has no contract behind it. */}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      attachProject.reset();
+                      setAttaching(true);
+                    }}
+                  >
+                    <Link2 size={16} /> Link an existing site
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      toProject.reset();
+                      setConverting(true);
+                    }}
+                  >
+                    <HardHat size={16} /> Open the site
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -416,6 +441,25 @@ export function ContractsPage() {
       </Dialog>
 
       {/* ---- Convert to project ---- */}
+      {/* ---- Link an existing site ---- */}
+      <Dialog
+        open={attaching}
+        onClose={() => setAttaching(false)}
+        title="Link an existing site"
+        className="max-w-lg"
+      >
+        {contract && (
+          <AttachProjectForm
+            contractId={contract.id}
+            contractNo={contract.contractNo}
+            clientName={contract.client.name}
+            pending={attachProject.isPending}
+            error={attachProject.error}
+            onSubmit={(projectId) => attachProject.mutate({ id: contract.id, projectId })}
+          />
+        )}
+      </Dialog>
+
       <Dialog open={converting} onClose={() => setConverting(false)} title="Open the site">
         {contract && (
           <form
@@ -732,5 +776,111 @@ function VariationRow({
         </form>
       )}
     </li>
+  );
+}
+
+/**
+ * Linking a contract to a site that already exists.
+ *
+ * The list is deliberately narrow — sites with no contract of their own, for
+ * this client or not yet tied to one — because attaching a contract to the
+ * wrong site misreports who owes the money on both sides of the ledger.
+ */
+function AttachProjectForm({
+  contractId,
+  contractNo,
+  clientName,
+  pending,
+  error,
+  onSubmit,
+}: {
+  contractId: string;
+  contractNo: string | null;
+  clientName: string;
+  pending: boolean;
+  error: unknown;
+  onSubmit: (projectId: string) => void;
+}) {
+  const [projectId, setProjectId] = useState('');
+  const { data: projects, isLoading } = useQuery({
+    queryKey: ['contract', contractId, 'attachable'],
+    queryFn: () =>
+      api<
+        {
+          id: string;
+          code: string | null;
+          name: string;
+          clientName: string;
+          location: string;
+          startDate: string;
+          contractValue: number;
+        }[]
+      >(`/contracts/${contractId}/attachable-projects`),
+  });
+
+  if (isLoading) return <p className="py-6 text-center text-sm text-fg-muted">Loading sites…</p>;
+
+  if (projects?.length === 0) {
+    return (
+      <div className="space-y-3">
+        <Empty icon={HardHat}>
+          <p className="font-medium text-fg">No site to link</p>
+          <p className="mt-1 max-w-sm text-fg-muted">
+            Every one of {clientName}&rsquo;s sites already has a contract, or belongs to another
+            client. Use <span className="font-medium text-fg">Open the site</span> to create a new
+            one from this contract.
+          </p>
+        </Empty>
+      </div>
+    );
+  }
+
+  const chosen = projects?.find((p) => p.id === projectId);
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit(projectId);
+      }}
+      className="space-y-3"
+    >
+      <p className="text-sm text-fg-muted">
+        For work that was already running before {contractNo ?? 'this contract'} existed. The site
+        keeps its history — attendance, expenses, photos — and gains the contract behind it, so
+        progress claims, retention and the contract position start working.
+      </p>
+
+      <Field label="Which site?">
+        <Select value={projectId} onChange={(e) => setProjectId(e.target.value)} required>
+          <option value="">Choose a site…</option>
+          {projects?.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.code ? `${p.code} · ` : ''}
+              {p.name} — {p.location}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      {chosen && (
+        <div className="rounded-lg border border-hairline bg-surface-muted p-3 text-sm">
+          <p className="text-fg-muted">
+            Started {fmtDate(chosen.startDate)} · currently recorded at{' '}
+            <span className="tabular-nums">{fmtMoney(chosen.contractValue)}</span>
+          </p>
+          <p className="mt-1.5 text-xs text-fg-subtle">
+            The contract sum replaces that figure — from here on the contract is what the job is
+            worth.
+          </p>
+        </div>
+      )}
+
+      {error != null && <p className="text-sm text-red-600">{errorMessage(error)}</p>}
+
+      <Button type="submit" className="w-full" disabled={!projectId || pending}>
+        {pending ? 'Linking…' : 'Link this site'}
+      </Button>
+    </form>
   );
 }

@@ -386,6 +386,10 @@ router.get(
       // Money — null for a supervisor, and the queries behind them never ran.
       financials,
       contractPosition: contract ? contractPosition(contract, contract.variations) : null,
+      // A site raised directly, with no contract behind it, is missing the
+      // commercial half of the system and gives no sign of it. Saying so is
+      // what stops somebody discovering it weeks later at the claim screen.
+      contractLinked: canSeeMoney ? contract !== null : null,
       materials,
       profit,
       invoices,
