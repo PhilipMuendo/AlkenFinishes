@@ -255,6 +255,7 @@ model User {
   leadsOwned              Lead[]                      @relation("LeadOwner")
   quotations              Quotation[]                 @relation("QuotationPreparedBy")
   variationsApproved      Variation[]                 @relation("VariationApprovedBy")
+  supplierPayments        SupplierPayment[]           @relation("SupplierPaymentPaidBy")
 }
 
 model RefreshToken {
@@ -351,6 +352,35 @@ model Expense {
   receiptUrl  String?
   expenseDate DateTime
 
+  // A supplier is what puts this cost on the payables ledger. NULL means the
+  // money is already gone — petty cash, a fuel receipt, wages handed out on
+  // site — and the expense behaves exactly as it always has. Only a expense
+  // with a supplier is ever reported as owed, which is what keeps every row
+  // recorded before suppliers existed from suddenly reading as unpaid.
+  supplierId        String?
+  supplier          Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  // The supplier's own invoice/delivery-note number, as printed on their paper.
+  supplierInvoiceNo String?
+  // When the supplier expects to be paid. Drives the payables ageing.
+  dueDate           DateTime?
+
+  // INPUT VAT charged by the supplier, already contained within `amount`.
+  // `amount` stays the gross figure printed on the supplier's invoice, which
+  // is what we actually owe them and therefore what the payables ledger
+  // settles against. The ex-VAT cost is amount − vatAmount.
+  //
+  // Both default to zero, so every row written before this column existed
+  // reads as a supplier who charged no VAT — which is exactly how an expense
+  // with no VAT recorded should behave.
+  vatRatePct Decimal @default(0) @db.Decimal(5, 2)
+  vatAmount  Decimal @default(0) @db.Decimal(14, 2)
+  // Whether the supplier issued a valid tax invoice (ETR). Input VAT is only
+  // reclaimable when they did, so this is what separates "VAT we can recover"
+  // from "VAT that is simply part of the cost".
+  taxInvoice Boolean @default(false)
+
+  payments SupplierPayment[]
+
   // Only APPROVED expenses count as actual spend against the budget — see
   // projectFinancials() in finance.ts. A submitted-but-undecided claim is real
   // money that left someone's hand on site, but it is not yet an approved cost.
@@ -371,6 +401,77 @@ model Expense {
   // alone, across every project — the (projectId, status) index above can't
   // serve that without a leading projectId, so it needs its own.
   @@index([status])
+  // The payables ledger reads every expense that has a supplier, across all
+  // projects, oldest first.
+  @@index([supplierId, dueDate])
+}
+
+// A merchant we buy from. Kept company-wide rather than per-project because
+// the question that matters is "what do I owe Bamburi", and that answer spans
+// every site at once.
+model Supplier {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  contactName String?
+  phone       String?
+  email       String?
+  kraPin      String?
+  notes       String?
+
+  // Suppliers are retired, not deleted: their name is printed on costs that
+  // have already been reported, and removing it would rewrite that history.
+  active Boolean @default(true)
+
+  expenses  Expense[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([active, name])
+}
+
+// One part-payment against a supplier's bill.
+//
+// A bill is very often settled in instalments — some now, the rest when the
+// client's money lands — so what is owed is the expense less every payment made
+// against it, and never a flag on the expense itself. Nothing here stores a
+// running balance: a stored total is a second source of truth that can disagree
+// with the payments it claims to summarise.
+model SupplierPayment {
+  id        String  @id @default(cuid())
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  // Cash that actually reached the supplier.
+  amount      Decimal       @db.Decimal(14, 2)
+  method      PaymentMethod
+  paymentDate DateTime
+  // EFT ref, M-Pesa code, cheque number — how this payment is traced.
+  referenceNo String?
+  notes       String?
+  // OUR proof that the money left: bank slip, M-Pesa message, till receipt.
+  proofUrl    String?
+
+  // Tax DEDUCTED from this payment and owed to KRA instead of the supplier —
+  // withholding tax, withholding VAT, or both.
+  //
+  // This settles the supplier's bill just as cash does: withhold 15,000 of a
+  // 500,000 bill and paying 485,000 clears it in full. Without this column the
+  // bill would sit 15,000 short for ever and somebody would eventually pay it
+  // twice. What the supplier RECEIVED is `amount`; what SETTLED the bill is
+  // amount + whtAmount + whtVatAmount.
+  whtAmount     Decimal   @default(0) @db.Decimal(14, 2)
+  whtVatAmount  Decimal   @default(0) @db.Decimal(14, 2)
+  // The KRA withholding certificate number issued to the supplier.
+  whtCertNo     String?
+  // Set once the withheld tax has actually been remitted to KRA.
+  whtRemittedAt DateTime?
+
+  paidById  String
+  paidBy    User     @relation("SupplierPaymentPaidBy", fields: [paidById], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([expenseId])
+  @@index([paymentDate])
 }
 
 // Material requests: a supervisor asks for stock, the office decides, and once
