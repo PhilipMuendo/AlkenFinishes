@@ -207,13 +207,40 @@ export function suggestFigures(
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+/**
+ * Which service reads the receipts.
+ *
+ * Pluggable on purpose. Reading a receipt is high volume and low risk — the
+ * verification below catches a misread whichever model produced it — so this
+ * is exactly the job to run on the cheapest model that does it well, and the
+ * cheapest model changes. Swapping providers must not mean a code change, and
+ * must not touch a line of the checking that makes the output safe.
+ */
+export type ReceiptProvider = 'gemini' | 'anthropic';
+
+export function receiptProvider(): ReceiptProvider | null {
+  const explicit = process.env.RECEIPT_PROVIDER?.toLowerCase();
+  if (explicit === 'gemini') return process.env.GEMINI_API_KEY ? 'gemini' : null;
+  if (explicit === 'anthropic') return process.env.ANTHROPIC_API_KEY ? 'anthropic' : null;
+  // No explicit choice: use whichever key is present, cheapest first.
+  if (process.env.GEMINI_API_KEY) return 'gemini';
+  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  return null;
+}
 
 /** Absent key means the feature is simply off; the form still works by hand. */
 export function receiptScanningAvailable(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return receiptProvider() !== null;
 }
 
 export class ExtractionError extends Error {}
+
+const DEFAULT_MODEL: Record<ReceiptProvider, string> = {
+  gemini: 'gemini-2.5-flash',
+  anthropic: 'claude-sonnet-5',
+};
 
 const SYSTEM_PROMPT = `You read supplier receipts and tax invoices for a Kenyan construction company and return only what is printed on them.
 
@@ -231,70 +258,34 @@ Return ONLY a JSON object, no prose, with exactly these keys:
 }
 
 Rules:
-- Report ONLY figures actually printed. If a figure is missing or illegible, use null. NEVER calculate a missing figure — a downstream check does that, and a calculated figure hides a misread one.
+- Report ONLY figures actually printed. If a figure is missing or illegible, use null. NEVER calculate a missing figure - a downstream check does that, and a calculated figure hides a misread one.
 - Numbers must be plain, without currency symbols or thousands separators. 1,234.50 becomes 1234.5
 - "date" is the invoice or receipt date in YYYY-MM-DD. Use null if you cannot read it.
 - "subtotal" is the value BEFORE VAT. "total" is the amount payable. "vatAmount" is the VAT line only.
-- "taxInvoice" is true only if this is a proper tax invoice — an ETR receipt, a printed PIN, or the words "TAX INVOICE". A plain till slip or delivery note is false.
+- "taxInvoice" is true only if this is a proper tax invoice - an ETR receipt, a printed PIN, or the words "TAX INVOICE". A plain till slip or delivery note is false.
 - "note" is one short sentence about anything smudged, ambiguous or unusual, else null.
 - If the image is not a receipt or invoice at all, set every field null and say so in "note".`;
+
+const USER_PROMPT = 'Read this receipt and return the JSON object.';
 
 export interface ScanOptions {
   model?: string;
   timeoutMs?: number;
+  provider?: ReceiptProvider;
 }
 
 /**
- * Ask the model to read one receipt.
- *
- * Kept deliberately thin: it returns raw claims which `verify()` then checks.
- * Nothing here decides anything, and nothing it returns reaches the database
- * without a human pressing save.
+ * Base64 inflates a file by a third, and both APIs cap the request. Refusing
+ * here gives the user something they can act on instead of a provider error
+ * they cannot read.
  */
-export async function scanReceipt(
-  image: Buffer,
-  mediaType: string,
-  opts: ScanOptions = {},
-): Promise<ExtractedReceipt> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new ExtractionError('Receipt scanning is not configured');
+const MAX_INLINE_BYTES = 6 * 1024 * 1024;
 
-  const isPdf = mediaType === 'application/pdf';
+async function post(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 45_000);
-
-  let res: Response;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    res = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model: opts.model ?? process.env.RECEIPT_MODEL ?? 'claude-sonnet-5',
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: isPdf ? 'document' : 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mediaType,
-                  data: image.toString('base64'),
-                },
-              },
-              { type: 'text', text: 'Read this receipt and return the JSON object.' },
-            ],
-          },
-        ],
-      }),
-    });
+    return await fetch(url, { ...init, signal: controller.signal });
   } catch (e) {
     throw new ExtractionError(
       (e as Error).name === 'AbortError'
@@ -304,22 +295,140 @@ export async function scanReceipt(
   } finally {
     clearTimeout(timer);
   }
+}
 
-  if (!res.ok) {
-    // The upstream body can carry account details; keep it out of the client.
-    throw new ExtractionError(
-      res.status === 401
-        ? 'The receipt-reading key was rejected. Check it in the server settings.'
-        : `The receipt could not be read (${res.status}). Enter it by hand.`,
-    );
-  }
+function failed(status: number): never {
+  // Upstream bodies can carry account details; keep them out of the client.
+  throw new ExtractionError(
+    status === 401 || status === 403
+      ? 'The receipt-reading key was rejected. Check it in the server configuration.'
+      : status === 429
+        ? 'The reading service is rate limiting. Try again shortly, or enter it by hand.'
+        : `The receipt could not be read (${status}). Enter it by hand.`,
+  );
+}
+
+async function callGemini(
+  image: Buffer,
+  mediaType: string,
+  model: string,
+  timeoutMs: number,
+): Promise<string> {
+  const key = process.env.GEMINI_API_KEY!;
+  const res = await post(
+    `${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              { inline_data: { mime_type: mediaType, data: image.toString('base64') } },
+              { text: USER_PROMPT },
+            ],
+          },
+        ],
+        generationConfig: {
+          // Ask for JSON directly rather than hoping for it. parseExtraction
+          // still tolerates a fence, because a refusal can arrive as prose.
+          responseMimeType: 'application/json',
+          temperature: 0,
+          maxOutputTokens: 1024,
+        },
+      }),
+    },
+    timeoutMs,
+  );
+  if (!res.ok) failed(res.status);
+
+  const body = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  return (body.candidates?.[0]?.content?.parts ?? [])
+    .map((part) => part.text ?? '')
+    .join('')
+    .trim();
+}
+
+async function callAnthropic(
+  image: Buffer,
+  mediaType: string,
+  model: string,
+  timeoutMs: number,
+): Promise<string> {
+  const key = process.env.ANTHROPIC_API_KEY!;
+  const isPdf = mediaType === 'application/pdf';
+  const res = await post(
+    ANTHROPIC_URL,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        temperature: 0,
+        system: SYSTEM_PROMPT,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: isPdf ? 'document' : 'image',
+                source: { type: 'base64', media_type: mediaType, data: image.toString('base64') },
+              },
+              { type: 'text', text: USER_PROMPT },
+            ],
+          },
+        ],
+      }),
+    },
+    timeoutMs,
+  );
+  if (!res.ok) failed(res.status);
 
   const body = (await res.json()) as { content?: { type: string; text?: string }[] };
-  const text = (body.content ?? [])
+  return (body.content ?? [])
     .filter((c) => c.type === 'text')
     .map((c) => c.text ?? '')
     .join('')
     .trim();
+}
+
+/**
+ * Ask the configured service to read one receipt.
+ *
+ * Kept deliberately thin: it returns raw claims which `verify()` then checks.
+ * Nothing here decides anything, and nothing it returns reaches the database
+ * without a human pressing save. That is also what makes the choice of model
+ * a safe, reversible one — a cheaper model that misreads is caught by the
+ * arithmetic, not silently believed.
+ */
+export async function scanReceipt(
+  image: Buffer,
+  mediaType: string,
+  opts: ScanOptions = {},
+): Promise<ExtractedReceipt> {
+  const provider = opts.provider ?? receiptProvider();
+  if (!provider) throw new ExtractionError('Receipt scanning is not configured');
+  if (image.byteLength > MAX_INLINE_BYTES) {
+    throw new ExtractionError(
+      'That file is too large to read. Photograph the receipt instead of attaching a scan.',
+    );
+  }
+
+  const model = opts.model ?? process.env.RECEIPT_MODEL ?? DEFAULT_MODEL[provider];
+  const timeoutMs = opts.timeoutMs ?? 45_000;
+  const text =
+    provider === 'gemini'
+      ? await callGemini(image, mediaType, model, timeoutMs)
+      : await callAnthropic(image, mediaType, model, timeoutMs);
 
   return parseExtraction(text);
 }

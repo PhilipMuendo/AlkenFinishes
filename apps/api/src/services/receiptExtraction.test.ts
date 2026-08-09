@@ -4,6 +4,8 @@ import {
   ExtractionError,
   matchSupplier,
   parseExtraction,
+  receiptProvider,
+  receiptScanningAvailable,
   suggestFigures,
   verify,
   type ExtractedReceipt,
@@ -195,4 +197,73 @@ test('taxInvoice is only true when it is exactly true', () => {
 test('a reply with no JSON at all is an error, not a blank receipt', () => {
   assert.throws(() => parseExtraction('I cannot read this image.'), ExtractionError);
   assert.throws(() => parseExtraction('{ not json'), ExtractionError);
+});
+
+
+// ---- Which service reads the receipts ----
+//
+// Swapping providers is a configuration change, never a code change. The
+// checking above is what makes a cheaper model a safe choice, so choosing one
+// must not require touching any of it.
+
+const withEnv = (env: Record<string, string | undefined>, fn: () => void) => {
+  const keys = ['RECEIPT_PROVIDER', 'GEMINI_API_KEY', 'ANTHROPIC_API_KEY'] as const;
+  const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  try {
+    for (const k of keys) {
+      if (env[k] === undefined) delete process.env[k];
+      else process.env[k] = env[k];
+    }
+    fn();
+  } finally {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k] as string;
+    }
+  }
+};
+
+test('no key at all means the feature is simply off', () => {
+  withEnv({}, () => {
+    assert.equal(receiptProvider(), null);
+    assert.equal(receiptScanningAvailable(), false, 'the form still works by hand');
+  });
+});
+
+test('with only one key, that provider is used without being named', () => {
+  withEnv({ GEMINI_API_KEY: 'g' }, () => assert.equal(receiptProvider(), 'gemini'));
+  withEnv({ ANTHROPIC_API_KEY: 'a' }, () => assert.equal(receiptProvider(), 'anthropic'));
+});
+
+test('with both keys and no preference, the cheaper one wins', () => {
+  withEnv({ GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' }, () => {
+    assert.equal(receiptProvider(), 'gemini');
+  });
+});
+
+test('an explicit choice overrides the default, in either direction', () => {
+  withEnv({ RECEIPT_PROVIDER: 'anthropic', GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' }, () => {
+    assert.equal(receiptProvider(), 'anthropic', 'falling back to a better reader stays possible');
+  });
+  withEnv({ RECEIPT_PROVIDER: 'GEMINI', GEMINI_API_KEY: 'g', ANTHROPIC_API_KEY: 'a' }, () => {
+    assert.equal(receiptProvider(), 'gemini', 'the name is not case sensitive');
+  });
+});
+
+test('naming a provider whose key is missing turns the feature off, not on', () => {
+  // Better an absent button than a button that fails on every press.
+  withEnv({ RECEIPT_PROVIDER: 'gemini', ANTHROPIC_API_KEY: 'a' }, () => {
+    assert.equal(receiptProvider(), null);
+    assert.equal(receiptScanningAvailable(), false);
+  });
+});
+
+test("both providers' replies go through the same parser", () => {
+  // Gemini returns bare JSON, Anthropic often fences it. One parser, one set
+  // of coercions, so the checks downstream cannot tell them apart.
+  const gemini = parseExtraction('{"total": 580000, "vatAmount": 80000, "taxInvoice": true}');
+  const anthropic = parseExtraction(
+    '```json\n{"total": 580000, "vatAmount": 80000, "taxInvoice": true}\n```',
+  );
+  assert.deepEqual(gemini, anthropic);
 });

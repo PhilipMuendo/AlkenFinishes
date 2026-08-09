@@ -1,6 +1,13 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+/**
+ * An unset docker-compose variable arrives as an empty string, not as absent.
+ * Treat it as absent, or an optional enum rejects "" and the process exits.
+ */
+const blankToUndefined = <T extends z.ZodTypeAny>(inner: T) =>
+  z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), inner);
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
@@ -19,10 +26,22 @@ const schema = z.object({
   FILE_URL_TTL_SECONDS: z.coerce.number().default(3600),
   MAX_SHIFT_HOURS: z.coerce.number().default(14),
   // Reading photographed receipts. OPTIONAL: with no key the feature is simply
-  // absent and every form still works by hand. Receipt images are sent to
-  // Anthropic when it is set, so it is opt-in by configuration.
-  ANTHROPIC_API_KEY: z.string().optional(),
-  RECEIPT_MODEL: z.string().default('claude-sonnet-5'),
+  // absent and every form still works by hand. Receipt images leave the
+  // building when a key is set, so it is opt-in by configuration.
+  //
+  // Whichever key is present is used, Gemini first because it is the cheaper
+  // read. RECEIPT_PROVIDER forces one when both are configured, which is what
+  // makes falling back to a better reader a config change rather than a
+  // deploy. RECEIPT_MODEL overrides the provider's default model.
+  //
+  // Every one of these is preprocessed from "" to undefined: docker-compose
+  // passes an unset variable through as an EMPTY STRING, and an empty string
+  // fails an enum. Without this the API refuses to boot the moment the
+  // optional block is present in compose but unconfigured.
+  GEMINI_API_KEY: blankToUndefined(z.string().optional()),
+  ANTHROPIC_API_KEY: blankToUndefined(z.string().optional()),
+  RECEIPT_PROVIDER: blankToUndefined(z.enum(['gemini', 'anthropic']).optional()),
+  RECEIPT_MODEL: blankToUndefined(z.string().optional()),
 });
 
 const parsed = schema.safeParse(process.env);
