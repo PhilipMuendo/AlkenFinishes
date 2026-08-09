@@ -88,6 +88,20 @@ const include = {
   },
 } as const;
 
+/**
+ * What a supervisor may see of their own claim.
+ *
+ * Deliberately NOT the payables side. Whether the office has paid the supplier,
+ * in how many instalments, and what tax was withheld is company financial data
+ * — the same visibility invoices.ts and payments.ts reserve for the office. A
+ * supervisor needs to know their claim was accepted, not what the company owes.
+ */
+const mineInclude = {
+  submittedBy: { select: { id: true, name: true } },
+  approvedBy: { select: { id: true, name: true } },
+  supplier: { select: { id: true, name: true } },
+} as const;
+
 type PaymentRow = {
   amount: unknown;
   whtAmount: unknown;
@@ -169,11 +183,13 @@ router.get(
   asyncHandler(async (req, res) => {
     const expenses = await prisma.expense.findMany({
       where: { projectId: req.params.projectId, submittedById: req.user!.id },
-      include,
+      include: mineInclude,
       orderBy: { expenseDate: 'desc' },
       take: 200,
     });
-    res.json(expenses.map(serialize));
+    // No payments loaded, so serialize() reports no position — a supervisor
+    // sees their claim, never the company's payables position on it.
+    res.json(expenses.map((e) => ({ ...serialize(e), position: null })));
   }),
 );
 
@@ -185,6 +201,13 @@ router.post(
     const data = expenseSchema.parse(req.body);
     await verifyUpload(req.file);
 
+    // Putting a cost on the payables ledger is an office decision. A
+    // supervisor logs what they spent; deciding the company owes a merchant
+    // for it — and on what terms — is not theirs to record.
+    const isOffice = req.user!.role === 'SUPERADMIN';
+    if (data.supplierId && !isOffice) {
+      throw ApiError.forbidden('Only the office can put a purchase on the supplier account');
+    }
     if (data.supplierId) {
       const supplier = await prisma.supplier.findUnique({ where: { id: data.supplierId } });
       if (!supplier) throw ApiError.badRequest('That supplier is not on the list');
