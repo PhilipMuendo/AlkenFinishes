@@ -1,9 +1,16 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Plus, Receipt } from 'lucide-react';
+import { CheckCircle2, Plus, Receipt, Wallet } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { Expense, ExpenseCategory, ExpenseStatus } from '@/lib/types';
+import type {
+  Expense,
+  ExpenseCategory,
+  ExpenseStatus,
+  PurchaseTaxConfig,
+  Supplier,
+} from '@/lib/types';
+import { SupplierPaymentDialog } from './SupplierPaymentDialog';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,6 +42,20 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [rejecting, setRejecting] = useState<Expense | null>(null);
+  const [paying, setPaying] = useState<Expense | null>(null);
+
+  // The supplier list and tax defaults are office-only, and are what turn a
+  // plain expense into a bill with a balance.
+  const { data: suppliers } = useQuery({
+    queryKey: ['suppliers'],
+    queryFn: () => api<Supplier[]>('/suppliers'),
+    enabled: canBrowse,
+  });
+  const { data: tax } = useQuery({
+    queryKey: ['settings', 'purchase-tax'],
+    queryFn: () => api<PurchaseTaxConfig>('/settings/purchase-tax'),
+    enabled: canBrowse,
+  });
 
   const { data: expenses } = useQuery({
     queryKey: ['expenses', projectId],
@@ -160,7 +181,8 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
               <Th>Category</Th>
               <Th>Description</Th>
               <Th className="text-right">Amount</Th>
-              <Th>By</Th>
+              <Th>Supplier</Th>
+              <Th className="text-right">Owed</Th>
               <Th>Status</Th>
               <Th>Receipt</Th>
               <Th />
@@ -173,9 +195,57 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                 <Td>
                   <Badge>{CATEGORIES.find((c) => c.value === e.expenseCategory)?.label ?? e.expenseCategory}</Badge>
                 </Td>
-                <Td>{e.description}</Td>
-                <Td className="text-right font-medium tabular-nums">{fmtMoney(e.amount)}</Td>
-                <Td>{e.submittedBy.name}</Td>
+                <Td>
+                  {e.description}
+                  <p className="text-xs text-fg-subtle">
+                    {e.submittedBy.name}
+                    {e.dueDate && ` · due ${fmtDate(e.dueDate)}`}
+                  </p>
+                </Td>
+                <Td className="text-right font-medium tabular-nums">
+                  {fmtMoney(e.amount)}
+                  {e.vatAmount > 0 && (
+                    <p className="text-xs font-normal text-fg-subtle">
+                      incl. {fmtMoney(e.vatAmount)} VAT
+                    </p>
+                  )}
+                </Td>
+                <Td>
+                  {e.supplier ? (
+                    <>
+                      <p className="text-fg">{e.supplier.name}</p>
+                      {e.supplierInvoiceNo && (
+                        <p className="text-xs text-fg-subtle">{e.supplierInvoiceNo}</p>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-fg-subtle">—</span>
+                  )}
+                </Td>
+                {/* A cost with no supplier has no balance to show. Printing a
+                    zero there would read as "paid", which is a claim we have
+                    not made about petty cash. */}
+                <Td className="text-right tabular-nums">
+                  {e.position ? (
+                    e.position.settled ? (
+                      <Badge tone="green">Paid</Badge>
+                    ) : (
+                      <>
+                        <p className={e.position.overdue ? 'font-medium text-red-600' : 'text-fg'}>
+                          {fmtMoney(e.position.outstanding)}
+                        </p>
+                        <p className="text-xs text-fg-subtle">
+                          {e.position.paid > 0
+                            ? `${fmtMoney(e.position.paid)} settled`
+                            : 'nothing paid'}
+                          {e.position.overdue && ` · ${e.position.daysOverdue}d late`}
+                        </p>
+                      </>
+                    )
+                  ) : (
+                    <span className="text-fg-subtle">—</span>
+                  )}
+                </Td>
                 <Td>
                   <Badge tone={STATUS_TONE[e.status]} className="capitalize">
                     {e.status.toLowerCase()}
@@ -197,16 +267,34 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                   )}
                 </Td>
                 <Td className="text-right">
-                  {e.status === 'PENDING' && (
-                    <div className="flex justify-end gap-1.5">
-                      <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate(e.id)}>
-                        Approve
+                  <div className="flex justify-end gap-1.5">
+                    {e.status === 'PENDING' && (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={approve.isPending}
+                          onClick={() => approve.mutate(e.id)}
+                        >
+                          Approve
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setRejecting(e)}>
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                    {/* Paying a supplier does not wait on approval: the money
+                        often has to go before the office signs the claim off. */}
+                    {e.position && !e.position.settled && (
+                      <Button size="sm" variant="outline" onClick={() => setPaying(e)}>
+                        <Wallet size={14} /> Pay
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => setRejecting(e)}>
-                        Reject
+                    )}
+                    {e.position?.settled && e.payments.length > 0 && (
+                      <Button size="sm" variant="ghost" onClick={() => setPaying(e)}>
+                        Payments
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </Td>
               </tr>
             ))}
@@ -215,7 +303,31 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
-        <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
+        <ExpenseForm
+          onSubmit={(fd) => create.mutate(fd)}
+          pending={create.isPending}
+          error={create.error}
+          suppliers={suppliers}
+          tax={tax}
+        />
+      </Dialog>
+
+      <Dialog
+        open={!!paying}
+        onClose={() => setPaying(null)}
+        title="Pay supplier"
+        className="max-w-2xl"
+      >
+        {paying && (
+          <SupplierPaymentDialog
+            key={paying.id}
+            projectId={projectId}
+            // Read back from the list so the payment history stays live after
+            // one is added or removed, rather than freezing at open time.
+            expense={expenses?.find((x) => x.id === paying.id) ?? paying}
+            onDone={() => setPaying(null)}
+          />
+        )}
       </Dialog>
 
       <Dialog open={!!rejecting} onClose={() => setRejecting(null)} title="Decline this claim">
@@ -251,11 +363,21 @@ function ExpenseForm({
   onSubmit,
   pending,
   error,
+  suppliers,
+  tax,
 }: {
   onSubmit: (formData: FormData) => void;
   pending: boolean;
   error: unknown;
+  suppliers?: Supplier[];
+  tax?: PurchaseTaxConfig;
 }) {
+  // A supplier is what turns this from "money already gone" into a bill with a
+  // balance. Everything tax-related therefore stays hidden until one is
+  // chosen — a fuel receipt should be as quick to file as it is today.
+  const [supplierId, setSupplierId] = useState('');
+  const onCredit = supplierId !== '';
+
   return (
     <form
       key="expense-form"
@@ -283,6 +405,66 @@ function ExpenseForm({
       <Field label="Date">
         <Input name="expenseDate" type="date" defaultValue={todayISO()} required />
       </Field>
+
+      {suppliers && suppliers.length > 0 && (
+        <Field
+          label="Supplier"
+          hint="Leave blank for petty cash, fuel or anything already paid for. Choosing a supplier puts this on the payables list."
+        >
+          <Select
+            name="supplierId"
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+          >
+            <option value="">No supplier — already paid</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      )}
+
+      {onCredit && (
+        <div className="space-y-3 rounded-lg border border-hairline p-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Their invoice no.">
+              <Input name="supplierInvoiceNo" placeholder="INV-4471" />
+            </Field>
+            <Field label="Payment due">
+              <Input name="dueDate" type="date" />
+            </Field>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="VAT rate %" hint="Zero for exempt or zero-rated supplies">
+              <Input
+                name="vatRatePct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                defaultValue={tax?.vatRatePct ?? 16}
+              />
+            </Field>
+            <Field label="The amount above">
+              <Select name="vatInclusive" defaultValue={tax?.billsIncludeVat ? 'true' : 'false'}>
+                <option value="true">Includes VAT</option>
+                <option value="false">Excludes VAT — add it on</option>
+              </Select>
+            </Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-fg">
+            <input name="taxInvoice" type="checkbox" value="true" className="size-4" />
+            They gave a proper tax invoice (ETR)
+          </label>
+          <p className="text-xs text-fg-subtle">
+            Input VAT is only reclaimable against a valid tax invoice. Without one the VAT is
+            simply part of what the job cost.
+          </p>
+        </div>
+      )}
+
       <Field label="Receipt photo / document">
         <Input name="receipt" type="file" accept="image/*,.pdf" capture="environment" />
       </Field>

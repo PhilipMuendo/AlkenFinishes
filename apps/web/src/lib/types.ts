@@ -80,6 +80,7 @@ export interface Expense {
   id: string;
   category: BudgetCategory;
   expenseCategory: ExpenseCategory;
+  /** GROSS: what the supplier's invoice says, including any VAT. */
   amount: number;
   description: string;
   receiptUrl: string | null;
@@ -90,6 +91,126 @@ export interface Expense {
   rejectReason: string | null;
   submittedBy: { id: string; name: string };
   createdAt: string;
+
+  // Payables. Everything below is null/empty on a cost with no supplier —
+  // petty cash and fuel are not debts and carry no balance.
+  supplierId: string | null;
+  supplier: { id: string; name: string } | null;
+  supplierInvoiceNo: string | null;
+  dueDate: string | null;
+  vatAmount: number;
+  taxInvoice: boolean;
+  payments: SupplierPayment[];
+  position: PayablePosition | null;
+}
+
+export type PaymentMethodValue =
+  | 'CASH'
+  | 'BANK_TRANSFER'
+  | 'MPESA'
+  | 'CHEQUE'
+  | 'OTHER';
+
+export interface SupplierPayment {
+  id: string;
+  /** Cash the supplier actually received. */
+  amount: number;
+  method: PaymentMethodValue;
+  paymentDate: string;
+  referenceNo: string | null;
+  notes: string | null;
+  proofUrl: string | null;
+  /** Tax deducted from this payment and owed to KRA instead of the supplier. */
+  whtAmount: number;
+  whtVatAmount: number;
+  whtCertNo: string | null;
+  whtRemittedAt: string | null;
+  paidBy: { id: string; name: string };
+  createdAt: string;
+}
+
+/** What is owed on one supplier bill. Derived, never stored. */
+export interface PayablePosition {
+  amount: number;
+  vatAmount: number;
+  netAmount: number;
+  reclaimableVat: number;
+  cashPaid: number;
+  taxWithheld: number;
+  /** cashPaid + taxWithheld: what has settled the bill. */
+  paid: number;
+  outstanding: number;
+  overpaid: number;
+  paidPct: number;
+  settled: boolean;
+  overdue: boolean;
+  daysOverdue: number;
+  agingBucket: AgingBucket;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  email: string | null;
+  kraPin: string | null;
+  notes: string | null;
+  active: boolean;
+  createdAt: string;
+  position: SupplierRollup | null;
+}
+
+/** A supplier's totals across every bill. */
+export interface SupplierRollup {
+  supplierId: string;
+  openBills: number;
+  billed: number;
+  paid: number;
+  cashPaid: number;
+  taxWithheld: number;
+  reclaimableVat: number;
+  outstanding: number;
+  overpaid: number;
+  overdue: number;
+  oldestOverdueDays: number | null;
+  aging: Record<AgingBucket, number>;
+}
+
+/** GET /suppliers/payables */
+export interface PayablesReport {
+  summary: {
+    billed: number;
+    paid: number;
+    cashPaid: number;
+    taxWithheld: number;
+    reclaimableVat: number;
+    outstanding: number;
+    overpaid: number;
+    overdue: number;
+    supplierCount: number;
+    openBills: number;
+    oldestOverdueDays: number | null;
+    aging: Record<AgingBucket, number>;
+  };
+  suppliers: (SupplierRollup & { name: string; phone: string | null })[];
+}
+
+/** GET /settings/purchase-tax */
+export interface PurchaseTaxConfig {
+  vatRatePct: number;
+  billsIncludeVat: boolean;
+  defaultWhtRatePct: number;
+  defaultWhtVatRatePct: number;
+  withholdingAgent: boolean;
+}
+
+/** GET /projects/:id/expenses/:expenseId/payment-suggestion */
+export interface PaymentSuggestion {
+  position: PayablePosition;
+  tax: PurchaseTaxConfig;
+  outstandingNet: number;
+  suggested: { amount: number; whtAmount: number; whtVatAmount: number };
 }
 
 export type MaterialRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'FULFILLED';

@@ -8,6 +8,7 @@ import type {
   InvoicingConfig,
   PipelineConfig,
   Project,
+  PurchaseTaxConfig,
   Worker,
 } from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
@@ -242,6 +243,7 @@ export function SettingsPage() {
 
       <CompanyLetterheadCard />
       <InvoicingCard />
+      <PurchaseTaxCard />
       <PipelineCard />
 
       <Card>
@@ -724,6 +726,141 @@ function CompanyLetterheadCard() {
           )}
           <Button type="submit" disabled={save.isPending}>
             Save letterhead
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Tax on what we buy.
+ *
+ * Rates are settings rather than constants because they change by finance act
+ * and differ by what is being bought. Withholding is off until it is switched
+ * on here, so nothing is ever deducted from a supplier by accident.
+ */
+function PurchaseTaxCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'purchase-tax'],
+    queryFn: () => api<PurchaseTaxConfig>('/settings/purchase-tax'),
+  });
+  const [agent, setAgent] = useState<boolean | null>(null);
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/settings/purchase-tax', { method: 'PUT', body }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['settings', 'purchase-tax'] });
+    },
+  });
+
+  if (!data) return null;
+  const isAgent = agent ?? data.withholdingAgent;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tax on purchases</CardTitle>
+        <p className="text-xs text-fg-muted">
+          How supplier bills and payments are taxed. These figures are yours to set — they change
+          by finance act and differ by what is bought, so nothing here is assumed on your behalf.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={String(data.withholdingAgent) + data.vatRatePct}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              vatRatePct: Number(fd.get('vatRatePct')),
+              billsIncludeVat: fd.get('billsIncludeVat') === 'true',
+              withholdingAgent: isAgent,
+              // Rates are meaningless unless we actually withhold, and leaving
+              // a stale rate behind a switched-off flag is how it gets applied
+              // by surprise later.
+              defaultWhtRatePct: isAgent ? Number(fd.get('defaultWhtRatePct')) : 0,
+              defaultWhtVatRatePct: isAgent ? Number(fd.get('defaultWhtVatRatePct')) : 0,
+            });
+          }}
+          className="space-y-3"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Standard input VAT rate %">
+              <Input
+                name="vatRatePct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                defaultValue={data.vatRatePct}
+                required
+              />
+            </Field>
+            <Field label="Supplier figures are normally typed">
+              <Select name="billsIncludeVat" defaultValue={String(data.billsIncludeVat)}>
+                <option value="true">VAT inclusive</option>
+                <option value="false">VAT exclusive</option>
+              </Select>
+            </Field>
+          </div>
+
+          <label className="flex items-start gap-2.5 rounded-lg border border-hairline p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={isAgent}
+              onChange={(e) => setAgent(e.target.checked)}
+              className="mt-0.5 size-4"
+            />
+            <span>
+              <span className="font-medium text-fg">
+                We are an appointed withholding agent
+              </span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Leave this off unless KRA has appointed you. When off, no tax is ever suggested
+                for deduction from a supplier payment.
+              </span>
+            </span>
+          </label>
+
+          {isAgent && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Default withholding tax %">
+                <Input
+                  name="defaultWhtRatePct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  defaultValue={data.defaultWhtRatePct}
+                />
+              </Field>
+              <Field label="Default withholding VAT %">
+                <Input
+                  name="defaultWhtVatRatePct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  defaultValue={data.defaultWhtVatRatePct}
+                />
+              </Field>
+              <p className="text-xs text-fg-subtle sm:col-span-2">
+                Both are struck on the VAT-exclusive value of a supply. Every payment still shows
+                the figure before it is saved, and it can be overridden.
+              </p>
+            </div>
+          )}
+
+          {save.isError && (
+            <p className="text-sm text-red-600">
+              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" disabled={save.isPending}>
+            Save tax settings
           </Button>
         </form>
       </CardContent>

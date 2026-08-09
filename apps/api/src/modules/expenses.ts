@@ -46,6 +46,20 @@ export const EXPENSE_CATEGORY_BUDGET_MAP: Record<ExpenseCategory, BudgetCategory
   OTHER: 'OTHER',
 };
 
+/**
+ * multipart/form-data carries every field as a string, and z.coerce.boolean()
+ * reads the string "false" as TRUE — every non-empty string is truthy. These
+ * helpers are what stop "excludes VAT" being silently read as "includes VAT",
+ * which would misstate a cost by the whole VAT rate.
+ */
+const formBool = z.preprocess(
+  (v) => (typeof v === 'string' ? ['true', 'on', '1', 'yes'].includes(v.toLowerCase()) : v),
+  z.boolean(),
+);
+/** An untouched form field arrives as "", which is absent, not a value. */
+const blank = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+const optionalText = z.preprocess(blank, z.string().trim().optional());
+
 const expenseSchema = z.object({
   expenseCategory: z.enum(EXPENSE_CATEGORIES),
   amount: z.coerce.number().positive(),
@@ -54,14 +68,14 @@ const expenseSchema = z.object({
 
   // Supplier and tax. All optional: a fuel receipt or petty cash has none of
   // it, and must stay as easy to file as it is today.
-  supplierId: z.string().optional(),
-  supplierInvoiceNo: z.string().trim().optional(),
-  dueDate: z.coerce.date().optional(),
-  vatRatePct: z.coerce.number().min(0).max(100).optional(),
+  supplierId: optionalText,
+  supplierInvoiceNo: optionalText,
+  dueDate: z.preprocess(blank, z.coerce.date().optional()),
+  vatRatePct: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
   // Which way the typed `amount` reads. Guessing wrong misstates the cost by
   // the whole VAT rate, so it is asked rather than assumed.
-  vatInclusive: z.coerce.boolean().optional(),
-  taxInvoice: z.coerce.boolean().optional(),
+  vatInclusive: z.preprocess(blank, formBool.optional()),
+  taxInvoice: z.preprocess(blank, formBool.optional()),
 });
 
 const include = {
@@ -298,14 +312,14 @@ const paymentSchema = z.object({
   amount: z.coerce.number().nonnegative('A payment cannot be negative'),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'MPESA', 'CHEQUE', 'OTHER']),
   paymentDate: z.coerce.date(),
-  referenceNo: z.string().trim().optional(),
-  notes: z.string().trim().optional(),
+  referenceNo: optionalText,
+  notes: optionalText,
   // Tax deducted from this payment and owed to KRA rather than the supplier.
-  whtAmount: z.coerce.number().nonnegative().optional(),
-  whtVatAmount: z.coerce.number().nonnegative().optional(),
-  whtCertNo: z.string().trim().optional(),
+  whtAmount: z.preprocess(blank, z.coerce.number().nonnegative().optional()),
+  whtVatAmount: z.preprocess(blank, z.coerce.number().nonnegative().optional()),
+  whtCertNo: optionalText,
   // Only set when the bank statement genuinely says more went out.
-  allowOverpayment: z.coerce.boolean().default(false),
+  allowOverpayment: z.preprocess((v) => blank(v) ?? false, formBool),
 });
 
 /**
