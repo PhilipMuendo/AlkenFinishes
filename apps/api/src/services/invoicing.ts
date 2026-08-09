@@ -187,6 +187,36 @@ export function invoiceBalanceCents(netPayableCents: number, paidCents: number):
   return netPayableCents - paidCents;
 }
 
+/**
+ * What a client payment took off the invoice: the cash that landed PLUS any
+ * tax the client withheld and remitted to KRA on our behalf.
+ *
+ * Every receivables figure must be struck against this, never against `amount`
+ * alone. A client withholding 15,000 of a 500,000 claim settles it by sending
+ * 485,000; counting only the cash leaves that invoice permanently short,
+ * PARTIALLY_PAID for ever, and on the overdue list — chased for money that was
+ * never owed to us.
+ */
+export function paymentSettledCents(p: {
+  amount: MoneyLike;
+  whtAmount?: MoneyLike;
+  whtVatAmount?: MoneyLike;
+}): number {
+  return toCents(p.amount) + toCents(p.whtAmount ?? 0) + toCents(p.whtVatAmount ?? 0);
+}
+
+/** The same sum over a Prisma _sum aggregate, which returns each field apart. */
+export function aggregateSettledCents(sum: {
+  amount: Prisma.Decimal | null;
+  whtAmount?: Prisma.Decimal | null;
+  whtVatAmount?: Prisma.Decimal | null;
+}): number {
+  return toCents(sum.amount) + toCents(sum.whtAmount ?? 0) + toCents(sum.whtVatAmount ?? 0);
+}
+
+/** Every money field of a payment that settles an invoice. */
+export const PAYMENT_SETTLED_SUM = { amount: true, whtAmount: true, whtVatAmount: true } as const;
+
 /** Status is DERIVED from payments, never set by hand. DRAFT and VOID are sticky. */
 export function deriveStatus(
   current: InvoiceStatus,
@@ -285,9 +315,12 @@ export async function syncInvoiceStatus(
   const inv = await tx.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
   const agg = await tx.payment.aggregate({
     where: { invoiceId, voidedAt: null },
-    _sum: { amount: true },
+    _sum: PAYMENT_SETTLED_SUM,
   });
-  const next = deriveStatus(inv.status, toCents(inv.netPayable), toCents(agg._sum.amount));
+  // Withheld tax settles the invoice, so an invoice cleared partly by a
+  // withholding certificate reaches PAID rather than sticking at
+  // PARTIALLY_PAID with a balance nobody can ever collect.
+  const next = deriveStatus(inv.status, toCents(inv.netPayable), aggregateSettledCents(agg._sum));
   if (next !== inv.status) {
     await tx.invoice.update({ where: { id: invoiceId }, data: { status: next } });
   }
@@ -331,15 +364,17 @@ export async function projectReceivables(projectId: string): Promise<ProjectRece
     prisma.payment.groupBy({
       by: ['invoiceId'],
       where: { projectId, voidedAt: null, invoiceId: { not: null } },
-      _sum: { amount: true },
+      _sum: PAYMENT_SETTLED_SUM,
     }),
     prisma.payment.aggregate({
       where: { projectId, voidedAt: null, invoiceId: null },
-      _sum: { amount: true },
+      _sum: PAYMENT_SETTLED_SUM,
     }),
   ]);
 
-  const paidMap = new Map(paidByInvoice.map((r) => [r.invoiceId!, toCents(r._sum.amount)]));
+  const paidMap = new Map(
+    paidByInvoice.map((r) => [r.invoiceId!, aggregateSettledCents(r._sum)]),
+  );
   const counts = { draft: 0, issued: 0, partiallyPaid: 0, paid: 0, overdue: 0 };
 
   let invoicedNet = 0;
@@ -374,7 +409,7 @@ export async function projectReceivables(projectId: string): Promise<ProjectRece
     }
   }
 
-  const onAccount = toCents(onAccountAgg._sum.amount);
+  const onAccount = aggregateSettledCents(onAccountAgg._sum);
   const c = (n: number) => n / 100;
   return {
     contractValue: Number(project.contractValue),
@@ -415,11 +450,13 @@ export async function companyReceivables(projectIds?: string[]): Promise<Company
     prisma.payment.groupBy({
       by: ['invoiceId'],
       where: { voidedAt: null, invoiceId: { not: null }, invoice: where },
-      _sum: { amount: true },
+      _sum: PAYMENT_SETTLED_SUM,
     }),
   ]);
 
-  const paidMap = new Map(paidByInvoice.map((r) => [r.invoiceId!, toCents(r._sum.amount)]));
+  const paidMap = new Map(
+    paidByInvoice.map((r) => [r.invoiceId!, aggregateSettledCents(r._sum)]),
+  );
   const buckets: Record<AgingBucket, number> = {
     CURRENT: 0,
     D1_30: 0,

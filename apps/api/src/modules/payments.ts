@@ -13,9 +13,12 @@ import { logger } from '../lib/logger';
 import { dueDateHealth } from '../services/payments';
 import { nextNumber, seriesYear } from '../services/numbering';
 import {
+  aggregateSettledCents,
   getCompanyProfile,
   getInvoicingConfig,
   invoiceBalanceCents,
+  PAYMENT_SETTLED_SUM,
+  paymentSettledCents,
   projectReceivables,
   syncInvoiceStatus,
 } from '../services/invoicing';
@@ -37,12 +40,25 @@ const include = {
 } as const;
 
 /** Signs both receipt documents. They are different artifacts — see the schema. */
-function serialize<T extends { receiptUrl: string | null; receiptPdfUrl: string | null; amount: unknown }>(
-  p: T,
-) {
+function serialize<
+  T extends {
+    receiptUrl: string | null;
+    receiptPdfUrl: string | null;
+    amount: unknown;
+    whtAmount?: unknown;
+    whtVatAmount?: unknown;
+  },
+>(p: T) {
+  const whtAmount = Number(p.whtAmount ?? 0);
+  const whtVatAmount = Number(p.whtVatAmount ?? 0);
   return {
     ...p,
     amount: Number(p.amount),
+    whtAmount,
+    whtVatAmount,
+    // What this receipt actually took off the invoice. Derived here so no
+    // caller has to remember to add the withheld tax back on.
+    settled: Number(p.amount) + whtAmount + whtVatAmount,
     receiptUrl: signFileUrl(p.receiptUrl),
     receiptPdfUrl: signFileUrl(p.receiptPdfUrl),
   };
@@ -104,22 +120,51 @@ router.get(
   }),
 );
 
+/**
+ * multipart/form-data carries every field as a string, and z.coerce.boolean()
+ * reads the string "false" as TRUE — every non-empty string is truthy. Without
+ * this, a form that posts allowOverpay="false" would wave an overpayment
+ * straight through the guard below.
+ */
+const formBool = z.preprocess(
+  (v) => (typeof v === 'string' ? ['true', 'on', '1', 'yes'].includes(v.toLowerCase()) : v),
+  z.boolean(),
+);
+const blank = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+
 const paymentSchema = z
   .object({
     type: z.enum(['DEPOSIT', 'INSTALLMENT']),
-    amount: z.coerce.number().positive(),
+    // Nonnegative rather than positive: a client can settle entirely by
+    // withholding certificate, where no cash lands at all. The refine below
+    // still rejects a payment that settles nothing.
+    amount: z.coerce.number().nonnegative(),
     method: z.enum(['CASH', 'BANK_TRANSFER', 'MPESA', 'CHEQUE', 'OTHER']),
     paymentDate: z.coerce.date(),
     notes: z.string().optional(),
-    invoiceId: z.string().optional(),
+    invoiceId: z.preprocess(blank, z.string().optional()),
     bankName: z.string().optional(),
     referenceNo: z.string().optional(),
-    allowOverpay: z.coerce.boolean().optional(),
+    // Tax the client deducted and remitted to KRA on our behalf.
+    whtAmount: z.preprocess(blank, z.coerce.number().nonnegative().optional()),
+    whtVatAmount: z.preprocess(blank, z.coerce.number().nonnegative().optional()),
+    whtCertNo: z.preprocess(blank, z.string().optional()),
+    allowOverpay: z.preprocess((v) => blank(v) ?? false, formBool),
   })
-  .refine((d) => !['BANK_TRANSFER', 'MPESA', 'CHEQUE'].includes(d.method) || !!d.referenceNo, {
-    path: ['referenceNo'],
-    message: 'A transaction reference is required for bank, M-Pesa and cheque payments',
-  });
+  .refine((d) => d.amount + (d.whtAmount ?? 0) + (d.whtVatAmount ?? 0) > 0, {
+    path: ['amount'],
+    message: 'A receipt must record either money received or tax withheld',
+  })
+  .refine(
+    (d) =>
+      // Cash that landed needs a reference; a nil-cash withholding entry has
+      // no bank transaction to reference in the first place.
+      d.amount === 0 || !['BANK_TRANSFER', 'MPESA', 'CHEQUE'].includes(d.method) || !!d.referenceNo,
+    {
+      path: ['referenceNo'],
+      message: 'A transaction reference is required for bank, M-Pesa and cheque payments',
+    },
+  );
 
 // multipart/form-data with an optional `receipt` file — the CLIENT's proof of
 // payment. Our own numbered receipt is generated below, after commit.
@@ -145,14 +190,18 @@ router.post(
       if (data.invoiceId) {
         const inv = await tx.invoice.findUnique({
           where: { id: data.invoiceId },
-          include: { payments: { where: { voidedAt: null }, select: { amount: true } } },
+          include: { payments: { where: { voidedAt: null }, select: PAYMENT_SETTLED_SUM } },
         });
         if (!inv || inv.projectId !== projectId) throw ApiError.notFound('Invoice not found');
         if (inv.status === 'DRAFT') throw ApiError.conflict('That invoice has not been issued yet');
         if (inv.status === 'VOID') throw ApiError.conflict('That invoice has been voided');
-        const paid = inv.payments.reduce((s, p) => s + toCents(p.amount), 0);
+        const paid = inv.payments.reduce((s, p) => s + paymentSettledCents(p), 0);
         const balance = invoiceBalanceCents(toCents(inv.netPayable), paid);
-        if (!data.allowOverpay && toCents(data.amount) > balance) {
+        // Compare what this receipt SETTLES, not just the cash: a client
+        // sending 485,000 and withholding 15,000 clears a 500,000 balance
+        // exactly, and must not be rejected as an overpayment of nothing.
+        const settling = paymentSettledCents(data);
+        if (!data.allowOverpay && settling > balance) {
           throw ApiError.conflict(
             `That is more than the ${(balance / 100).toLocaleString('en-KE', {
               minimumFractionDigits: 2,
@@ -179,6 +228,9 @@ router.post(
           invoiceId: data.invoiceId,
           bankName: data.bankName,
           referenceNo: data.referenceNo,
+          whtAmount: data.whtAmount ?? 0,
+          whtVatAmount: data.whtVatAmount ?? 0,
+          whtCertNo: data.whtCertNo,
           receiptNo,
           submittedById: req.user!.id,
           receiptUrl: req.file ? fileUrl(req.file.filename) : undefined,
@@ -366,10 +418,14 @@ async function generateAndAttachReceipt(paymentId: string, userId: string) {
   if (payment.invoice) {
     const agg = await prisma.payment.aggregate({
       where: { invoiceId: payment.invoice.id, voidedAt: null },
-      _sum: { amount: true },
+      _sum: PAYMENT_SETTLED_SUM,
     });
+    // The balance printed on the receipt must count tax the client withheld,
+    // or the client is handed a document saying they still owe money they
+    // have already remitted to KRA on our behalf.
     balanceAfter =
-      invoiceBalanceCents(toCents(payment.invoice.netPayable), toCents(agg._sum.amount)) / 100;
+      invoiceBalanceCents(toCents(payment.invoice.netPayable), aggregateSettledCents(agg._sum)) /
+      100;
   }
 
   try {

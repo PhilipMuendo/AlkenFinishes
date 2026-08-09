@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { agingBucket, computeInvoiceTotals, deriveStatus, invoiceBalanceCents } from './invoicing';
+import { Prisma } from '@prisma/client';
+import {
+  aggregateSettledCents,
+  agingBucket,
+  computeInvoiceTotals,
+  deriveStatus,
+  invoiceBalanceCents,
+  paymentSettledCents,
+} from './invoicing';
 import { lineTotalCents, pctOfCents, toCents } from './money';
 
 /**
@@ -189,6 +197,65 @@ describe('balances and status', () => {
   it('keeps DRAFT and VOID sticky', () => {
     assert.equal(deriveStatus('DRAFT', 1000, 1000), 'DRAFT');
     assert.equal(deriveStatus('VOID', 1000, 1000), 'VOID');
+  });
+
+  describe('tax the client withheld', () => {
+    it('counts as settling the invoice, not as money still owed', () => {
+      // A 500,000 claim, client withholds 3% and sends 485,000.
+      const p = { amount: 485_000, whtAmount: 15_000 };
+      assert.equal(paymentSettledCents(p), 50_000_000);
+      assert.notEqual(
+        paymentSettledCents(p),
+        toCents(p.amount),
+        'the cash alone is not what cleared the invoice',
+      );
+    });
+
+    it('clears the invoice to PAID rather than stranding it PARTIALLY_PAID', () => {
+      // The bug this guards: counting cash alone leaves 15,000 outstanding
+      // for ever, on an invoice that is fully settled. Nobody can ever
+      // collect it, and it is chased as overdue every month.
+      const netPayable = 50_000_000;
+      const cashOnly = toCents(485_000);
+      const settled = paymentSettledCents({ amount: 485_000, whtAmount: 15_000 });
+
+      assert.equal(deriveStatus('ISSUED', netPayable, cashOnly), 'PARTIALLY_PAID');
+      assert.equal(deriveStatus('ISSUED', netPayable, settled), 'PAID');
+      assert.equal(invoiceBalanceCents(netPayable, settled), 0);
+      assert.ok(invoiceBalanceCents(netPayable, cashOnly) > 0);
+    });
+
+    it('adds withholding VAT and withholding tax together', () => {
+      const settled = paymentSettledCents({
+        amount: 475_000,
+        whtAmount: 15_000,
+        whtVatAmount: 10_000,
+      });
+      assert.equal(settled, 50_000_000);
+    });
+
+    it('treats an absent withholding field as nothing withheld', () => {
+      // Every payment recorded before these columns existed must behave
+      // exactly as it always did.
+      assert.equal(paymentSettledCents({ amount: 1_000 }), toCents(1_000));
+    });
+
+    it('sums a Prisma aggregate across all three money columns', () => {
+      const dec = (n: number) => new Prisma.Decimal(n);
+      assert.equal(
+        aggregateSettledCents({
+          amount: dec(485_000),
+          whtAmount: dec(15_000),
+          whtVatAmount: null,
+        }),
+        50_000_000,
+      );
+      // An aggregate over zero rows returns nulls, which is zero settled.
+      assert.equal(
+        aggregateSettledCents({ amount: null, whtAmount: null, whtVatAmount: null }),
+        0,
+      );
+    });
   });
 
   it('buckets ageing from the due date', () => {

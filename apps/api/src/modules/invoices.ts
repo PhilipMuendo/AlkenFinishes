@@ -20,6 +20,8 @@ import {
   invoiceBalanceCents,
   isOverdue,
   LIVE_INVOICE_STATUSES,
+  PAYMENT_SETTLED_SUM,
+  paymentSettledCents,
   projectReceivables,
   recalcDraft,
 } from '../services/invoicing';
@@ -76,13 +78,18 @@ const invoiceSchema = z.object({
   lines: z.array(lineSchema).min(1, 'An invoice needs at least one line'),
 });
 
-type PaymentSlice = { amount: Prisma.Decimal; voidedAt: Date | null };
+type PaymentSlice = {
+  amount: Prisma.Decimal;
+  whtAmount: Prisma.Decimal;
+  whtVatAmount: Prisma.Decimal;
+  voidedAt: Date | null;
+};
 
 /** Shapes an invoice for the wire: signed URLs, plain numbers, computed balance. */
 function serialize(inv: InvoiceWithLines & { payments?: PaymentSlice[] }) {
   const paidCents = (inv.payments ?? [])
     .filter((p) => p.voidedAt === null)
-    .reduce((s, p) => s + toCents(p.amount), 0);
+    .reduce((s, p) => s + paymentSettledCents(p), 0);
   const balanceCents = invoiceBalanceCents(toCents(inv.netPayable), paidCents);
   return {
     ...inv,
@@ -124,7 +131,7 @@ router.get(
 
     const invoices = await prisma.invoice.findMany({
       where: { projectId: req.params.projectId, ...(status && { status }), ...(type && { type }) },
-      include: { ...lineInclude, payments: { select: { amount: true, voidedAt: true } } },
+      include: { ...lineInclude, payments: { select: { ...PAYMENT_SETTLED_SUM, voidedAt: true } } },
       orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
       take: 200,
     });
@@ -670,7 +677,7 @@ companyInvoicesRouter.get(
       },
       include: {
         project: { select: { id: true, name: true } },
-        payments: { select: { amount: true, voidedAt: true } },
+        payments: { select: { ...PAYMENT_SETTLED_SUM, voidedAt: true } },
       },
       orderBy: [{ dueDate: 'asc' }],
       take: 500,
@@ -679,7 +686,7 @@ companyInvoicesRouter.get(
     const rows = invoices.map((inv) => {
       const paidCents = inv.payments
         .filter((p) => p.voidedAt === null)
-        .reduce((s, p) => s + toCents(p.amount), 0);
+        .reduce((s, p) => s + paymentSettledCents(p), 0);
       const balanceCents = invoiceBalanceCents(toCents(inv.netPayable), paidCents);
       return {
         id: inv.id,
