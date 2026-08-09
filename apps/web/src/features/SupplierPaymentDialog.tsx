@@ -386,11 +386,15 @@ function Row({
   muted?: boolean;
 }) {
   return (
-    <div className="flex justify-between py-0.5">
-      <span className={strong ? 'font-medium text-fg' : muted ? 'text-fg-muted' : 'text-fg'}>
+    <div className="flex justify-between gap-3 py-0.5">
+      <span
+        className={`min-w-0 ${strong ? 'font-medium text-fg' : muted ? 'text-fg-muted' : 'text-fg'}`}
+      >
         {label}
       </span>
-      <span className={`tabular-nums ${strong ? 'font-semibold text-fg' : 'text-fg'}`}>
+      <span
+        className={`shrink-0 whitespace-nowrap tabular-nums ${strong ? 'font-semibold text-fg' : 'text-fg'}`}
+      >
         {fmtMoney(value)}
       </span>
     </div>

@@ -441,8 +441,10 @@ function Totals({
 function Row({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
   return (
     <div className="flex justify-between gap-3">
-      <span className={strong ? 'font-medium text-fg' : 'text-fg-muted'}>{label}</span>
-      <span className={`tabular-nums ${strong ? 'font-semibold text-fg' : 'text-fg'}`}>
+      <span className={`min-w-0 ${strong ? 'font-medium text-fg' : 'text-fg-muted'}`}>{label}</span>
+      <span
+        className={`shrink-0 whitespace-nowrap tabular-nums ${strong ? 'font-semibold text-fg' : 'text-fg'}`}
+      >
         {value < 0 ? `(${fmtMoney(Math.abs(value))})` : fmtMoney(value)}
       </span>
     </div>

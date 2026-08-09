@@ -332,9 +332,11 @@ function Stat({ label, value, hint }: { label: string; value: number; hint?: str
 
 function TotalRow({ label, value, strong }: { label: string; value: number; strong?: boolean }) {
   return (
-    <div className="flex justify-between py-0.5">
-      <span className={strong ? 'font-medium text-fg' : 'text-fg-muted'}>{label}</span>
-      <span className={`tabular-nums ${strong ? 'font-semibold text-fg' : 'text-fg'}`}>
+    <div className="flex justify-between gap-3 py-0.5">
+      <span className={`min-w-0 ${strong ? 'font-medium text-fg' : 'text-fg-muted'}`}>{label}</span>
+      <span
+        className={`shrink-0 whitespace-nowrap tabular-nums ${strong ? 'font-semibold text-fg' : 'text-fg'}`}
+      >
         {fmtMoney(value)}
       </span>
     </div>

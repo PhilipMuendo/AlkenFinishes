@@ -69,8 +69,9 @@ export function SuppliersPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      {/* Wraps rather than squashing the button off a narrow phone. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold text-fg">Suppliers &amp; payables</h1>
           <p className="text-sm text-fg-muted">What we owe, who to, and how overdue it is</p>
         </div>

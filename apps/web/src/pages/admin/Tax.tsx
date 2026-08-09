@@ -279,12 +279,14 @@ function Line({
 }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <span className={strong ? 'font-medium text-fg' : 'text-fg-muted'}>
+      {/* min-w-0 lets a long label wrap instead of pushing the figure off a
+          narrow screen; the figure itself never wraps. */}
+      <span className={`min-w-0 ${strong ? 'font-medium text-fg' : 'text-fg-muted'}`}>
         {label}
         {hint && <span className="ml-1.5 text-xs text-fg-subtle">{hint}</span>}
       </span>
       <span
-        className={`tabular-nums ${
+        className={`shrink-0 whitespace-nowrap tabular-nums ${
           strong ? 'text-lg font-semibold' : ''
         } ${tone === 'warn' && value > 0 ? 'text-amber-700 dark:text-amber-500' : 'text-fg'}`}
       >
