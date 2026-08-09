@@ -196,6 +196,40 @@ export interface PayablesReport {
   suppliers: (SupplierRollup & { name: string; phone: string | null })[];
 }
 
+/** GET /tax/position */
+export interface TaxPosition {
+  period: { from: string; to: string };
+  vat: {
+    outputVat: number;
+    inputVatCharged: number;
+    inputVatReclaimable: number;
+    /** Input VAT with no supplier tax invoice behind it: a cost, not a credit. */
+    inputVatUnsupported: number;
+    /** Positive means payable to KRA; negative is a credit carried forward. */
+    netVatPayable: number;
+    invoiceCount: number;
+    billCount: number;
+  };
+  withholding: {
+    withheldFromSuppliers: number;
+    notYetRemitted: number;
+    withheldByClients: number;
+    certificatesOutstanding: number;
+    certificatesOutstandingCount: number;
+  };
+}
+
+/** GET /tax/certificates-outstanding */
+export interface OutstandingCertificate {
+  id: string;
+  receiptNo: string | null;
+  paymentDate: string;
+  withheld: number;
+  project: { id: string; name: string; clientName: string };
+  invoice: { id: string; invoiceNo: string | null } | null;
+  daysWaiting: number;
+}
+
 /** GET /settings/purchase-tax */
 export interface PurchaseTaxConfig {
   vatRatePct: number;
@@ -254,6 +288,14 @@ export interface Payment {
   receiptPdfUrl: string | null;
   voidedAt: string | null;
   voidReason: string | null;
+
+  /** Tax the client deducted and remitted to KRA on our behalf. */
+  whtAmount: number;
+  whtVatAmount: number;
+  whtCertNo: string | null;
+  whtCertReceivedAt: string | null;
+  /** amount + withheld: what this receipt actually took off the invoice. */
+  settled: number;
 }
 
 export interface PaymentsSummary {

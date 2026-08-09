@@ -30,6 +30,8 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
   const [method, setMethod] = useState<PaymentMethod>('BANK_TRANSFER');
   const [invoiceId, setInvoiceId] = useState('');
   const [amount, setAmount] = useState('');
+  const [wht, setWht] = useState('0');
+  const [whtVat, setWhtVat] = useState('0');
   const [voiding, setVoiding] = useState<Payment | null>(null);
 
   const { data: summary } = useQuery({
@@ -104,7 +106,16 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
     setInvoiceId(id);
     const inv = openInvoices.find((i) => i.id === id);
     setAmount(inv ? String(inv.balance) : '');
+    setWht('0');
+    setWhtVat('0');
   };
+
+  const selectedInvoice = openInvoices.find((i) => i.id === invoiceId);
+  const n = (v: string) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : 0);
+  const withheldTotal = Math.round((n(wht) + n(whtVat)) * 100) / 100;
+  // What this receipt takes off the invoice: cash received plus the tax the
+  // client remitted to KRA on our behalf.
+  const settledTotal = Math.round((n(amount) + withheldTotal) * 100) / 100;
 
   return (
     <div className="space-y-4">
@@ -275,11 +286,11 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
               <option value="INSTALLMENT">Subsequent payment</option>
             </Select>
           </Field>
-          <Field label="Amount (KES)">
+          <Field label="Amount received (KES)" hint="The cash that actually landed">
             <Input
               name="amount"
               type="number"
-              min="1"
+              min="0"
               step="0.01"
               inputMode="decimal"
               value={amount}
@@ -287,6 +298,67 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
               required
             />
           </Field>
+
+          {/* Government bodies, parastatals and appointed withholding VAT
+              agents deduct tax before paying and remit it to KRA for us. That
+              slice settles the invoice exactly as cash does — recording only
+              what landed leaves the invoice short for ever and chases the
+              client for money they already paid on our behalf. */}
+          <div className="rounded-lg border border-hairline p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
+              Tax the client withheld
+            </p>
+            <p className="mb-2 mt-1 text-xs text-fg-muted">
+              Leave at zero unless the client deducted tax. What they withheld still settles the
+              invoice — they paid it to KRA on your behalf.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Withholding tax">
+                <Input
+                  name="whtAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={wht}
+                  onChange={(e) => setWht(e.target.value)}
+                />
+              </Field>
+              <Field label="Withholding VAT">
+                <Input
+                  name="whtVatAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={whtVat}
+                  onChange={(e) => setWhtVat(e.target.value)}
+                />
+              </Field>
+              <Field label="Certificate no." hint="If you already have it">
+                <Input name="whtCertNo" />
+              </Field>
+            </div>
+            {withheldTotal > 0 && (
+              <>
+                <p className="mt-2 rounded-md bg-surface-muted px-2.5 py-1.5 text-sm">
+                  Settles{' '}
+                  <span className="font-semibold tabular-nums text-fg">
+                    {fmtMoney(settledTotal)}
+                  </span>{' '}
+                  of the invoice — {fmtMoney(n(amount))} received plus {fmtMoney(withheldTotal)}{' '}
+                  paid to KRA on your behalf.
+                </p>
+                {selectedInvoice && settledTotal > selectedInvoice.balance && (
+                  <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-500">
+                    That settles more than the {fmtMoney(selectedInvoice.balance)} outstanding.
+                    The amount received usually drops by what was withheld — try{' '}
+                    {fmtMoney(Math.max(0, selectedInvoice.balance - withheldTotal))}.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
           <Field label="Method">
             <Select
               name="method"

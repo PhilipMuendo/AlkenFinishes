@@ -39,6 +39,7 @@ const WorkersPage = lazy(() =>
   import('./pages/admin/Workers').then((m) => ({ default: m.WorkersPage })),
 );
 const ToolsPage = lazy(() => import('./pages/admin/Tools').then((m) => ({ default: m.ToolsPage })));
+const TaxPage = lazy(() => import('./pages/admin/Tax').then((m) => ({ default: m.TaxPage })));
 const SuppliersPage = lazy(() =>
   import('./pages/admin/Suppliers').then((m) => ({ default: m.SuppliersPage })),
 );
@@ -96,6 +97,7 @@ export default function App() {
             <Route path="tools" element={<ToolsPage />} />
             <Route path="invoices" element={<InvoicesPage />} />
             <Route path="suppliers" element={<SuppliersPage />} />
+            <Route path="tax" element={<TaxPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="users" element={<UsersPage />} />
