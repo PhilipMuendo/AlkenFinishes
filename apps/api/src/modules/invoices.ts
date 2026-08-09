@@ -98,6 +98,9 @@ function serialize(inv: InvoiceWithLines & { payments?: PaymentSlice[] }) {
       quantity: Number(l.quantity),
       unitPrice: Number(l.unitPrice),
       lineTotal: Number(l.lineTotal),
+      // Decimal serialises as a string; a percentage the client has to parse
+      // is a percentage that will eventually be compared as one.
+      cumulativePct: l.cumulativePct == null ? null : Number(l.cumulativePct),
     })),
     amountPaid: paidCents / 100,
     balance: balanceCents / 100,

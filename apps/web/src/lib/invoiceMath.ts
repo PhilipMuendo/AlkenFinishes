@@ -16,6 +16,12 @@ export interface PreviewLine {
   quantity: number | string;
   unitPrice: number | string;
   taxable?: boolean;
+  /**
+   * Overrides quantity × unitPrice, mirroring `fixedLineTotalCents` on the
+   * server. Progress-claim lines bill a difference between two cumulative
+   * valuations, which is not a product of anything on the line.
+   */
+  lineTotal?: number | null;
 }
 
 export interface PreviewTotals {
@@ -43,7 +49,9 @@ export function previewInvoiceTotals(
   retentionRatePct: number,
   vatInclusive = false,
 ): PreviewTotals {
-  const lineTotalsCents = lines.map((l) => toCents(n(l.quantity) * n(l.unitPrice)));
+  const lineTotalsCents = lines.map((l) =>
+    l.lineTotal == null ? toCents(n(l.quantity) * n(l.unitPrice)) : toCents(l.lineTotal),
+  );
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   const grossOfLines = sum(lineTotalsCents);
   const taxableOfLines = sum(lineTotalsCents.filter((_, i) => lines[i].taxable !== false));

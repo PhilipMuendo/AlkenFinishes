@@ -172,6 +172,37 @@ export interface InvoiceLine {
   unitPrice: number;
   lineTotal: number;
   taxable: boolean;
+  /** Set on progress-claim lines: the schedule item this line claims against. */
+  sourceLineId?: string | null;
+  /** Set on progress-claim lines: completeness of that item to date, 0–100. */
+  cumulativePct?: number | null;
+}
+
+/** One item of the priced schedule, with what it is worth and what is left. */
+export interface ClaimPosition {
+  line: {
+    id: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    lineTotal: number;
+    taxable: boolean;
+    sortOrder: number;
+  };
+  previouslyClaimed: number;
+  previouslyClaimedPct: number;
+  remaining: number;
+}
+
+/** GET /projects/:id/invoices/claim-schedule */
+export interface ClaimSchedule {
+  contract: { id: string; contractNo: string; title: string | null } | null;
+  hasSchedule: boolean;
+  contractValue: number;
+  claimedToDate: number;
+  remainingToClaim: number;
+  positions: ClaimPosition[];
 }
 
 export interface Invoice {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Plus } from 'lucide-react';
+import { FileText, Plus, Ruler } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import type { Invoice, InvoiceStatus, InvoicingConfig, ProjectReceivables } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
@@ -12,6 +12,7 @@ import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/input';
 import { INVOICE_TYPE_LABEL, InvoiceEditor, type InvoicePayload } from './InvoiceEditor';
 import { InvoiceDetail } from './InvoiceDetail';
+import { ClaimBuilder } from './ClaimBuilder';
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
   DRAFT: 'Draft',
@@ -38,6 +39,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Invoice | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [claimOpen, setClaimOpen] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [voiding, setVoiding] = useState<Invoice | null>(null);
 
@@ -127,8 +129,13 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
         />
       </div>
 
-      <div className="flex justify-end">
-        <Button onClick={() => setAddOpen(true)}>
+      <div className="flex justify-end gap-2">
+        {/* The claim comes first because it is the invoice actually raised every
+            month; a free-typed invoice is the exception, not the norm. */}
+        <Button onClick={() => setClaimOpen(true)}>
+          <Ruler size={16} /> Raise progress claim
+        </Button>
+        <Button variant="outline" onClick={() => setAddOpen(true)}>
           <Plus size={16} /> New invoice
         </Button>
       </div>
@@ -250,6 +257,21 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
           {remove.error instanceof ApiRequestError ? remove.error.message : 'Failed to delete draft'}
         </p>
       )}
+
+      <Dialog
+        open={claimOpen}
+        onClose={() => setClaimOpen(false)}
+        title="Progress claim"
+        className="max-w-4xl"
+      >
+        {claimOpen && (
+          <ClaimBuilder
+            projectId={projectId}
+            defaults={defaults}
+            onDone={() => setClaimOpen(false)}
+          />
+        )}
+      </Dialog>
 
       <Dialog
         open={addOpen}
