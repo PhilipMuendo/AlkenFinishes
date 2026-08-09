@@ -387,7 +387,15 @@ router.post(
       });
       res.json({ ...result, supplier, supplierUnmatched: !supplier && !!extracted.supplierName });
     } catch (e) {
-      if (e instanceof ExtractionError) throw ApiError.badRequest(e.message);
+      if (e instanceof ExtractionError) {
+        // The reason travels with the message so the form can stop offering
+        // the button for the rest of the day rather than inviting a retry
+        // that cannot succeed.
+        throw ApiError.badRequest(e.message, {
+          reason: e.reason,
+          retryAfterSeconds: e.retryAfterSeconds ?? null,
+        });
+      }
       throw e;
     } finally {
       removeUploadedFile(fileUrl(req.file.filename));

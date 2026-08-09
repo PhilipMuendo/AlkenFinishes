@@ -241,6 +241,17 @@ export interface PurchaseTaxConfig {
   receiptScanning?: boolean;
 }
 
+/** Why a scan failed, when the form needs to do more than show the message. */
+export type ScanFailure =
+  | 'NOT_CONFIGURED'
+  | 'RATE_LIMIT'
+  | 'QUOTA_DAILY'
+  | 'AUTH'
+  | 'TOO_LARGE'
+  | 'TIMEOUT'
+  | 'UNREADABLE'
+  | 'UPSTREAM';
+
 /** One deterministic check run against what was read off a receipt. */
 export interface ReceiptCheck {
   id: string;

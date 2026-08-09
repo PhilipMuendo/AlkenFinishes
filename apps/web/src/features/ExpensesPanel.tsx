@@ -5,6 +5,7 @@ import { api, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type {
   Expense,
+  ScanFailure,
   ScannedReceipt,
   ExpenseCategory,
   ExpenseStatus,
@@ -406,6 +407,14 @@ function ExpenseForm({
     },
   });
 
+  // The free allowance is gone for the day. Keep the button hidden for the
+  // rest of the session rather than inviting a retry that cannot succeed.
+  const scanFailure =
+    readReceipt.error instanceof ApiRequestError
+      ? ((readReceipt.error.details as { reason?: ScanFailure } | undefined)?.reason ?? null)
+      : null;
+  const outOfQuota = scanFailure === 'QUOTA_DAILY';
+
   return (
     <form
       key={`expense-form-${scanVersion}`}
@@ -419,6 +428,7 @@ function ExpenseForm({
         <ReceiptScanner
           state={readReceipt}
           scan={scan}
+          outOfQuota={outOfQuota}
           onPick={(file) => readReceipt.mutate(file)}
         />
       )}
@@ -554,12 +564,31 @@ function ExpenseForm({
 function ReceiptScanner({
   state,
   scan,
+  outOfQuota,
   onPick,
 }: {
   state: { isPending: boolean; isError: boolean; error: unknown };
   scan: ScannedReceipt | null;
+  outOfQuota: boolean;
   onPick: (file: File) => void;
 }) {
+  // Out of allowance for the day: say so plainly and get out of the way. An
+  // enabled button that cannot work is worse than no button.
+  if (outOfQuota && !scan) {
+    return (
+      <div className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+        <div className="min-w-0">
+          <p className="font-medium text-fg">Today&rsquo;s free receipt reading is used up</p>
+          <p className="mt-0.5 text-fg-muted">
+            The allowance resets tomorrow. Fill the form in by hand for now — nothing else has
+            changed.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-dashed border-hairline-strong p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -583,7 +612,7 @@ function ReceiptScanner({
             accept="image/*,.pdf"
             capture="environment"
             className="hidden"
-            disabled={state.isPending}
+            disabled={state.isPending || outOfQuota}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) onPick(f);

@@ -4,6 +4,7 @@ import {
   ExtractionError,
   matchSupplier,
   parseExtraction,
+  readGeminiQuota,
   receiptProvider,
   receiptScanningAvailable,
   suggestFigures,
@@ -266,4 +267,58 @@ test("both providers' replies go through the same parser", () => {
     '```json\n{"total": 580000, "vatAmount": 80000, "taxInvoice": true}\n```',
   );
   assert.deepEqual(gemini, anthropic);
+});
+
+// ---- Free-tier limits ----
+//
+// A free key rejects for two very different reasons, and the difference is
+// the whole message: a per-minute burst clears in seconds, the daily cap does
+// not clear until tomorrow. Telling somebody to "try again shortly" when
+// their allowance is gone wastes their afternoon.
+
+const quotaBody = (quotaId: string, retryDelay?: string) => ({
+  error: {
+    code: 429,
+    status: 'RESOURCE_EXHAUSTED',
+    details: [
+      {
+        '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+        violations: [{ quotaId }],
+      },
+      ...(retryDelay
+        ? [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay }]
+        : []),
+    ],
+  },
+});
+
+test('a per-minute burst is a short wait, and the wait is reported', () => {
+  const r = readGeminiQuota(
+    quotaBody('GenerateRequestsPerMinutePerProjectPerModel-FreeTier', '38s'),
+  );
+  assert.equal(r.reason, 'RATE_LIMIT');
+  assert.equal(r.retryAfterSeconds, 38);
+});
+
+test('the daily cap is not a short wait', () => {
+  const r = readGeminiQuota(quotaBody('GenerateRequestsPerDayPerProjectPerModel-FreeTier'));
+  assert.equal(r.reason, 'QUOTA_DAILY');
+  assert.equal(r.retryAfterSeconds, undefined, 'there is no useful number of seconds to give');
+});
+
+test('a retry measured in hours is a daily cap however it was labelled', () => {
+  const r = readGeminiQuota(quotaBody('SomeUnfamiliarQuotaName', '7200s'));
+  assert.equal(r.reason, 'QUOTA_DAILY');
+});
+
+test('a fractional retry delay rounds up rather than down to zero', () => {
+  const r = readGeminiQuota(quotaBody('...PerMinute...', '0.4s'));
+  assert.equal(r.retryAfterSeconds, 1, 'never tell somebody to wait zero seconds');
+});
+
+test('an unrecognisable rejection is treated as the recoverable one', () => {
+  // Guessing "daily" would hide the feature for a day over a blip.
+  assert.equal(readGeminiQuota({}).reason, 'RATE_LIMIT');
+  assert.equal(readGeminiQuota(undefined).reason, 'RATE_LIMIT');
+  assert.equal(readGeminiQuota({ error: { details: [] } }).reason, 'RATE_LIMIT');
 });
