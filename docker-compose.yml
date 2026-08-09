@@ -40,6 +40,11 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
+      # Optional. Without it, receipt reading is simply absent and every form
+      # still works by hand. Setting it means receipt images are sent to
+      # Anthropic to be read, so it is opt-in by configuration.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RECEIPT_MODEL: ${RECEIPT_MODEL:-claude-sonnet-5}
     volumes:
       - uploads:/data/uploads
     healthcheck:

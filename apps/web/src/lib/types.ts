@@ -237,6 +237,36 @@ export interface PurchaseTaxConfig {
   defaultWhtRatePct: number;
   defaultWhtVatRatePct: number;
   withholdingAgent: boolean;
+  /** Whether the server has receipt reading configured. Not a user setting. */
+  receiptScanning?: boolean;
+}
+
+/** One deterministic check run against what was read off a receipt. */
+export interface ReceiptCheck {
+  id: string;
+  status: 'OK' | 'WARN' | 'UNKNOWN';
+  message: string;
+}
+
+/** POST /projects/:id/expenses/scan-receipt — a draft, never a saved record. */
+export interface ScannedReceipt {
+  extracted: {
+    supplierName: string | null;
+    supplierPin: string | null;
+    invoiceNo: string | null;
+    date: string | null;
+    subtotal: number | null;
+    vatAmount: number | null;
+    total: number | null;
+    taxInvoice: boolean;
+    note: string | null;
+  };
+  checks: ReceiptCheck[];
+  needsReview: boolean;
+  suggested: { amount: number | null; vatAmount: number | null; vatRatePct: number | null };
+  supplier: { id: string; name: string } | null;
+  /** A name was read but is not on the supplier list. */
+  supplierUnmatched: boolean;
 }
 
 /** GET /projects/:id/expenses/:expenseId/payment-suggestion */

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Plus, Receipt, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus, Receipt, ScanLine, Wallet } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type {
   Expense,
+  ScannedReceipt,
   ExpenseCategory,
   ExpenseStatus,
   PurchaseTaxConfig,
@@ -157,7 +158,12 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
         )}
 
         <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
-          <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
+          <ExpenseForm
+            projectId={projectId}
+            onSubmit={(fd) => create.mutate(fd)}
+            pending={create.isPending}
+            error={create.error}
+          />
         </Dialog>
       </div>
     );
@@ -304,6 +310,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
         <ExpenseForm
+          projectId={projectId}
           onSubmit={(fd) => create.mutate(fd)}
           pending={create.isPending}
           error={create.error}
@@ -365,12 +372,14 @@ function ExpenseForm({
   error,
   suppliers,
   tax,
+  projectId,
 }: {
   onSubmit: (formData: FormData) => void;
   pending: boolean;
   error: unknown;
   suppliers?: Supplier[];
   tax?: PurchaseTaxConfig;
+  projectId: string;
 }) {
   // A supplier is what turns this from "money already gone" into a bill with a
   // balance. Everything tax-related therefore stays hidden until one is
@@ -378,15 +387,42 @@ function ExpenseForm({
   const [supplierId, setSupplierId] = useState('');
   const onCredit = supplierId !== '';
 
+  // What a scan suggested. It only ever prefills the fields below; the figures
+  // that reach the books are the ones showing here when Save is pressed.
+  const [scan, setScan] = useState<ScannedReceipt | null>(null);
+  const [scanVersion, setScanVersion] = useState(0);
+
+  const readReceipt = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.set('receipt', file);
+      return api<ScannedReceipt>(`/projects/${projectId}/expenses/scan-receipt`, { formData: fd });
+    },
+    onSuccess: (result) => {
+      setScan(result);
+      // Remounting the form is what re-applies the defaults below.
+      setScanVersion((v) => v + 1);
+      if (result.supplier) setSupplierId(result.supplier.id);
+    },
+  });
+
   return (
     <form
-      key="expense-form"
+      key={`expense-form-${scanVersion}`}
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit(new FormData(e.currentTarget));
       }}
       className="space-y-3"
     >
+      {tax?.receiptScanning && (
+        <ReceiptScanner
+          state={readReceipt}
+          scan={scan}
+          onPick={(file) => readReceipt.mutate(file)}
+        />
+      )}
+
       <Field label="Category">
         <Select name="expenseCategory" required>
           {CATEGORIES.map((c) => (
@@ -396,14 +432,30 @@ function ExpenseForm({
           ))}
         </Select>
       </Field>
-      <Field label="Amount (KES)">
-        <Input name="amount" type="number" min="1" step="0.01" inputMode="decimal" required />
+      <Field
+        label="Amount (KES)"
+        hint={onCredit ? 'The gross figure the supplier is asking for' : undefined}
+      >
+        <Input
+          name="amount"
+          type="number"
+          min="1"
+          step="0.01"
+          inputMode="decimal"
+          required
+          defaultValue={scan?.suggested.amount ?? ''}
+        />
       </Field>
       <Field label="Description">
         <Textarea name="description" required placeholder="20 bags of cement" />
       </Field>
       <Field label="Date">
-        <Input name="expenseDate" type="date" defaultValue={todayISO()} required />
+        <Input
+          name="expenseDate"
+          type="date"
+          defaultValue={scan?.extracted.date ?? todayISO()}
+          required
+        />
       </Field>
 
       {suppliers && suppliers.length > 0 && (
@@ -430,7 +482,11 @@ function ExpenseForm({
         <div className="space-y-3 rounded-lg border border-hairline p-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Their invoice no.">
-              <Input name="supplierInvoiceNo" placeholder="INV-4471" />
+              <Input
+                name="supplierInvoiceNo"
+                placeholder="INV-4471"
+                defaultValue={scan?.extracted.invoiceNo ?? ''}
+              />
             </Field>
             <Field label="Payment due">
               <Input name="dueDate" type="date" />
@@ -444,7 +500,7 @@ function ExpenseForm({
                 min="0"
                 max="100"
                 step="0.01"
-                defaultValue={tax?.vatRatePct ?? 16}
+                defaultValue={scan?.suggested.vatRatePct ?? tax?.vatRatePct ?? 16}
               />
             </Field>
             <Field label="The amount above">
@@ -455,7 +511,13 @@ function ExpenseForm({
             </Field>
           </div>
           <label className="flex items-center gap-2 text-sm text-fg">
-            <input name="taxInvoice" type="checkbox" value="true" className="size-4" />
+            <input
+              name="taxInvoice"
+              type="checkbox"
+              value="true"
+              className="size-4"
+              defaultChecked={scan?.extracted.taxInvoice ?? false}
+            />
             They gave a proper tax invoice (ETR)
           </label>
           <p className="text-xs text-fg-subtle">
@@ -477,5 +539,106 @@ function ExpenseForm({
         Save expense
       </Button>
     </form>
+  );
+}
+
+/**
+ * Reading a receipt into the form.
+ *
+ * The scan SUGGESTS. What reaches the books is whatever is showing in the
+ * fields when Save is pressed, and the checks below say plainly which figures
+ * were verified and which were not — because "the AI read 80,000" is not a
+ * reason to trust it, but "the AI read 80,000 and it is 16% of the subtotal
+ * and the receipt adds up" is.
+ */
+function ReceiptScanner({
+  state,
+  scan,
+  onPick,
+}: {
+  state: { isPending: boolean; isError: boolean; error: unknown };
+  scan: ScannedReceipt | null;
+  onPick: (file: File) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-dashed border-hairline-strong p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-fg">Read it off the receipt</p>
+          <p className="text-xs text-fg-muted">
+            Photograph the receipt and the figures below are filled in for you to check.
+          </p>
+        </div>
+        <label className="shrink-0">
+          <span
+            className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-hairline-strong px-3 text-sm font-medium text-fg transition-colors hover:bg-surface-sunken ${
+              state.isPending ? 'pointer-events-none opacity-60' : ''
+            }`}
+          >
+            <ScanLine size={15} />
+            {state.isPending ? 'Reading…' : 'Scan receipt'}
+          </span>
+          <input
+            type="file"
+            accept="image/*,.pdf"
+            capture="environment"
+            className="hidden"
+            disabled={state.isPending}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onPick(f);
+              e.target.value = '';
+            }}
+          />
+        </label>
+      </div>
+
+      {state.isError && (
+        <p className="mt-2 text-sm text-red-600">
+          {state.error instanceof ApiRequestError
+            ? state.error.message
+            : 'Could not read that receipt. Enter it by hand.'}
+        </p>
+      )}
+
+      {scan && (
+        <div className="mt-3 space-y-2 border-t border-hairline pt-3">
+          <p className="text-xs text-fg-muted">
+            Filled in below — <span className="font-medium text-fg">check every figure</span> before
+            saving. Nothing has been recorded yet.
+          </p>
+
+          <ul className="space-y-1">
+            {scan.checks.map((c) => (
+              <li key={c.id} className="flex items-start gap-1.5 text-xs">
+                {c.status === 'OK' ? (
+                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-600" />
+                ) : (
+                  <AlertTriangle
+                    size={14}
+                    className={`mt-0.5 shrink-0 ${
+                      c.status === 'WARN' ? 'text-amber-600' : 'text-fg-subtle'
+                    }`}
+                  />
+                )}
+                <span className={c.status === 'WARN' ? 'text-amber-800 dark:text-amber-500' : 'text-fg-muted'}>
+                  {c.message}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {scan.supplierUnmatched && scan.extracted.supplierName && (
+            <p className="text-xs text-amber-800 dark:text-amber-500">
+              “{scan.extracted.supplierName}” is not on your supplier list. Pick the right one
+              below, or add them first — a bill on the wrong supplier misstates what both are owed.
+            </p>
+          )}
+          {scan.extracted.note && (
+            <p className="text-xs text-fg-subtle">Noted: {scan.extracted.note}</p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

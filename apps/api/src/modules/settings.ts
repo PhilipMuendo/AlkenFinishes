@@ -10,6 +10,7 @@ import { getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPurchaseTaxConfig } from '../services/payables';
 import { getPayrollConfig } from '../services/payroll';
+import { receiptScanningAvailable } from '../services/receiptExtraction';
 import { peekNextNumber } from '../services/numbering';
 import { getPipelineConfig } from '../services/pipeline';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
@@ -270,7 +271,11 @@ router.put(
 router.get(
   '/purchase-tax',
   asyncHandler(async (_req, res) => {
-    res.json(await getPurchaseTaxConfig());
+    // `receiptScanning` rides along here because the expense form already
+    // fetches this and needs to know whether to offer the scan button. It is
+    // a capability of the deployment, not a setting anybody edits — with no
+    // key configured the feature is absent and the form works by hand.
+    res.json({ ...(await getPurchaseTaxConfig()), receiptScanning: receiptScanningAvailable() });
   }),
 );
 

@@ -18,6 +18,11 @@ const schema = z.object({
   APP_TIMEZONE: z.string().default('Africa/Nairobi'),
   FILE_URL_TTL_SECONDS: z.coerce.number().default(3600),
   MAX_SHIFT_HOURS: z.coerce.number().default(14),
+  // Reading photographed receipts. OPTIONAL: with no key the feature is simply
+  // absent and every form still works by hand. Receipt images are sent to
+  // Anthropic when it is set, so it is opt-in by configuration.
+  ANTHROPIC_API_KEY: z.string().optional(),
+  RECEIPT_MODEL: z.string().default('claude-sonnet-5'),
 });
 
 const parsed = schema.safeParse(process.env);

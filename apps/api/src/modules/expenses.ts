@@ -7,6 +7,16 @@ import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import fs from 'fs';
+import path from 'path';
+import { env } from '../config/env';
+import {
+  ExtractionError,
+  matchSupplier,
+  receiptScanningAvailable,
+  scanReceipt,
+  verify,
+} from '../services/receiptExtraction';
 import {
   assertPaymentAllowed,
   getPurchaseTaxConfig,
@@ -326,6 +336,62 @@ router.delete(
     removeUploadedFile(expense.receiptUrl);
     audit(req, 'expense.delete', 'Expense', expense.id, { amount: Number(expense.amount) });
     res.json({ ok: true });
+  }),
+);
+
+// ---- Reading a receipt ----
+
+/**
+ * Read a photographed receipt into a DRAFT.
+ *
+ * This route writes nothing. It returns figures for a form the user confirms,
+ * along with the checks that were run against them, because every money figure
+ * in this system reconciles against something else and one nobody checked
+ * would corrupt the lot quietly.
+ *
+ * The uploaded file is deleted as soon as it has been read: the receipt the
+ * user actually keeps is the one attached when they save the expense, and a
+ * second copy on disk from an abandoned scan is just an orphan.
+ */
+router.post(
+  '/scan-receipt',
+  requireSuperadmin,
+  upload.single('receipt'),
+  asyncHandler(async (req, res) => {
+    if (!receiptScanningAvailable()) {
+      throw ApiError.badRequest(
+        'Receipt reading is not switched on. Set ANTHROPIC_API_KEY on the server to use it.',
+      );
+    }
+    if (!req.file) throw ApiError.badRequest('Attach a photo of the receipt');
+    await verifyUpload(req.file);
+
+    const filePath = path.join(env.UPLOAD_DIR, req.file.filename);
+    try {
+      const buffer = await fs.promises.readFile(filePath);
+      const extracted = await scanReceipt(buffer, req.file.mimetype);
+      const tax = await getPurchaseTaxConfig();
+      const result = verify(extracted, tax.vatRatePct);
+
+      // Matched by exact name only. An unmatched supplier is handed back for
+      // the user to pick or add, never guessed at.
+      const suppliers = await prisma.supplier.findMany({
+        where: { active: true },
+        select: { id: true, name: true },
+      });
+      const supplier = matchSupplier(extracted.supplierName, suppliers);
+
+      audit(req, 'expense.scanReceipt', 'Expense', 'draft', {
+        matched: !!supplier,
+        needsReview: result.needsReview,
+      });
+      res.json({ ...result, supplier, supplierUnmatched: !supplier && !!extracted.supplierName });
+    } catch (e) {
+      if (e instanceof ExtractionError) throw ApiError.badRequest(e.message);
+      throw e;
+    } finally {
+      removeUploadedFile(fileUrl(req.file.filename));
+    }
   }),
 );
 
