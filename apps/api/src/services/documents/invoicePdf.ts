@@ -137,15 +137,7 @@ export async function renderInvoicePdf(
               { text: 'RATE', style: 'tableHeader', alignment: 'right' },
               { text: 'AMOUNT', style: 'tableHeader', alignment: 'right' },
             ] as TableCell[],
-            ...inv.lines.map(
-              (l): TableCell[] => [
-                { text: l.description + (l.taxable ? '' : '  (zero-rated)') },
-                { text: trimQty(n(l.quantity)), alignment: 'right' },
-                { text: l.unit, color: MUTED },
-                { text: money(n(l.unitPrice)), alignment: 'right' },
-                { text: money(n(l.lineTotal)), alignment: 'right' },
-              ],
-            ),
+            ...inv.lines.map((l): TableCell[] => lineRow(l)),
           ],
         },
         layout: lineTableLayout,
@@ -186,6 +178,58 @@ export async function renderInvoicePdf(
 /** Quantities are Decimal(12,3); drop trailing zeros so "120.000" prints as "120". */
 function trimQty(q: number): string {
   return String(Number(q.toFixed(3)));
+}
+
+/**
+ * One row of the line table.
+ *
+ * A progress-claim line is not a quantity at a rate. It bills the difference
+ * between two cumulative valuations, so printing "120 m² @ 5,000" beside an
+ * amount of 187,500 invites exactly the query this document exists to avoid.
+ * Those lines therefore leave the QTY/UNIT/RATE columns empty and state their
+ * own arithmetic underneath the description: how complete the item is, what
+ * the whole item is worth, and what earlier claims already took.
+ */
+function lineRow(l: InvoiceLine): TableCell[] {
+  const n = (v: unknown) => Number(v);
+  const label = l.description + (l.taxable ? '' : '  (zero-rated)');
+
+  if (l.cumulativePct == null) {
+    return [
+      { text: label },
+      { text: trimQty(n(l.quantity)), alignment: 'right' },
+      { text: l.unit, color: MUTED },
+      { text: money(n(l.unitPrice)), alignment: 'right' },
+      { text: money(n(l.lineTotal)), alignment: 'right' },
+    ];
+  }
+
+  // The schedule item's contract value: its own quantity at its own rate,
+  // carried onto the claim line unchanged.
+  const itemValue = n(l.quantity) * n(l.unitPrice);
+  const pct = n(l.cumulativePct);
+  const claimedToDate = Math.round(itemValue * pct) / 100;
+  const previously = claimedToDate - n(l.lineTotal);
+
+  return [
+    {
+      stack: [
+        { text: label },
+        {
+          text:
+            `${trimQty(pct)}% complete to date · item value ${money(itemValue)} · ` +
+            `valued to date ${money(claimedToDate)} less ${money(previously)} previously claimed`,
+          fontSize: 8,
+          color: MUTED,
+          margin: [0, 2, 0, 0],
+        },
+      ],
+    },
+    { text: '' },
+    { text: '' },
+    { text: '' },
+    { text: money(n(l.lineTotal)), alignment: 'right' },
+  ];
 }
 
 export function bankBlock(company: CompanyProfile): Content[] {

@@ -76,18 +76,38 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
             </tr>
           </thead>
           <tbody>
-            {inv.lines.map((l) => (
-              <tr key={l.id}>
-                <Td>
-                  {l.description}
-                  {!l.taxable && <span className="ml-1 text-xs text-fg-subtle">(zero-rated)</span>}
-                </Td>
-                <Td className="text-right tabular-nums">{Number(l.quantity)}</Td>
-                <Td className="text-fg-muted">{l.unit}</Td>
-                <Td className="text-right tabular-nums">{fmtMoney(l.unitPrice)}</Td>
-                <Td className="text-right tabular-nums">{fmtMoney(l.lineTotal)}</Td>
-              </tr>
-            ))}
+            {inv.lines.map((l) => {
+              // A claim line bills the difference between two cumulative
+              // valuations, so its amount is not quantity × rate. Printing
+              // those columns beside it would read as an arithmetic error;
+              // the claim states its own workings instead.
+              const claim = l.cumulativePct != null;
+              const itemValue = Number(l.quantity) * Number(l.unitPrice);
+              const toDate = Math.round(itemValue * Number(l.cumulativePct ?? 0)) / 100;
+              return (
+                <tr key={l.id}>
+                  <Td>
+                    {l.description}
+                    {!l.taxable && (
+                      <span className="ml-1 text-xs text-fg-subtle">(zero-rated)</span>
+                    )}
+                    {claim && (
+                      <p className="mt-0.5 text-xs text-fg-subtle">
+                        {Number(l.cumulativePct)}% complete to date · item worth{' '}
+                        {fmtMoney(itemValue)} · valued to date {fmtMoney(toDate)} less{' '}
+                        {fmtMoney(toDate - l.lineTotal)} claimed before
+                      </p>
+                    )}
+                  </Td>
+                  <Td className="text-right tabular-nums">{claim ? '' : Number(l.quantity)}</Td>
+                  <Td className="text-fg-muted">{claim ? '' : l.unit}</Td>
+                  <Td className="text-right tabular-nums">
+                    {claim ? '' : fmtMoney(l.unitPrice)}
+                  </Td>
+                  <Td className="text-right tabular-nums">{fmtMoney(l.lineTotal)}</Td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       </div>
