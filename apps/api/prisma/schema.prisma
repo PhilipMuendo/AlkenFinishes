@@ -503,8 +503,8 @@ model Invoice {
 
 model InvoiceLine {
   id        String  @id @default(cuid())
-  invoiceId String
   invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
 
   sortOrder   Int     @default(0)
   description String
@@ -516,7 +516,22 @@ model InvoiceLine {
   lineTotal   Decimal @db.Decimal(14, 2)
   taxable     Boolean @default(true) // zero-rated / exempt lines
 
+  // ---- Progress claims -----------------------------------------------------
+  // Which item of the priced schedule this line claims against. Null for a
+  // free-typed line (a mobilisation fee, a one-off), which stays supported.
+  // SetNull rather than Cascade: deleting a quotation must never silently
+  // rewrite the totals of an issued legal document.
+  sourceLineId String?
+  sourceLine   QuotationLine? @relation(fields: [sourceLineId], references: [id], onDelete: SetNull)
+
+  // How complete that schedule item is TO DATE, not in this claim alone. The
+  // value of this claim is derived: cumulative value minus whatever earlier
+  // claims already took. "Previously claimed" is deliberately never stored —
+  // it is a sum over prior invoices, and a stored copy could disagree with them.
+  cumulativePct Decimal? @db.Decimal(5, 2)
+
   @@index([invoiceId, sortOrder])
+  @@index([sourceLineId])
 }
 
 // One counter row per (series, year), incremented inside the transaction that
@@ -971,6 +986,9 @@ model QuotationLine {
   unitPrice   Decimal   @db.Decimal(14, 2)
   lineTotal   Decimal   @db.Decimal(14, 2)
   taxable     Boolean   @default(true)
+
+  // Progress claims measured against this item of the priced schedule.
+  claimLines InvoiceLine[]
 
   @@index([quotationId, sortOrder])
 }
