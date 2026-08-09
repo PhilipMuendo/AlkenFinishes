@@ -24,6 +24,7 @@ import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
 import tasksRouter from './modules/tasks';
 import workersRouter from './modules/workers';
 import toolsRouter from './modules/tools';
+import suppliersRouter from './modules/suppliers';
 import attendanceRouter, { deviceRouter, adminDeviceRouter } from './modules/attendance';
 import iclockRouter from './modules/iclock';
 import stockRouter from './modules/stock';
@@ -73,6 +74,7 @@ export function createApp() {
   v1.use('/reports', reportsRouter);
   v1.use('/workers', workersRouter);
   v1.use('/tools', toolsRouter);
+  v1.use('/suppliers', suppliersRouter); // supplier list + company-wide payables
   v1.use('/attendance', deviceRouter); // POST /attendance/device-sync (API-key auth)
   v1.use('/devices', adminDeviceRouter);
   v1.use('/analytics', analyticsRouter);

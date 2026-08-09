@@ -8,6 +8,7 @@ import { requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
+import { getPurchaseTaxConfig } from '../services/payables';
 import { peekNextNumber } from '../services/numbering';
 import { getPipelineConfig } from '../services/pipeline';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
@@ -194,6 +195,44 @@ router.put(
       });
     }
     audit(req, 'settings.invoicing', 'Setting', 'invoicing', { startNumber });
+    res.json(value);
+  }),
+);
+
+// ---- Tax on what we buy ----
+
+/**
+ * Rates are configuration, never constants in the code: they change by finance
+ * act, they differ by what is bought, and whether this company is an appointed
+ * withholding agent is a fact about the company. Withholding stays off until
+ * it is switched on deliberately, so nothing is ever deducted from a supplier
+ * by default.
+ */
+const purchaseTaxSchema = z.object({
+  vatRatePct: z.coerce.number().min(0).max(100),
+  billsIncludeVat: z.coerce.boolean(),
+  withholdingAgent: z.coerce.boolean(),
+  defaultWhtRatePct: z.coerce.number().min(0).max(100),
+  defaultWhtVatRatePct: z.coerce.number().min(0).max(100),
+});
+
+router.get(
+  '/purchase-tax',
+  asyncHandler(async (_req, res) => {
+    res.json(await getPurchaseTaxConfig());
+  }),
+);
+
+router.put(
+  '/purchase-tax',
+  asyncHandler(async (req, res) => {
+    const value = purchaseTaxSchema.parse(req.body);
+    await prisma.setting.upsert({
+      where: { key: 'purchaseTax' },
+      create: { key: 'purchaseTax', value },
+      update: { value },
+    });
+    audit(req, 'settings.purchaseTax', 'Setting', 'purchaseTax', value);
     res.json(value);
   }),
 );

@@ -1,4 +1,5 @@
 import { kes, sumCents, toCents } from './money';
+import { prisma } from '../lib/prisma';
 import { agingBucket, daysOverdue, isOverdue, type AgingBucket } from './invoicing';
 
 /**
@@ -23,6 +24,42 @@ import { agingBucket, daysOverdue, isOverdue, type AgingBucket } from './invoici
  */
 
 export type { AgingBucket };
+
+/**
+ * Tax treatment of what we buy.
+ *
+ * Every rate here is configuration, not a constant in the code. Rates change
+ * by finance act, they differ by what is being bought, and whether this
+ * company is an appointed withholding agent at all is a fact about the
+ * company, not about the software. Defaults are deliberately conservative:
+ * withholding defaults to ZERO, so nothing is ever deducted from a supplier
+ * until somebody sets a rate on purpose.
+ */
+export interface PurchaseTaxConfig {
+  /** Standard input-VAT rate offered when entering a supplier bill. */
+  vatRatePct: number;
+  /** Whether supplier figures are typed VAT-inclusive by default. */
+  billsIncludeVat: boolean;
+  /** Default withholding tax rate on a supplier payment. Zero unless set. */
+  defaultWhtRatePct: number;
+  /** Default withholding VAT rate. Only for appointed agents; zero unless set. */
+  defaultWhtVatRatePct: number;
+  /** Whether this company withholds at all. Off until switched on deliberately. */
+  withholdingAgent: boolean;
+}
+
+export const DEFAULT_PURCHASE_TAX: PurchaseTaxConfig = {
+  vatRatePct: 16, // Kenyan standard rate
+  billsIncludeVat: true,
+  defaultWhtRatePct: 0,
+  defaultWhtVatRatePct: 0,
+  withholdingAgent: false,
+};
+
+export async function getPurchaseTaxConfig(): Promise<PurchaseTaxConfig> {
+  const row = await prisma.setting.findUnique({ where: { key: 'purchaseTax' } });
+  return { ...DEFAULT_PURCHASE_TAX, ...((row?.value ?? {}) as Partial<PurchaseTaxConfig>) };
+}
 
 /** A cost that may be owed. `supplierId` null means it is not on the ledger. */
 export interface PayableCost {
