@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarRange, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { WeeklyReport } from '@/lib/types';
 import { fmtDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 /** Sunday that ends the current week — the default period a report covers. */
 function thisWeekEnding() {
@@ -43,9 +44,11 @@ export function WeeklyReportsPanel({
   const submit = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/weekly-reports`, { formData }),
     onSuccess: () => {
+      toast.success('Weekly report filed.');
       void qc.invalidateQueries({ queryKey: ['weekly-reports', projectId] });
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The report was not filed.')),
   });
 
   return (
@@ -138,7 +141,7 @@ export function WeeklyReportsPanel({
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />
           </Field>
           {submit.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {submit.error instanceof ApiRequestError ? submit.error.message : 'Failed to submit report'}
             </p>
           )}

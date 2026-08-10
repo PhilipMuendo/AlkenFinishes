@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Camera, Plus } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, errText } from '@/lib/api';
 import { thumbUrl } from '@/lib/format';
 import type { Task, TaskStatus, TasksResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 const STATUSES: TaskStatus[] = ['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'DONE'];
 
@@ -36,18 +37,22 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api(`/projects/${projectId}/tasks`, { body }),
     onSuccess: () => {
+      toast.success('Task added to the programme.');
       invalidate();
       setAddOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The task was not added.')),
   });
 
   const update = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api(`/projects/${projectId}/tasks/${id}`, { method: 'PATCH', body }),
     onSuccess: () => {
+      toast.success('Task updated.');
       invalidate();
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The changes were not saved.')),
   });
 
   const addPhoto = useMutation({
@@ -56,7 +61,11 @@ export function TasksPanel({ projectId }: { projectId: string }) {
       formData.append('photo', file);
       return api(`/projects/${projectId}/tasks/${id}/photos`, { formData });
     },
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Photo attached to the task.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The photo was not attached.')),
   });
 
   const phases = [...new Set((tasks ?? []).map((t) => t.phase))];
@@ -85,7 +94,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
           default weight of 1 is invisible beside tasks priced in hundreds of
           thousands, and the headline figure silently ignores it. */}
       {progress && progress.unweightedTaskCount > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+        <div className="flex items-start gap-2 rounded-lg border border-warn-hairline bg-warn-surface p-3 text-sm text-warn-fg">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <p>
             {progress.unweightedTaskCount} of {progress.taskCount} tasks still have no size set, so

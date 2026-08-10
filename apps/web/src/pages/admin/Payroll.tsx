@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Lock, Plus, Trash2 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { PayrollPreview, PayrollRunDetail, PayrollRunSummary, Project } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
+import { toast } from '@/components/ui/toast';
 
 /**
  * Payroll.
@@ -61,16 +62,22 @@ export function PayrollPage() {
         body: { ...body(), ...(notes.trim() ? { notes: notes.trim() } : {}) },
       }),
     onSuccess: (run) => {
+      toast.success('Payroll run created as a draft. Check it before finalising.');
       void qc.invalidateQueries({ queryKey: ['payroll'] });
       setCreating(false);
       preview.reset();
       setOpenId(run.id);
     },
+    onError: (e) => toast.error(errText(e, 'The payroll run was not created.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/payroll/${id}`, { method: 'DELETE' }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['payroll'] }),
+    onSuccess: () => {
+      toast.success('Draft payroll run deleted.');
+      void qc.invalidateQueries({ queryKey: ['payroll'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The run was not deleted.')),
   });
 
   return (
@@ -168,7 +175,7 @@ export function PayrollPage() {
       )}
 
       {remove.isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {remove.error instanceof ApiRequestError ? remove.error.message : 'Failed to delete'}
         </p>
       )}
@@ -215,7 +222,7 @@ export function PayrollPage() {
           </Button>
 
           {preview.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {preview.error instanceof ApiRequestError
                 ? preview.error.message
                 : 'Could not build the preview'}
@@ -225,7 +232,7 @@ export function PayrollPage() {
           {preview.data && (
             <>
               {!preview.data.config.enabled && (
-                <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40">
+                <p className="rounded-lg border border-warn-hairline bg-warn-surface p-3 text-sm text-warn-fg">
                   Statutory deductions are switched off, so this run pays each worker their full
                   wage and withholds nothing. Turn them on in Settings once your rates are set.
                 </p>
@@ -250,7 +257,7 @@ export function PayrollPage() {
                   </Field>
 
                   {create.isError && (
-                    <p className="text-sm text-red-600">
+                    <p className="text-sm text-danger-fg">
                       {create.error instanceof ApiRequestError
                         ? create.error.message
                         : 'Failed to create the run'}
@@ -293,8 +300,12 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const finalise = useMutation({
     mutationFn: () => api(`/payroll/${id}/finalise`, { body: {} }),
     onSuccess: () => {
+      // Finalising makes this the record of what was withheld from real
+      // people, so the confirmation says that rather than "Saved".
+      toast.success('Payroll finalised. It is now the record of what each worker was paid.');
       void qc.invalidateQueries({ queryKey: ['payroll'] });
     },
+    onError: (e) => toast.error(errText(e, 'The run was not finalised.')),
   });
 
   if (!data) return <p className="py-8 text-center text-sm text-fg-muted">Loading…</p>;
@@ -328,7 +339,7 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
             withheld from your workers and cannot be deleted or rebuilt.
           </p>
           {finalise.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {finalise.error instanceof ApiRequestError
                 ? finalise.error.message
                 : 'Failed to finalise'}

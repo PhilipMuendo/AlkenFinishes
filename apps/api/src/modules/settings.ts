@@ -11,6 +11,8 @@ import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPurchaseTaxConfig } from '../services/payables';
 import { getPayrollConfig } from '../services/payroll';
 import { receiptScanningAvailable } from '../services/receiptExtraction';
+import { aiAvailable, aiProvider } from '../services/ai';
+import { allowanceFor, getAiBudget, readUsage, totalCalls } from '../services/aiUsage';
 import { peekNextNumber } from '../services/numbering';
 import { getPipelineConfig } from '../services/pipeline';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
@@ -370,6 +372,48 @@ router.get(
     // hasMore is a cheap "did this page fill up" check, not a total count —
     // fine for simple next/prev paging without an extra count() query.
     res.json({ items, page, hasMore: items.length === pageSize });
+  }),
+);
+
+/**
+ * The assistant's share of the day's free allowance.
+ *
+ * Exposed because the reserve is a judgement call about this business, not a
+ * constant: a company scanning forty receipts a day wants a bigger one than a
+ * company scanning four. Today's usage is shown beside it so the number can be
+ * set from what actually happens rather than guessed.
+ */
+const aiBudgetSchema = z.object({
+  dailyCalls: z.coerce.number().int().min(1).max(100_000),
+  reservedForWork: z.coerce.number().int().min(0).max(100_000),
+});
+
+router.get(
+  '/ai',
+  asyncHandler(async (_req, res) => {
+    const [budget, usage] = await Promise.all([getAiBudget(), readUsage()]);
+    res.json({
+      available: aiAvailable(),
+      provider: aiProvider(),
+      budget,
+      usage,
+      used: totalCalls(usage),
+      chat: allowanceFor('chat', usage, budget),
+    });
+  }),
+);
+
+router.put(
+  '/ai',
+  asyncHandler(async (req, res) => {
+    const value = aiBudgetSchema.parse(req.body);
+    await prisma.setting.upsert({
+      where: { key: 'aiBudget' },
+      create: { key: 'aiBudget', value },
+      update: { value },
+    });
+    audit(req, 'settings.aiBudget', 'Setting', 'aiBudget', value);
+    res.json(value);
   }),
 );
 

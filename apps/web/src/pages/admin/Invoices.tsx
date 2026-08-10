@@ -88,7 +88,7 @@ export function InvoicesPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Overdue</p>
             <p
               className={`mt-1 text-2xl font-semibold tabular-nums ${
-                (receivables?.totalOverdue ?? 0) > 0 ? 'text-red-600' : 'text-fg'
+                (receivables?.totalOverdue ?? 0) > 0 ? 'text-danger-fg' : 'text-fg'
               }`}
             >
               {fmtMoney(receivables?.totalOverdue ?? 0)}
@@ -209,7 +209,7 @@ export function InvoicesPage() {
                   <Td>{r.clientName}</Td>
                   <Td className="whitespace-nowrap">
                     {fmtDate(r.dueDate)}
-                    {r.overdue && <p className="text-xs text-red-600">{r.daysOverdue}d late</p>}
+                    {r.overdue && <p className="text-xs text-danger-fg">{r.daysOverdue}d late</p>}
                   </Td>
                   <Td className="text-right tabular-nums">{fmtMoney(r.netPayable)}</Td>
                   <Td className="text-right font-medium tabular-nums">

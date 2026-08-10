@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, Trash2 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type {
   AnyCalendarEventType,
   CalendarEvent,
@@ -16,6 +16,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
+import { toast } from '@/components/ui/toast';
 
 /** Only these can be created — the rest are computed from other records. */
 const BOOKABLE_TYPE_LABEL: Record<CalendarEventType, string> = {
@@ -82,14 +83,20 @@ export function CalendarPage() {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/calendar', { body }),
     onSuccess: () => {
+      toast.success('Event added to the calendar.');
       invalidate();
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The event was not added.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/calendar/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Event removed.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The event was not removed.')),
   });
 
   // Grouped by day so the list reads like a diary rather than a flat table.
@@ -172,7 +179,7 @@ export function CalendarPage() {
                     <button
                       onClick={() => remove.mutate(e.id)}
                       aria-label={`Delete ${e.title}`}
-                      className="shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                      className="shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -231,7 +238,7 @@ export function CalendarPage() {
             <Textarea name="notes" rows={2} />
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
             </p>
           )}

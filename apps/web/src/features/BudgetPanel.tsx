@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { BudgetCategory } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 
 const CATEGORIES: BudgetCategory[] = ['MATERIALS', 'LABOUR', 'TRANSPORT', 'OTHER'];
 
@@ -43,10 +44,12 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
         },
       }),
     onSuccess: () => {
+      toast.success('Budget saved. Spend is measured against it from now on.');
       void qc.invalidateQueries({ queryKey: ['budget', projectId] });
       void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
       void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
     },
+    onError: (e) => toast.error(errText(e, 'The budget was not saved.')),
   });
 
   const total = CATEGORIES.reduce((s, c) => s + Number(values[c] ?? 0), 0);
@@ -75,9 +78,9 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
             KES {total.toLocaleString('en-KE')}
           </span>
         </p>
-        {save.isSuccess && <p className="text-sm text-green-700">Budget saved</p>}
+        {save.isSuccess && <p className="text-sm text-good-fg">Budget saved</p>}
         {save.isError && (
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-danger-fg">
             {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save budget'}
           </p>
         )}

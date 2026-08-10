@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Plus, Ruler } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Invoice, InvoiceStatus, InvoicingConfig, ProjectReceivables } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 import { Textarea } from '@/components/ui/input';
 import { INVOICE_TYPE_LABEL, InvoiceEditor, type InvoicePayload } from './InvoiceEditor';
 import { InvoiceDetail } from './InvoiceDetail';
@@ -63,39 +64,61 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
   };
 
   const create = useMutation({
-    mutationFn: (body: InvoicePayload) => api(`/projects/${projectId}/invoices`, { body }),
-    onSuccess: () => {
+    mutationFn: (body: InvoicePayload) =>
+      api<Invoice>(`/projects/${projectId}/invoices`, { body }),
+    onSuccess: (inv) => {
+      // Named, because the number is how this document is referred to
+      // everywhere else — on the PDF, in the ledger, and by the client.
+      toast.success(
+        `${inv.invoiceNo ?? 'Draft invoice'} created. Issue it when you are ready to send.`,
+      );
       invalidateAll();
       setAddOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The invoice was not created.')),
   });
 
   const update = useMutation({
     mutationFn: ({ id, body }: { id: string; body: InvoicePayload }) =>
       api(`/projects/${projectId}/invoices/${id}`, { method: 'PUT', body }),
     onSuccess: () => {
+      toast.success('Invoice updated.');
       invalidateAll();
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The changes were not saved.')),
   });
 
   const issue = useMutation({
-    mutationFn: (id: string) => api(`/projects/${projectId}/invoices/${id}/issue`, { body: {} }),
-    onSuccess: invalidateAll,
+    mutationFn: (id: string) =>
+      api<Invoice>(`/projects/${projectId}/invoices/${id}/issue`, { body: {} }),
+    onSuccess: (inv) => {
+      toast.success(
+        `${inv.invoiceNo ?? 'Invoice'} issued for ${fmtMoney(inv.netPayable)}. It can no longer be edited.`,
+      );
+      invalidateAll();
+    },
+    onError: (e) => toast.error(errText(e, 'The invoice was not issued.')),
   });
 
   const voidInvoice = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       api(`/projects/${projectId}/invoices/${id}/void`, { body: { reason } }),
     onSuccess: () => {
+      toast.success('Invoice voided. It stays on the record, marked void, with its number intact.');
       invalidateAll();
       setVoiding(null);
     },
+    onError: (e) => toast.error(errText(e, 'The invoice was not voided.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/invoices/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      toast.success('Draft invoice deleted.');
+      invalidateAll();
+    },
+    onError: (e) => toast.error(errText(e, 'The draft was not deleted.')),
   });
 
   const defaults = {
@@ -185,7 +208,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
                   <Td className="whitespace-nowrap">
                     {fmtDate(inv.dueDate)}
                     {inv.overdue && inv.status !== 'VOID' && (
-                      <p className="text-xs text-red-600">{inv.daysOverdue}d late</p>
+                      <p className="text-xs text-danger-fg">{inv.daysOverdue}d late</p>
                     )}
                   </Td>
                   <Td className="text-right tabular-nums">{fmtMoney(inv.netPayable)}</Td>
@@ -248,12 +271,12 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
       )}
 
       {issue.isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {issue.error instanceof ApiRequestError ? issue.error.message : 'Failed to issue invoice'}
         </p>
       )}
       {remove.isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {remove.error instanceof ApiRequestError ? remove.error.message : 'Failed to delete draft'}
         </p>
       )}
@@ -286,7 +309,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
             onSubmit={(body) => create.mutate(body)}
             error={
               create.isError && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-danger-fg">
                   {create.error instanceof ApiRequestError
                     ? create.error.message
                     : 'Failed to save this invoice'}
@@ -312,7 +335,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
             onSubmit={(body) => update.mutate({ id: editing.id, body })}
             error={
               update.isError && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-danger-fg">
                   {update.error instanceof ApiRequestError
                     ? update.error.message
                     : 'Failed to save changes'}
@@ -352,7 +375,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
             </p>
             <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
             {voidInvoice.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {voidInvoice.error instanceof ApiRequestError
                   ? voidInvoice.error.message
                   : 'Failed to void this invoice'}
@@ -404,7 +427,7 @@ function SummaryTile({
       <CardContent>
         <p
           className={`text-xl font-semibold tabular-nums ${
-            tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
+            tone === 'negative' && value > 0 ? 'text-danger-fg' : 'text-fg'
           }`}
         >
           {fmtMoney(value)}

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Plus, Target } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Client, Lead, LeadStage } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 
 /**
  * Enquiries being chased, laid out as the pipeline they are.
@@ -62,20 +63,28 @@ export function LeadsPage() {
   const save = useMutation({
     mutationFn: ({ id, body }: { id?: string; body: Record<string, unknown> }) =>
       id ? api(`/leads/${id}`, { method: 'PUT', body }) : api('/leads', { body }),
-    onSuccess: () => {
+    onSuccess: (_r, vars) => {
+      toast.success(vars.id ? 'Lead updated.' : 'Lead added to the pipeline.');
       invalidate();
       setCreating(false);
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The lead was not saved.')),
   });
 
   const move = useMutation({
     mutationFn: ({ id, stage, lostReason }: { id: string; stage: LeadStage; lostReason?: string }) =>
       api(`/leads/${id}/stage`, { body: { stage, lostReason } }),
-    onSuccess: () => {
+    onSuccess: (_r, vars) => {
+      toast.success(
+        vars.stage === 'LOST'
+          ? 'Lead marked lost. The reason is on the record.'
+          : 'Lead moved on.',
+      );
       invalidate();
       setLosing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The lead was not moved.')),
   });
 
   const byStage = useMemo(() => {
@@ -302,7 +311,7 @@ export function LeadsPage() {
           </Field>
 
           {save.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
             </p>
           )}
@@ -346,7 +355,7 @@ export function LeadsPage() {
             Worth a sentence — the pattern in these is the most useful thing the pipeline tells you.
           </p>
           {move.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {move.error instanceof ApiRequestError ? move.error.message : 'Failed to save'}
             </p>
           )}

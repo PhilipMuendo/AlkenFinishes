@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileText } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { ClaimPosition, ClaimSchedule } from '@/lib/types';
 import { fmtMoney, todayISO } from '@/lib/format';
 import { previewInvoiceTotals } from '@/lib/invoiceMath';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { Notice } from '@/components/ui/notice';
+import { toast } from '@/components/ui/toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * Raising a progress claim.
@@ -94,7 +97,7 @@ export function ClaimBuilder({
 
   const raise = useMutation({
     mutationFn: () =>
-      api(`/projects/${projectId}/invoices/claim`, {
+      api<{ invoiceNo: string | null }>(`/projects/${projectId}/invoices/claim`, {
         body: {
           issueDate,
           dueInDays: parseInt(dueInDays, 10) || 0,
@@ -105,14 +108,18 @@ export function ClaimBuilder({
           items: claimed.map((r) => ({ sourceLineId: r.position.line.id, cumulativePct: r.pct })),
         },
       }),
-    onSuccess: () => {
+    onSuccess: (inv) => {
+      toast.success(
+        `${inv.invoiceNo ?? 'Claim'} raised for ${fmtMoney(totals.netPayable)} net of retention.`,
+      );
       void qc.invalidateQueries({ queryKey: ['invoices'] });
       void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
       onDone();
     },
+    onError: (e) => toast.error(errText(e, 'The claim was not raised.')),
   });
 
-  if (isLoading) return <p className="py-8 text-center text-sm text-fg-muted">Loading schedule…</p>;
+  if (isLoading) return <Skeleton className="h-64 w-full rounded-xl" />;
 
   if (!data?.hasSchedule) {
     return (
@@ -204,13 +211,13 @@ export function ClaimBuilder({
                 </Td>
                 <Td
                   className={`text-right font-medium tabular-nums ${
-                    r.thisClaim < 0 ? 'text-red-600' : 'text-fg'
+                    r.thisClaim < 0 ? 'text-danger-fg' : 'text-fg'
                   }`}
                 >
                   {r.valid ? (
                     fmtMoney(r.thisClaim)
                   ) : (
-                    <span className="text-xs text-red-600">0–100 only</span>
+                    <span className="text-xs text-danger-fg">0–100 only</span>
                   )}
                 </Td>
               </tr>
@@ -274,8 +281,7 @@ export function ClaimBuilder({
       </div>
 
       {reversals.length > 0 && (
-        <label className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
-          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+        <Notice as="label" tone="warn" icon={AlertTriangle}>
           <span>
             <span className="font-medium text-fg">
               {reversals.length} item{reversals.length === 1 ? '' : 's'} went backwards
@@ -294,11 +300,11 @@ export function ClaimBuilder({
               Yes, credit the client for the difference
             </span>
           </span>
-        </label>
+        </Notice>
       )}
 
       {raise.isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {raise.error instanceof ApiRequestError
             ? raise.error.message
             : 'Failed to raise this claim'}

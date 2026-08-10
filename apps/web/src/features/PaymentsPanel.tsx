@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Plus, Receipt } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Invoice, Payment, PaymentMethod, PaymentsSummary } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge, HealthBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 const METHOD_LABEL: Record<PaymentMethod, string> = {
   CASH: 'Cash',
@@ -62,9 +63,19 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
   const createPayment = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/payments`, { formData }),
     onSuccess: () => {
+      // Name the figure and what it was applied to. A receipt the client can
+      // query is worth more than the word "Saved".
+      const cash = Number(amount) || 0;
+      const settled = cash + (Number(wht) || 0) + (Number(whtVat) || 0);
+      const against = openInvoices.find((i) => i.id === invoiceId)?.invoiceNo;
+      toast.success(
+        `Receipt of ${fmtMoney(cash)} recorded${against ? ` against ${against}` : ''}` +
+          (settled > cash ? `, settling ${fmtMoney(settled)} with tax withheld.` : '.'),
+      );
       invalidateAll();
       setAddOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The receipt was not recorded.')),
   });
 
   const saveDueDate = useMutation({
@@ -73,21 +84,31 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
         method: 'PUT',
         body: { balanceDueDate: dueDate || null },
       }),
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      toast.success(dueDate ? `Balance now due ${fmtDate(dueDate)}.` : 'Due date cleared.');
+      invalidateAll();
+    },
+    onError: (e) => toast.error(errText(e, 'The due date was not saved.')),
   });
 
   const deletePayment = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/payments/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      toast.success('Receipt deleted.');
+      invalidateAll();
+    },
+    onError: (e) => toast.error(errText(e, 'The receipt was not deleted.')),
   });
 
   const voidPayment = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       api(`/projects/${projectId}/payments/${id}/void`, { body: { reason } }),
     onSuccess: () => {
+      toast.success('Receipt voided. It stays on the record, marked void.');
       invalidateAll();
       setVoiding(null);
     },
+    onError: (e) => toast.error(errText(e, 'The receipt was not voided.')),
   });
 
   const hasDeposit = !!summary?.deposit;
@@ -350,7 +371,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                   paid to KRA on your behalf.
                 </p>
                 {selectedInvoice && settledTotal > selectedInvoice.balance && (
-                  <p className="mt-1.5 text-xs text-amber-700 dark:text-amber-500">
+                  <p className="mt-1.5 text-xs text-warn-fg">
                     That settles more than the {fmtMoney(selectedInvoice.balance)} outstanding.
                     The amount received usually drops by what was withheld — try{' '}
                     {fmtMoney(Math.max(0, selectedInvoice.balance - withheldTotal))}.
@@ -406,7 +427,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
             An official numbered receipt is generated automatically once you save.
           </p>
           {createPayment.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {createPayment.error instanceof ApiRequestError
                 ? createPayment.error.message
                 : 'Failed to save payment'}
@@ -444,7 +465,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
             </p>
             <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
             {voidPayment.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {voidPayment.error instanceof ApiRequestError
                   ? voidPayment.error.message
                   : 'Failed to void this payment'}
@@ -529,7 +550,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'ne
       <dt className="text-fg-subtle">{label}</dt>
       <dd
         className={`font-medium tabular-nums ${
-          tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
+          tone === 'negative' && value > 0 ? 'text-danger-fg' : 'text-fg'
         }`}
       >
         {fmtMoney(value)}

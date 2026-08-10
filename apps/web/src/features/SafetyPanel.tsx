@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { SafetyIncident, SafetyIncidentSeverity } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 const SEVERITY_LABEL: Record<SafetyIncidentSeverity, string> = {
   NEAR_MISS: 'Near miss',
@@ -40,9 +41,11 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/safety-incidents`, { formData }),
     onSuccess: () => {
+      toast.success('Incident recorded.');
       void qc.invalidateQueries({ queryKey: ['safety-incidents', projectId] });
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The incident was not recorded.')),
   });
 
   return (
@@ -120,7 +123,7 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
             <Input name="photo" type="file" accept="image/*" capture="environment" />
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
             </p>
           )}

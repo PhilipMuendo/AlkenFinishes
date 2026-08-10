@@ -87,13 +87,13 @@ const SECTIONS: Section[] = [
 ];
 
 const toneChip: Record<Tone, string> = {
-  red: 'bg-red-50 text-red-600',
-  amber: 'bg-amber-50 text-amber-600',
+  red: 'bg-danger-surface text-danger-fg',
+  amber: 'bg-warn-surface text-warn-fg',
   blue: 'bg-brand-50 text-brand-600',
 };
 const toneText: Record<Tone, string> = {
-  red: 'text-red-600',
-  amber: 'text-amber-700',
+  red: 'text-danger-fg',
+  amber: 'text-warn-fg',
   blue: 'text-brand-600',
 };
 
@@ -189,7 +189,7 @@ function PipelineStrip() {
           <p
             className={cn(
               'mt-1 text-2xl font-semibold tabular-nums',
-              t.count > 0 ? 'text-fg' : 'text-fg-subtle/50',
+              t.count > 0 ? 'text-fg' : 'text-fg-subtle',
             )}
           >
             {t.count}
@@ -217,7 +217,7 @@ export function CompanyDashboard() {
         <PageHeader title="Overview" description="What needs your attention" />
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-danger-surface text-danger-fg">
               <AlertTriangle size={20} />
             </div>
             <p className="font-medium text-fg">Couldn&rsquo;t load your overview</p>
@@ -257,7 +257,7 @@ export function CompanyDashboard() {
       {data.allClear ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-good-surface text-good-fg">
               <CheckCircle2 size={24} />
             </div>
             <div>

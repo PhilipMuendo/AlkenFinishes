@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertOctagon, Camera, CheckCircle2, Plus, RotateCcw } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { SnagItem, SnagSeverity, SnagStatus } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 const SEVERITY_TONE: Record<SnagSeverity, 'slate' | 'yellow' | 'red'> = {
   LOW: 'slate',
@@ -94,37 +95,45 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/snags`, { formData }),
     onSuccess: () => {
+      toast.success('Defect raised. It stays open until it is fixed and signed off.');
       invalidate();
       setOpen(false);
       setPickedFile(null);
       setPin(null);
     },
+    onError: (e) => toast.error(errText(e, 'The defect was not raised.')),
   });
 
   const changeStatus = useMutation({
     mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
       api(`/projects/${projectId}/snags/${id}/status`, { formData }),
-    onSuccess: (_d, vars) => {
+    onSuccess: () => {
+      toast.success('Defect updated.');
       invalidate();
       setViewing(null);
       setResolving(null);
     },
+    onError: (e) => toast.error(errText(e, 'The defect was not updated.')),
   });
 
   const verify = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/snags/${id}/verify`, { body: {} }),
     onSuccess: () => {
+      toast.success('Defect signed off.');
       invalidate();
       setViewing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The defect was not signed off.')),
   });
 
   const reopen = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/snags/${id}/reopen`, { body: {} }),
     onSuccess: () => {
+      toast.success('Defect reopened.');
       invalidate();
       setViewing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The defect was not reopened.')),
   });
 
   const startInProgress = (id: string) => {
@@ -254,7 +263,7 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
           </Field>
 
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
             </p>
           )}
@@ -340,7 +349,7 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
             A photo is required — it's what lets the office verify the fix without visiting.
           </p>
           {changeStatus.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {changeStatus.error instanceof ApiRequestError ? changeStatus.error.message : 'Failed to save'}
             </p>
           )}

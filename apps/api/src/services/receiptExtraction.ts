@@ -1,5 +1,6 @@
 import { kes, toCents } from './money';
 import { AiError, aiAvailable, aiProvider, generate } from './ai';
+import { recordCall } from './aiUsage';
 
 /**
  * Reading a supplier receipt.
@@ -265,6 +266,9 @@ export async function scanReceipt(
   mediaType: string,
   opts: ScanOptions = {},
 ): Promise<ExtractedReceipt> {
+  // Counted so the assistant knows how much of the day's allowance is left for
+  // the work that actually matters. See services/aiUsage.ts.
+  await recordCall('receipt');
   const text = await generate({
     system: SYSTEM_PROMPT,
     user: USER_PROMPT,

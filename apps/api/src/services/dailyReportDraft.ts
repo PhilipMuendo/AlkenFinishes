@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { generate } from './ai';
+import { recordCall } from './aiUsage';
 
 /**
  * Drafting the evening site diary.
@@ -218,6 +219,7 @@ export function parseDraft(text: string): DraftedReport {
  * words.
  */
 export async function draftDailyReport(day: DaySummary): Promise<DraftedReport> {
+  await recordCall('report');
   const text = await generate({
     system: SYSTEM_PROMPT,
     user: `Write the diary from these facts:\n\n${factsFor(day)}`,

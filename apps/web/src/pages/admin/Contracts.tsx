@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Download, FileSignature, HardHat, Link2, Plus, Trash2, Upload } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser, Contract, ContractStatus, Variation } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 
 const STATUS_TONE: Record<ContractStatus, 'slate' | 'blue' | 'green' | 'red' | 'yellow'> = {
   DRAFT: 'slate',
@@ -66,25 +67,33 @@ export function ContractsPage() {
 
   const issue = useMutation({
     mutationFn: (id: string) => api(`/contracts/${id}/issue`, { body: {} }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Contract issued. Send it to the client for signature.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The contract was not issued.')),
   });
 
   const sign = useMutation({
     mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
       api(`/contracts/${id}/sign`, { formData }),
     onSuccess: () => {
+      toast.success('Contract signed. Its value and dates are now fixed.');
       invalidate();
       setSigning(false);
     },
+    onError: (e) => toast.error(errText(e, 'The signature was not recorded.')),
   });
 
   const addVariation = useMutation({
     mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
       api(`/contracts/${id}/variations`, { formData }),
     onSuccess: () => {
+      toast.success('Variation raised. It changes the contract sum once approved.');
       invalidate();
       setVarying(false);
     },
+    onError: (e) => toast.error(errText(e, 'The variation was not raised.')),
   });
 
   const decideVariation = useMutation({
@@ -99,41 +108,61 @@ export function ContractsPage() {
       outcome: 'APPROVED' | 'REJECTED';
       reason?: string;
     }) => api(`/contracts/${id}/variations/${variationId}/decision`, { body: { outcome, reason } }),
-    onSuccess: invalidate,
+    onSuccess: (_r, vars) => {
+      toast.success(
+        vars.outcome === 'APPROVED'
+          ? 'Variation approved. The contract sum has moved.'
+          : 'Variation rejected. The reason is on the record.',
+      );
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The decision was not saved.')),
   });
 
   const toProject = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api<{ id: string }>(`/contracts/${id}/convert-to-project`, { body }),
     onSuccess: (project) => {
+      toast.success('Site created from the contract. The claim schedule came with it.');
       invalidate();
       setConverting(false);
       setOpenId(null);
       navigate(`/admin/projects/${project.id}`);
     },
+    onError: (e) => toast.error(errText(e, 'The site was not created.')),
   });
 
   const attachProject = useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string }) =>
       api<{ id: string }>(`/contracts/${id}/attach-project`, { body: { projectId } }),
     onSuccess: (project) => {
+      toast.success('Contract linked. This site can now be claimed against.');
       invalidate();
       setAttaching(false);
       setOpenId(null);
       navigate(`/admin/projects/${project.id}`);
     },
+    onError: (e) => toast.error(errText(e, 'The contract was not linked.')),
   });
 
   const uploadAttachments = useMutation({
     mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
       api(`/contracts/${id}/attachments`, { formData }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Attachment uploaded.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The attachment was not uploaded.')),
   });
 
   const removeAttachment = useMutation({
     mutationFn: ({ id, field }: { id: string; field: 'boq' | 'specs' }) =>
       api(`/contracts/${id}/attachments/${field}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Attachment removed.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The attachment was not removed.')),
   });
 
   const openPdf = async (id: string) => {
@@ -316,7 +345,7 @@ export function ContractsPage() {
             />
 
             {contract.project && (
-              <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+              <p className="rounded-lg bg-good-surface p-3 text-sm text-good-fg">
                 Running as site{' '}
                 <button
                   className="font-medium underline"
@@ -328,7 +357,7 @@ export function ContractsPage() {
               </p>
             )}
 
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-danger-fg">{actionError}</p>}
 
             <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
               {contract.status === 'DRAFT' && (
@@ -395,7 +424,7 @@ export function ContractsPage() {
             record of what went out for signature.
           </p>
           {sign.isError && (
-            <p className="text-sm text-red-600">{errorMessage(sign.error)}</p>
+            <p className="text-sm text-danger-fg">{errorMessage(sign.error)}</p>
           )}
           <Button type="submit" className="w-full" disabled={sign.isPending}>
             Save
@@ -432,7 +461,7 @@ export function ContractsPage() {
             <Input name="document" type="file" accept=".pdf,image/*" />
           </Field>
           {addVariation.isError && (
-            <p className="text-sm text-red-600">{errorMessage(addVariation.error)}</p>
+            <p className="text-sm text-danger-fg">{errorMessage(addVariation.error)}</p>
           )}
           <Button type="submit" className="w-full" disabled={addVariation.isPending}>
             Raise variation
@@ -500,7 +529,7 @@ export function ContractsPage() {
               />
             </Field>
             {toProject.isError && (
-              <p className="text-sm text-red-600">{errorMessage(toProject.error)}</p>
+              <p className="text-sm text-danger-fg">{errorMessage(toProject.error)}</p>
             )}
             <Button type="submit" className="w-full" disabled={toProject.isPending}>
               Open the site
@@ -636,7 +665,7 @@ function ContractDocuments({
           </li>
         ))}
       </ul>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-danger-fg">{error}</p>}
     </section>
   );
 }
@@ -660,7 +689,7 @@ function Position({ contract }: { contract: Contract }) {
       </dl>
 
       {p.pendingVariations !== 0 && (
-        <p className="mt-2 text-xs text-amber-700">
+        <p className="mt-2 text-xs text-warn-fg">
           {fmtMoney(p.pendingVariations)} of variations are awaiting a decision and are not counted
           above.
         </p>
@@ -720,7 +749,7 @@ function VariationRow({
             Requested {fmtDate(v.requestedDate)}
             {v.approvedBy && ` · ${v.status.toLowerCase()} by ${v.approvedBy.name}`}
           </p>
-          {v.rejectReason && <p className="mt-1 text-xs text-red-600">{v.rejectReason}</p>}
+          {v.rejectReason && <p className="mt-1 text-xs text-danger-fg">{v.rejectReason}</p>}
         </div>
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold tabular-nums text-fg">
@@ -876,7 +905,7 @@ function AttachProjectForm({
         </div>
       )}
 
-      {error != null && <p className="text-sm text-red-600">{errorMessage(error)}</p>}
+      {error != null && <p className="text-sm text-danger-fg">{errorMessage(error)}</p>}
 
       <Button type="submit" className="w-full" disabled={!projectId || pending}>
         {pending ? 'Linking…' : 'Link this site'}

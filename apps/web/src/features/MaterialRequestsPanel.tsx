@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { MaterialRequest, MaterialRequestStatus } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 const STATUS_TONE: Record<MaterialRequestStatus, 'yellow' | 'blue' | 'green' | 'red'> = {
   PENDING: 'yellow',
@@ -46,33 +47,49 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
     mutationFn: (body: Record<string, unknown>) =>
       api(`/projects/${projectId}/material-requests`, { body }),
     onSuccess: () => {
+      toast.success('Material request sent to the office.');
       invalidate();
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The request was not sent.')),
   });
 
   const approve = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}/approve`, { body: {} }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Request approved. Mark it fulfilled once the materials reach site.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The request was not approved.')),
   });
 
   const fulfil = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}/fulfil`, { body: {} }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Marked as delivered to site.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The request was not marked delivered.')),
   });
 
   const reject = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       api(`/projects/${projectId}/material-requests/${id}/reject`, { body: { reason } }),
     onSuccess: () => {
+      toast.success('Request rejected. The reason is on the record.');
       invalidate();
       setRejecting(null);
     },
+    onError: (e) => toast.error(errText(e, 'The request was not rejected.')),
   });
 
   const withdraw = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Request withdrawn.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The request was not withdrawn.')),
   });
 
   const open_ = requests?.filter((r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED') ?? [];
@@ -200,7 +217,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
             <Textarea name="notes" rows={2} placeholder="For floor screed, block A" />
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
             </p>
           )}
@@ -226,7 +243,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
             <Textarea name="reason" required rows={2} autoFocus />
           </Field>
           {reject.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {reject.error instanceof ApiRequestError ? reject.error.message : 'Failed to save'}
             </p>
           )}

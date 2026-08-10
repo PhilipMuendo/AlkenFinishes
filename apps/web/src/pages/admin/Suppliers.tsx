@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Phone, Plus, Truck } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AgingBucket, PayablesReport, Supplier } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 /**
  * Suppliers and what we owe them.
@@ -48,21 +49,31 @@ export function SuppliersPage() {
   const save = useMutation({
     mutationFn: ({ id, body }: { id?: string; body: Record<string, unknown> }) =>
       id ? api(`/suppliers/${id}`, { method: 'PUT', body }) : api('/suppliers', { body }),
-    onSuccess: () => {
+    onSuccess: (_r, vars) => {
+      toast.success(vars.id ? 'Supplier updated.' : 'Supplier added.');
       invalidate();
       setAdding(false);
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The supplier was not saved.')),
   });
 
   const retire = useMutation({
     mutationFn: (id: string) => api(`/suppliers/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Supplier retired. Their history and any balance owed stay on the record.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The supplier was not retired.')),
   });
 
   const reactivate = useMutation({
     mutationFn: (id: string) => api(`/suppliers/${id}`, { method: 'PUT', body: { active: true } }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Supplier reactivated.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The supplier was not reactivated.')),
   });
 
   const s = payables?.summary;
@@ -124,7 +135,7 @@ export function SuppliersPage() {
                   <p className="text-xs text-fg-subtle">{AGING_LABEL[b]}</p>
                   <p
                     className={`mt-0.5 font-semibold tabular-nums ${
-                      b === 'D90_PLUS' && s.aging[b] > 0 ? 'text-red-600' : 'text-fg'
+                      b === 'D90_PLUS' && s.aging[b] > 0 ? 'text-danger-fg' : 'text-fg'
                     }`}
                   >
                     {fmtMoney(s.aging[b])}
@@ -172,11 +183,11 @@ export function SuppliersPage() {
                     )}
                   </Td>
                   <Td className="text-right font-medium tabular-nums">
-                    <span className={p.overdue > 0 ? 'text-red-600' : 'text-fg'}>
+                    <span className={p.overdue > 0 ? 'text-danger-fg' : 'text-fg'}>
                       {fmtMoney(p.outstanding)}
                     </span>
                     {p.oldestOverdueDays != null && (
-                      <p className="text-xs text-red-600">{p.oldestOverdueDays}d late</p>
+                      <p className="text-xs text-danger-fg">{p.oldestOverdueDays}d late</p>
                     )}
                   </Td>
                   <Td>{p.openBills}</Td>
@@ -264,7 +275,7 @@ export function SuppliersPage() {
       </Card>
 
       {retire.isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {retire.error instanceof ApiRequestError
             ? retire.error.message
             : 'Failed to retire that supplier'}
@@ -333,7 +344,7 @@ function SupplierForm({
         <Textarea name="notes" className="min-h-[60px]" defaultValue={existing?.notes ?? ''} />
       </Field>
       {error != null && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {error instanceof ApiRequestError ? error.message : 'Failed to save this supplier'}
         </p>
       )}
@@ -365,7 +376,7 @@ function Tile({
       <CardContent>
         <p
           className={`text-xl font-semibold tabular-nums ${
-            tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
+            tone === 'negative' && value > 0 ? 'text-danger-fg' : 'text-fg'
           }`}
         >
           {fmtMoney(value)}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus, Sparkles } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { DailyReport, DailyReportDraft } from '@/lib/types';
 import { fmtDate, thumbUrl, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 type DiaryTextField =
   | 'weather'
@@ -57,9 +58,11 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
   const submit = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/daily-reports`, { formData }),
     onSuccess: () => {
+      toast.success('Daily report filed.');
       void qc.invalidateQueries({ queryKey: ['daily-reports', projectId] });
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The report was not filed.')),
   });
 
   return (
@@ -182,9 +185,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
             {writeDraft.isError && (
               <p
                 className={`mt-2 text-sm ${
-                  draftFailure === 'QUOTA_DAILY'
-                    ? 'text-amber-800 dark:text-amber-500'
-                    : 'text-red-600'
+                  draftFailure === 'QUOTA_DAILY' ? 'text-warn-fg' : 'text-danger-fg'
                 }`}
               >
                 {writeDraft.error instanceof ApiRequestError
@@ -281,7 +282,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />
           </Field>
           {submit.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {submit.error instanceof ApiRequestError ? submit.error.message : 'Failed to submit report'}
             </p>
           )}

@@ -1,12 +1,14 @@
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, errText } from '@/lib/api';
 import type { AppUser, Project, ProjectStatus } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Tabs } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Select } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 import { FinancialsPanel } from '@/features/FinancialsPanel';
 import { BudgetPanel } from '@/features/BudgetPanel';
 import { PaymentsPanel } from '@/features/PaymentsPanel';
@@ -128,16 +130,43 @@ export function ProjectDetailPage() {
 
   const setStatus = useMutation({
     mutationFn: (status: ProjectStatus) => patchProject({ status }),
-    onSuccess: onProjectChange,
+    onSuccess: (_r, status) => {
+      toast.success(`Site marked ${STATUS_LABEL[status].toLowerCase()}.`);
+      onProjectChange();
+    },
+    onError: (e) => toast.error(errText(e, 'The status was not changed.')),
   });
   const setSupervisor = useMutation({
     mutationFn: (supervisorId: string | null) => patchProject({ supervisorId }),
-    onSuccess: onProjectChange,
+    onSuccess: (_r, supervisorId) => {
+      const name = supervisors.find((s) => s.id === supervisorId)?.name;
+      toast.success(name ? `${name} is now supervising this site.` : 'Supervisor removed.');
+      onProjectChange();
+    },
+    onError: (e) => toast.error(errText(e, 'The supervisor was not changed.')),
   });
 
   const currentGroup = GROUPS.find((g) => g.id === activeGroup) ?? GROUPS[0];
 
-  if (!project) return <p className="text-sm text-fg-muted">Loading project…</p>;
+  if (!project) {
+    // The most-visited screen in the app; a bare line of text here read as a
+    // broken page while every other screen showed its shape.
+    return (
+      <div className="space-y-5">
+        <div>
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="mt-3 h-7 w-2/5" />
+          <Skeleton className="mt-2 h-4 w-3/5" />
+        </div>
+        <Skeleton className="h-10 w-full" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

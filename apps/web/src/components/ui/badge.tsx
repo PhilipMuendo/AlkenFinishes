@@ -12,9 +12,9 @@ export function Badge({
   // Ring-inset tint reads sharper and more considered than a flat fill.
   const tones = {
     slate: 'bg-surface-sunken text-fg-muted ring-hairline-strong/50',
-    green: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-    yellow: 'bg-amber-50 text-amber-700 ring-amber-600/20',
-    red: 'bg-red-50 text-red-700 ring-red-600/20',
+    green: 'bg-good-surface text-good-fg ring-emerald-600/20',
+    yellow: 'bg-warn-surface text-warn-fg ring-amber-600/20',
+    red: 'bg-danger-surface text-danger-fg ring-red-600/20',
     blue: 'bg-brand-50 text-brand-700 ring-brand-600/20',
   };
   return (

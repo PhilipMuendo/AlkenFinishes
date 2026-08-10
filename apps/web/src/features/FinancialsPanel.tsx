@@ -13,14 +13,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { HealthBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Empty } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function FinancialsPanel({ projectId }: { projectId: string }) {
   const { data, isError } = useQuery({
     queryKey: ['analytics', 'project', projectId],
     queryFn: () => api<ProjectAnalytics>(`/analytics/projects/${projectId}`),
   });
-  if (isError) return <p className="text-sm text-red-600">Failed to load financials.</p>;
-  if (!data) return <p className="text-sm text-fg-muted">Loading financials…</p>;
+  if (isError) return <p className="text-sm text-danger-fg">Failed to load financials.</p>;
+  if (!data) return <Skeleton className="h-64 w-full rounded-xl" />;
   const { financials: fin, expenseSeries } = data;
 
   return (

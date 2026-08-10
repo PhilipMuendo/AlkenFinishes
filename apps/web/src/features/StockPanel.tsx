@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpFromLine, Boxes, History, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { StockItem, StockMovement } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 import { MaterialRequestsPanel } from './MaterialRequestsPanel';
 
 export function StockPanel({ projectId }: { projectId: string }) {
@@ -33,18 +34,22 @@ export function StockPanel({ projectId }: { projectId: string }) {
   const createItem = useMutation({
     mutationFn: (body: Record<string, unknown>) => api(`/projects/${projectId}/stock`, { body }),
     onSuccess: () => {
+      toast.success('Material added to site stock.');
       void qc.invalidateQueries({ queryKey: ['stock', projectId] });
       setAddOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The material was not added.')),
   });
 
   const move = useMutation({
     mutationFn: ({ itemId, body }: { itemId: string; body: Record<string, unknown> }) =>
       api(`/projects/${projectId}/stock/${itemId}/movements`, { body }),
     onSuccess: () => {
+      toast.success('Stock movement recorded.');
       void qc.invalidateQueries({ queryKey: ['stock', projectId] });
       setMovement(null);
     },
+    onError: (e) => toast.error(errText(e, 'The movement was not recorded.')),
   });
 
   return (
@@ -140,7 +145,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
             <Input name="unit" required placeholder="bags" />
           </Field>
           {createItem.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {createItem.error instanceof ApiRequestError
                 ? createItem.error.message
                 : 'Failed to add material'}
@@ -188,7 +193,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
               <Textarea name="reason" required placeholder="Delivery from supplier / used for bedroom walls" />
             </Field>
             {move.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {move.error instanceof ApiRequestError ? move.error.message : 'Failed to save movement'}
               </p>
             )}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser, Project } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Field, Input, Select } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { ProjectCard } from '@/components/ProjectCard';
 
 export function ProjectsPage() {
@@ -28,9 +29,11 @@ export function ProjectsPage() {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/projects', { body }),
     onSuccess: () => {
+      toast.success('Site created. Link a contract to it so claims can be raised.');
       void qc.invalidateQueries({ queryKey: ['projects'] });
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The site was not created.')),
   });
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -129,7 +132,7 @@ export function ProjectsPage() {
             </Select>
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to create project'}
             </p>
           )}

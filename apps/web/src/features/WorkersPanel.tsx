@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Pencil, Plus, UserMinus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Worker } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 /**
  * Supervisor-facing fundi roster for a single site: add a casual worker,
@@ -35,23 +36,31 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/workers', { body: { ...body, projectId } }),
     onSuccess: () => {
+      toast.success('Fundi added to this site.');
       invalidate();
       setAddOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The fundi was not added.')),
   });
 
   const update = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api(`/workers/${id}`, { method: 'PATCH', body }),
     onSuccess: () => {
+      toast.success('Fundi updated.');
       invalidate();
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The changes were not saved.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/workers/${id}/unassign`, { method: 'POST' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Fundi removed from this site. Their record and history are kept.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The fundi was not removed.')),
   });
 
   return (
@@ -95,7 +104,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
                 onClick={() => remove.mutate(w.id)}
                 aria-label={`Remove ${w.name} from this site`}
                 disabled={remove.isPending}
-                className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
               >
                 <UserMinus size={16} />
               </button>
@@ -132,7 +141,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
             <Input name="hourlyRate" type="number" min="0" max="5000" step="0.01" required />
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add this fundi'}
             </p>
           )}
@@ -182,7 +191,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
               />
             </Field>
             {update.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {update.error instanceof ApiRequestError ? update.error.message : 'Failed to save'}
               </p>
             )}

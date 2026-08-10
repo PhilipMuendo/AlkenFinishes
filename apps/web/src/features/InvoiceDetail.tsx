@@ -44,7 +44,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
       </div>
 
       {inv.status === 'VOID' && inv.voidReason && (
-        <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+        <p className="rounded-lg bg-danger-surface p-3 text-sm text-danger-fg">
           Voided {inv.voidedAt ? `on ${fmtDate(inv.voidedAt)}` : ''} — {inv.voidReason}
         </p>
       )}
@@ -57,7 +57,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
         </Detail>
         <Detail label="Dates">
           <p className="text-fg">Issued {fmtDate(inv.issueDate)}</p>
-          <p className={inv.overdue ? 'text-red-600' : 'text-fg'}>
+          <p className={inv.overdue ? 'text-danger-fg' : 'text-fg'}>
             Due {fmtDate(inv.dueDate)}
             {inv.overdue && ` · ${inv.daysOverdue} days late`}
           </p>
@@ -136,7 +136,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
                 <dt className="font-medium text-fg">Balance</dt>
                 <dd
                   className={`text-base font-semibold tabular-nums ${
-                    inv.overdue ? 'text-red-600' : 'text-fg'
+                    inv.overdue ? 'text-danger-fg' : 'text-fg'
                   }`}
                 >
                   {fmtMoney(inv.balance)}

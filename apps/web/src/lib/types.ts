@@ -1259,3 +1259,32 @@ export interface DailyReportDraft {
   /** The facts the draft was built from, shown so it can be checked. */
   facts: string;
 }
+
+/** GET /chat/status — whether the assistant exists and can answer right now. */
+export interface ChatStatus {
+  available: boolean;
+  canAsk: boolean;
+  remaining?: number;
+  reason?: 'NOT_CONFIGURED' | 'BUDGET_SPENT' | 'RESERVED_FOR_WORK';
+  message?: string;
+}
+
+/** POST /chat/ask — an answer, with the facts it was written from. */
+export interface ChatAnswer {
+  answer: string;
+  /** Which lookups ran. */
+  used: string[];
+  /** The retrieved facts, shown so the answer can be checked rather than trusted. */
+  facts: string;
+  sources: { label: string; href: string }[];
+}
+
+/** GET /settings/ai — the assistant's share of the daily allowance, and today's usage. */
+export interface AiSettings {
+  available: boolean;
+  provider: 'gemini' | 'anthropic' | null;
+  budget: { dailyCalls: number; reservedForWork: number };
+  usage: { day: string; chat: number; receipt: number; report: number };
+  used: number;
+  chat: { allowed: boolean; remaining: number; remainingOverall: number; reason?: string };
+}

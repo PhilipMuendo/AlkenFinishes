@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Upload } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { ProjectDocument } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 const TYPES = ['CONTRACT', 'APPROVAL', 'CUSTOMER', 'RECEIPT', 'COMPLETION', 'PHOTO', 'OTHER'];
 
@@ -28,9 +29,11 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
   const uploadDoc = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/documents`, { formData }),
     onSuccess: () => {
+      toast.success('Document uploaded.');
       void qc.invalidateQueries({ queryKey: ['documents', projectId] });
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The document was not uploaded.')),
   });
 
   return (
@@ -116,7 +119,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
             <Input name="file" type="file" required accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" />
           </Field>
           {uploadDoc.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {uploadDoc.error instanceof ApiRequestError ? uploadDoc.error.message : 'Upload failed'}
             </p>
           )}

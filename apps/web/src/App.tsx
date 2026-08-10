@@ -56,6 +56,9 @@ const UsersPage = lazy(() => import('./pages/admin/Users').then((m) => ({ defaul
 const SettingsPage = lazy(() =>
   import('./pages/admin/Settings').then((m) => ({ default: m.SettingsPage })),
 );
+const TodayPage = lazy(() =>
+  import('./pages/supervisor/Today').then((m) => ({ default: m.TodayPage })),
+);
 const MySitesPage = lazy(() =>
   import('./pages/supervisor/MySites').then((m) => ({ default: m.MySitesPage })),
 );
@@ -106,16 +109,20 @@ export default function App() {
             <Route path="calendar" element={<CalendarPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            {/* Sections are addressable, so a specific card can be linked to. */}
+            <Route path="settings/:section" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Routes>
       ) : (
         <Routes>
           <Route element={<SupervisorLayout />}>
+            <Route path="/today" element={<TodayPage />} />
             <Route path="/sites" element={<MySitesPage />} />
             <Route path="/sites/:projectId" element={<SiteDetailPage />} />
           </Route>
-          <Route path="*" element={<Navigate to="/sites" replace />} />
+          {/* Today, not the site list: the job is almost always today's job. */}
+          <Route path="*" element={<Navigate to="/today" replace />} />
         </Routes>
       )}
     </Suspense>

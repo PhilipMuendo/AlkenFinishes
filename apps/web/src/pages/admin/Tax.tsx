@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileCheck, Landmark } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { OutstandingCertificate, TaxPosition } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 /**
  * The company's tax position.
@@ -51,9 +52,11 @@ export function TaxPage() {
     mutationFn: ({ id, whtCertNo }: { id: string; whtCertNo: string }) =>
       api(`/tax/payments/${id}/certificate`, { body: { whtCertNo } }),
     onSuccess: () => {
+      toast.success('Certificate recorded. This tax can now be claimed against what you owe KRA.');
       void qc.invalidateQueries({ queryKey: ['tax'] });
       setCertifying(null);
     },
+    onError: (e) => toast.error(errText(e, 'The certificate was not recorded.')),
   });
 
   const vat = data?.vat;
@@ -102,7 +105,7 @@ export function TaxPage() {
             />
           </div>
           {(vat?.inputVatUnsupported ?? 0) > 0 && (
-            <p className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40">
+            <p className="rounded-md border border-warn-hairline bg-warn-surface px-2.5 py-2 text-xs text-warn-fg">
               {fmtMoney(vat!.inputVatUnsupported)} of input VAT has no supplier tax invoice
               recorded against it, so it is not counted as reclaimable. Chase the ETR invoices, or
               tick the box on the bill once you have them.
@@ -196,7 +199,7 @@ export function TaxPage() {
                   <Td className="whitespace-nowrap">{fmtDate(c.paymentDate)}</Td>
                   <Td className="text-right font-medium tabular-nums">{fmtMoney(c.withheld)}</Td>
                   <Td className="text-right tabular-nums">
-                    <span className={c.daysWaiting > 60 ? 'text-red-600' : 'text-fg-muted'}>
+                    <span className={c.daysWaiting > 60 ? 'text-danger-fg' : 'text-fg-muted'}>
                       {c.daysWaiting}d
                     </span>
                   </Td>
@@ -248,7 +251,7 @@ export function TaxPage() {
               <Input name="whtCertNo" required autoFocus />
             </Field>
             {recordCert.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {recordCert.error instanceof ApiRequestError
                   ? recordCert.error.message
                   : 'Failed to record it'}
@@ -288,7 +291,7 @@ function Line({
       <span
         className={`shrink-0 whitespace-nowrap tabular-nums ${
           strong ? 'text-lg font-semibold' : ''
-        } ${tone === 'warn' && value > 0 ? 'text-amber-700 dark:text-amber-500' : 'text-fg'}`}
+        } ${tone === 'warn' && value > 0 ? 'text-warn-fg' : 'text-fg'}`}
       >
         {value < 0 ? `(${fmtMoney(Math.abs(value))})` : fmtMoney(value)}
       </span>

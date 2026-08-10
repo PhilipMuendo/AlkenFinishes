@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileSignature, FileText, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Client, Lead, Quotation, QuotationStatus } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { QuotationEditor, type QuotationPayload } from '@/features/QuotationEditor';
 
 const STATUS_TONE: Record<QuotationStatus, 'slate' | 'blue' | 'green' | 'red' | 'yellow'> = {
@@ -67,20 +68,24 @@ export function QuotationsPage() {
       id
         ? api<Quotation>(`/quotations/${id}`, { method: 'PUT', body })
         : api<Quotation>('/quotations', { body }),
-    onSuccess: (q) => {
+    onSuccess: (q, vars) => {
+      toast.success(vars.id ? 'Quotation updated.' : `${q.quotationNo ?? 'Quotation'} created.`);
       invalidate();
       setEditorOpen(false);
       setEditing(null);
       setViewing(q);
     },
+    onError: (e) => toast.error(errText(e, 'The quotation was not saved.')),
   });
 
   const send = useMutation({
     mutationFn: (id: string) => api<Quotation>(`/quotations/${id}/send`, { body: {} }),
     onSuccess: (q) => {
+      toast.success(`${q.quotationNo ?? 'Quotation'} marked as sent to the client.`);
       invalidate();
       setViewing(q);
     },
+    onError: (e) => toast.error(errText(e, 'The quotation was not marked sent.')),
   });
 
   const decide = useMutation({
@@ -93,29 +98,39 @@ export function QuotationsPage() {
       outcome: 'ACCEPTED' | 'REJECTED';
       reason?: string;
     }) => api<Quotation>(`/quotations/${id}/decision`, { body: { outcome, reason } }),
-    onSuccess: (q) => {
+    onSuccess: (q, vars) => {
+      toast.success(
+        vars.outcome === 'ACCEPTED'
+          ? 'Quotation accepted. Convert it to a contract when you are ready.'
+          : 'Quotation rejected. The reason is on the record.',
+      );
       invalidate();
       setRejecting(null);
       setViewing(q);
     },
+    onError: (e) => toast.error(errText(e, 'The decision was not saved.')),
   });
 
   const toContract = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api(`/contracts/from-quotation/${id}`, { body }),
     onSuccess: () => {
+      toast.success('Contract drafted from the quotation. Issue it when it reads right.');
       invalidate();
       setConverting(null);
       setViewing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The contract was not created.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/quotations/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      toast.success('Quotation deleted.');
       invalidate();
       setViewing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The quotation was not deleted.')),
   });
 
   // One line for whichever of the detail actions last failed — they are
@@ -246,7 +261,7 @@ export function QuotationsPage() {
             submitting={save.isPending}
             error={
               save.isError && (
-                <p className="text-sm text-red-600">
+                <p className="text-sm text-danger-fg">
                   {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
                 </p>
               )
@@ -325,18 +340,18 @@ export function QuotationsPage() {
             </dl>
 
             {viewing.rejectReason && (
-              <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              <p className="rounded-lg bg-danger-surface p-3 text-sm text-danger-fg">
                 Turned down: {viewing.rejectReason}
               </p>
             )}
             {viewing.contract && (
-              <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">
+              <p className="rounded-lg bg-good-surface p-3 text-sm text-good-fg">
                 Contract {viewing.contract.contractNo ?? '(draft)'} has been raised from this
                 quotation.
               </p>
             )}
 
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-danger-fg">{actionError}</p>}
 
             <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
               {viewing.status === 'DRAFT' && (
@@ -494,7 +509,7 @@ export function QuotationsPage() {
               </Field>
             </div>
             {toContract.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {toContract.error instanceof ApiRequestError
                   ? toContract.error.message
                   : 'Failed to raise the contract'}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fingerprint, MapPin, PenLine } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { AttendanceOverrideRequest, AttendanceRecord, Project, Worker } from '@/lib/types';
 import { fmtDate, fmtMoney, fmtTime, todayISO } from '@/lib/format';
@@ -11,6 +11,7 @@ import { Field, Input, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { toast } from '@/components/ui/toast';
 
 /** Wraps the browser geolocation callback API in a promise; null if denied/unavailable. */
 function getLocation(): Promise<{ lat: number; lng: number } | null> {
@@ -67,9 +68,11 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
     mutationFn: (body: Record<string, unknown>) =>
       api(`/projects/${projectId}/attendance/override-requests`, { body }),
     onSuccess: () => {
+      toast.success('Sent to the office for approval.');
       invalidate();
       setRequestOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The request was not sent.')),
   });
 
   const decide = useMutation({
@@ -77,16 +80,26 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
       api(`/projects/${projectId}/attendance/override-requests/${id}/decision`, {
         body: { outcome, reason },
       }),
-    onSuccess: () => {
+    onSuccess: (_r, vars) => {
+      toast.success(
+        vars.outcome === 'APPROVED'
+          ? 'Approved. The hours now count towards pay.'
+          : 'Rejected. The reason is on the record.',
+      );
       invalidate();
       setRejecting(null);
     },
+    onError: (e) => toast.error(errText(e, 'The decision was not saved.')),
   });
 
   const checkout = useMutation({
     mutationFn: (id: string) =>
       api(`/projects/${projectId}/attendance/${id}/checkout`, { body: {} }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Checked out. Hours are counted from check-in to now.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The check-out was not recorded.')),
   });
 
   const pending = requests?.filter((r) => r.status === 'PENDING') ?? [];
@@ -116,12 +129,12 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
       {isAdmin && project && <GeofenceCard project={project} />}
 
       {isAdmin && pending.length > 0 && (
-        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-          <p className="text-sm font-medium text-amber-900">
+        <div className="space-y-2 rounded-xl border border-warn-hairline bg-warn-surface p-3">
+          <p className="text-sm font-medium text-warn-fg">
             {pending.length} manual entry request{pending.length > 1 ? 's' : ''} awaiting a decision
           </p>
           {pending.map((r) => (
-            <div key={r.id} className="rounded-lg border border-amber-200 bg-surface p-3">
+            <div key={r.id} className="rounded-lg border border-warn-hairline bg-surface p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-medium text-fg">
@@ -153,7 +166,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
       )}
 
       {!isAdmin && pending.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-xl border border-warn-hairline bg-warn-surface px-4 py-3 text-sm text-warn-fg">
           {pending.length} of your manual entry request{pending.length > 1 ? 's are' : ' is'} waiting
           on the office.
         </div>
@@ -205,7 +218,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                 <Td className="text-right tabular-nums">
                   {r.hoursWorked ?? '—'}
                   {r.hoursWorked != null && Number(r.hoursWorked) > 8 && (
-                    <span className="ml-1 text-xs text-amber-700">
+                    <span className="ml-1 text-xs text-warn-fg">
                       ({(Number(r.hoursWorked) - 8).toFixed(1)}h OT)
                     </span>
                   )}
@@ -235,7 +248,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
         onClose={() => setRequestOpen(false)}
         title="Request a manual attendance entry"
       >
-        <p className="mb-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+        <p className="mb-3 rounded-lg bg-warn-surface p-3 text-xs text-warn-fg">
           This only files a request — the office decides. Your device's location is captured and
           shown to them alongside it.
         </p>
@@ -283,7 +296,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
             <Textarea name="reason" required placeholder="Device battery died" />
           </Field>
           {request.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {request.error instanceof ApiRequestError
                 ? request.error.message
                 : 'Failed to send the request'}
@@ -312,7 +325,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
             <Textarea name="reason" required rows={2} autoFocus />
           </Field>
           {decide.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {decide.error instanceof ApiRequestError ? decide.error.message : 'Failed to save'}
             </p>
           )}
@@ -340,7 +353,7 @@ function GeofenceSignal({ req }: { req: AttendanceOverrideRequest }) {
     <p
       className={
         'mt-1 flex items-center gap-1 text-xs ' +
-        (req.withinGeofence ? 'text-emerald-700' : 'text-red-600')
+        (req.withinGeofence ? 'text-good-fg' : 'text-danger-fg')
       }
     >
       <MapPin size={12} />
@@ -355,7 +368,11 @@ function GeofenceCard({ project }: { project: Project }) {
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api(`/projects/${project.id}`, { method: 'PATCH', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['project', project.id] }),
+    onSuccess: () => {
+      toast.success('Site attendance settings saved.');
+      void qc.invalidateQueries({ queryKey: ['project', project.id] });
+    },
+    onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
   });
 
   const hasGeofence = project.geofenceLat != null && project.geofenceLng != null;
@@ -425,7 +442,7 @@ function GeofenceCard({ project }: { project: Project }) {
             />
           </Field>
         </div>
-        {save.isSuccess && <p className="text-xs text-green-700">Saved</p>}
+        {save.isSuccess && <p className="text-xs text-good-fg">Saved</p>}
         <Button type="submit" size="sm" disabled={save.isPending}>
           Save geofence
         </Button>

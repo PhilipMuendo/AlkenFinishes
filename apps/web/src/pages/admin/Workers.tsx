@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Upload } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { HardHat } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { toast } from '@/components/ui/toast';
 
 const IMPORT_TEMPLATE_CSV =
   'Name,Phone,Trade,Hourly Rate,Biometric ID\nJohn Mwangi,0712345678,Painter,300,\nPeter Otieno,0723456789,Tiler,350,\n';
@@ -62,39 +63,52 @@ export function WorkersPage() {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/workers', { body }),
     onSuccess: () => {
+      toast.success('Fundi added.');
       invalidate();
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The fundi was not added.')),
   });
 
   const assign = useMutation({
     mutationFn: ({ workerId, projectId }: { workerId: string; projectId: string }) =>
       api(`/workers/${workerId}/assign`, { body: { projectId } }),
     onSuccess: () => {
+      toast.success('Fundi assigned to the site.');
       invalidate();
       setAssigning(null);
     },
+    onError: (e) => toast.error(errText(e, 'The fundi was not assigned.')),
   });
 
   const unassign = useMutation({
     mutationFn: (workerId: string) => api(`/workers/${workerId}/unassign`, { body: {} }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Fundi taken off the site.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The fundi was not unassigned.')),
   });
 
   const importWorkers = useMutation({
     mutationFn: (formData: FormData) => api<ImportResponse>('/workers/import', { formData }),
     onSuccess: (data) => {
+      // The per-row breakdown is shown below; this is the headline.
+      toast.success(`${data.created} of ${data.totalRows} rows imported.`);
       invalidate();
       setImportResult(data);
     },
+    onError: (e) => toast.error(errText(e, 'The import did not run.')),
   });
 
   const deleteWorker = useMutation({
     mutationFn: (id: string) => api(`/workers/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      toast.success('Fundi deleted.');
       invalidate();
       setDeleting(null);
     },
+    onError: (e) => toast.error(errText(e, 'The fundi was not deleted.')),
   });
 
   return (
@@ -183,7 +197,7 @@ export function WorkersPage() {
                       </Button>
                     )}
                     <button
-                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
                       aria-label={`Delete ${w.name}`}
                       onClick={() => setDeleting(w)}
                     >
@@ -229,7 +243,7 @@ export function WorkersPage() {
             <Input name="biometricId" placeholder="Device enrolment ID" />
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add worker'}
             </p>
           )}
@@ -258,7 +272,7 @@ export function WorkersPage() {
                 {importResult.results
                   .filter((r) => r.status === 'error' || r.warning)
                   .map((r) => (
-                    <p key={r.row} className={r.status === 'error' ? 'text-red-600' : 'text-amber-700'}>
+                    <p key={r.row} className={r.status === 'error' ? 'text-danger-fg' : 'text-warn-fg'}>
                       Row {r.row}
                       {r.name ? ` (${r.name})` : ''}: {r.error ?? r.warning}
                     </p>
@@ -305,7 +319,7 @@ export function WorkersPage() {
               <Input name="file" type="file" accept=".csv,.xlsx,.xls" required />
             </Field>
             {importWorkers.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 Import failed — check the file is a valid spreadsheet under 500 rows.
               </p>
             )}
@@ -359,7 +373,7 @@ export function WorkersPage() {
               unassign them from their site instead to preserve those records.
             </p>
             {deleteWorker.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {deleteWorker.error instanceof ApiRequestError
                   ? deleteWorker.error.message
                   : 'Failed to delete this worker'}

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, Plus, Repeat, Wrench } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Project, Tool, ToolTransfer } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
+import { toast } from '@/components/ui/toast';
 
 export function ToolsPage() {
   const qc = useQueryClient();
@@ -35,25 +36,33 @@ export function ToolsPage() {
   const createTool = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/tools', { body }),
     onSuccess: () => {
+      toast.success('Tool added to the register.');
       void qc.invalidateQueries({ queryKey: ['tools'] });
       setAddOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The tool was not added.')),
   });
 
   const transferTool = useMutation({
     mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
       api(`/tools/${id}/transfer`, { formData }),
     onSuccess: (_data, vars) => {
+      toast.success('Tool transferred. The movement is on its history.');
       void qc.invalidateQueries({ queryKey: ['tools'] });
       void qc.invalidateQueries({ queryKey: ['tools', 'transfers', vars.id] });
       setTransferring(null);
     },
+    onError: (e) => toast.error(errText(e, 'The tool was not transferred.')),
   });
 
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Tool['status'] }) =>
       api(`/tools/${id}`, { method: 'PATCH', body: { status } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tools'] }),
+    onSuccess: () => {
+      toast.success('Tool status updated.');
+      void qc.invalidateQueries({ queryKey: ['tools'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The status was not updated.')),
   });
 
   return (
@@ -183,7 +192,7 @@ export function ToolsPage() {
             </Select>
           </Field>
           {createTool.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {createTool.error instanceof ApiRequestError ? createTool.error.message : 'Failed to add tool'}
             </p>
           )}
@@ -241,7 +250,7 @@ export function ToolsPage() {
               />
             </Field>
             {transferTool.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {transferTool.error instanceof ApiRequestError
                   ? transferTool.error.message
                   : 'Transfer failed — check the details and try again'}

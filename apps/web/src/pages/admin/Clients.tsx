@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, Search } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Client } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import { Field, Input, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 
 /**
  * The client register — where a customer is entered once and then only ever
@@ -33,19 +34,23 @@ export function ClientsPage() {
   const save = useMutation({
     mutationFn: ({ id, body }: { id?: string; body: Record<string, unknown> }) =>
       id ? api(`/clients/${id}`, { method: 'PUT', body }) : api('/clients', { body }),
-    onSuccess: () => {
+    onSuccess: (_r, vars) => {
+      toast.success(vars.id ? 'Client updated.' : 'Client added.');
       invalidate();
       setOpen(false);
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The client was not saved.')),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/clients/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      toast.success('Client deleted.');
       invalidate();
       setEditing(null);
     },
+    onError: (e) => toast.error(errText(e, 'The client was not deleted.')),
   });
 
   const startNew = () => {
@@ -209,12 +214,12 @@ export function ClientsPage() {
           )}
 
           {save.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
             </p>
           )}
           {remove.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {remove.error instanceof ApiRequestError
                 ? remove.error.message
                 : 'Failed to delete this client'}

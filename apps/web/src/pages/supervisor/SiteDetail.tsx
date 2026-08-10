@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertOctagon,
@@ -18,6 +18,7 @@ import { api } from '@/lib/api';
 import type { Project } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TasksPanel } from '@/features/TasksPanel';
 import { ExpensesPanel } from '@/features/ExpensesPanel';
 import { AttendancePanel } from '@/features/AttendancePanel';
@@ -43,8 +44,8 @@ const ACTIONS = [
     icon: Fingerprint,
     chip: 'bg-brand-50 text-brand-600',
   },
-  { id: 'stock', label: 'Stock', hint: 'Materials on site', icon: Boxes, chip: 'bg-emerald-50 text-emerald-600' },
-  { id: 'expenses', label: 'Expenses', hint: 'Log spending', icon: Receipt, chip: 'bg-amber-50 text-amber-600' },
+  { id: 'stock', label: 'Stock', hint: 'Materials on site', icon: Boxes, chip: 'bg-good-surface text-good-fg' },
+  { id: 'expenses', label: 'Expenses', hint: 'Log spending', icon: Receipt, chip: 'bg-warn-surface text-warn-fg' },
   { id: 'tasks', label: 'Tasks', hint: 'Track progress', icon: ListChecks, chip: 'bg-violet-50 text-violet-600' },
   {
     id: 'report',
@@ -73,22 +74,41 @@ const ACTIONS = [
     label: 'Safety',
     hint: 'Log an incident',
     icon: ShieldAlert,
-    chip: 'bg-red-50 text-red-600',
+    chip: 'bg-danger-surface text-danger-fg',
   },
 ] as const;
 
 type ActionId = (typeof ACTIONS)[number]['id'];
 
+const ACTION_IDS = new Set<string>(ACTIONS.map((a) => a.id));
+
 export function SiteDetailPage() {
   const { projectId = '' } = useParams();
-  const [view, setView] = useState<ActionId | null>(null);
+  // The open panel lives in the URL so Today can link straight to the daily
+  // report, and so the phone's back button leaves the panel rather than the
+  // site.
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('view');
+  const view = requested && ACTION_IDS.has(requested) ? (requested as ActionId) : null;
+
+  const setView = (id: ActionId | null) => {
+    const next = new URLSearchParams(params);
+    if (id) next.set('view', id);
+    else next.delete('view');
+    setParams(next, { replace: true });
+  };
 
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => api<Project>(`/projects/${projectId}`),
   });
 
-  if (!project) return <p className="text-sm text-fg-muted">Loading site…</p>;
+  // Remembered so Today can open on the site you were last standing on.
+  useEffect(() => {
+    if (projectId) localStorage.setItem('lastSiteId', projectId);
+  }, [projectId]);
+
+  if (!project) return <SiteSkeleton />;
 
   return (
     <div className="space-y-4">
@@ -152,6 +172,24 @@ export function SiteDetailPage() {
       {view === 'tools' && <ToolsReadOnlyPanel />}
       {view === 'snags' && <SnagsPanel projectId={projectId} />}
       {view === 'safety' && <SafetyPanel projectId={projectId} />}
+    </div>
+  );
+}
+
+/** Matches the shape of the loaded page, rather than a bare line of text. */
+function SiteSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div>
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="mt-2.5 h-6 w-2/5" />
+        <Skeleton className="mt-2 h-3.5 w-1/3" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-[112px] rounded-2xl" />
+        ))}
+      </div>
     </div>
   );
 }

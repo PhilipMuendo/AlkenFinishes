@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Plus, Trash2 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
+import { toast } from '@/components/ui/toast';
 
 export function UsersPage() {
   const qc = useQueryClient();
@@ -25,29 +26,41 @@ export function UsersPage() {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/users', { body }),
     onSuccess: () => {
+      toast.success('User created. Give them their sign-in details directly.');
       void qc.invalidateQueries({ queryKey: ['users'] });
       setOpen(false);
     },
+    onError: (e) => toast.error(errText(e, 'The user was not created.')),
   });
 
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/users/${id}`, { method: 'PATCH', body: { active } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: (_r, vars) => {
+      toast.success(vars.active ? 'User reactivated.' : 'User deactivated. They can no longer sign in.');
+      void qc.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The user was not updated.')),
   });
 
   const resetPassword = useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
       api(`/users/${id}`, { method: 'PATCH', body: { password } }),
-    onSuccess: () => setResetting(null),
+    onSuccess: () => {
+      toast.success('Password reset. Pass it to them directly, not by email.');
+      setResetting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The password was not reset.')),
   });
 
   const deleteUser = useMutation({
     mutationFn: (id: string) => api(`/users/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
+      toast.success('User deleted.');
       void qc.invalidateQueries({ queryKey: ['users'] });
       setDeleting(null);
     },
+    onError: (e) => toast.error(errText(e, 'The user was not deleted.')),
   });
 
   return (
@@ -108,7 +121,7 @@ export function UsersPage() {
                     {u.active ? 'Disable' : 'Enable'}
                   </Button>
                   <button
-                    className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                    className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
                     aria-label={`Delete ${u.name}`}
                     onClick={() => setDeleting(u)}
                   >
@@ -156,7 +169,7 @@ export function UsersPage() {
             </Select>
           </Field>
           {create.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError
                 ? create.error.message
                 : 'Failed — email may already exist'}
@@ -191,7 +204,7 @@ export function UsersPage() {
               <Input name="password" type="text" minLength={8} required autoFocus />
             </Field>
             {resetPassword.isError && (
-              <p className="text-sm text-red-600">Failed to reset the password</p>
+              <p className="text-sm text-danger-fg">Failed to reset the password</p>
             )}
             <Button type="submit" className="w-full" disabled={resetPassword.isPending}>
               Set new password
@@ -217,7 +230,7 @@ export function UsersPage() {
               keeps their history.
             </p>
             {deleteUser.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {deleteUser.error instanceof ApiRequestError
                   ? deleteUser.error.message
                   : 'Failed to delete this account'}

@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Fingerprint, Plus, RefreshCw, ScrollText } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type {
+  AiSettings,
   AuditLogPage,
   CompanyProfile,
   InvoicingConfig,
@@ -21,7 +23,26 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
+import { Tabs } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/ui/page-header';
+import { toast } from '@/components/ui/toast';
+
+/**
+ * Nine configuration cards in one column meant scrolling past the company
+ * letterhead to reach a PAYE band. These are the same grouped tabs
+ * ProjectDetail uses, and for the same reason — with the id in the URL,
+ * /admin/settings/payroll is a link you can send someone.
+ */
+const SECTIONS = [
+  { id: 'company', label: 'Company' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'money', label: 'Money & tax' },
+  { id: 'attendance', label: 'Attendance' },
+  { id: 'assistant', label: 'Assistant' },
+  { id: 'audit', label: 'Audit log' },
+] as const;
+
+const SECTION_IDS = new Set<string>(SECTIONS.map((s) => s.id));
 
 /** "worker.delete" -> "worker delete", "auth.login_failed" -> "auth login failed" */
 function humanizeAction(action: string): string {
@@ -69,6 +90,10 @@ type LabourSource = 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
 
 export function SettingsPage() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const { section: requested } = useParams();
+  const section = requested && SECTION_IDS.has(requested) ? requested : 'company';
+
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [deviceVendor, setDeviceVendor] = useState<DeviceVendor>('ZKTECO');
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -76,24 +101,30 @@ export function SettingsPage() {
   const [redPct, setRedPct] = useState('100');
   const [auditPage, setAuditPage] = useState(1);
 
+  // Each section fetches only what it shows. The audit log in particular is a
+  // paged query that has no business running while someone edits a letterhead.
   const { data: finance } = useQuery({
     queryKey: ['finance-settings'],
     queryFn: () =>
       api<{ thresholds: { yellowPct: number; redPct: number }; labourCostSource: LabourSource }>(
         '/settings/finance',
       ),
+    enabled: section === 'money',
   });
   const { data: devices } = useQuery({
     queryKey: ['devices'],
     queryFn: () => api<Device[]>('/devices'),
+    enabled: section === 'attendance',
   });
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
+    enabled: section === 'attendance',
   });
   const { data: auditLog, isLoading: auditLoading } = useQuery({
     queryKey: ['audit-log', auditPage],
     queryFn: () => api<AuditLogPage>(`/settings/audit-log?page=${auditPage}`),
+    enabled: section === 'audit',
   });
 
   useEffect(() => {
@@ -110,24 +141,32 @@ export function SettingsPage() {
         body: { yellowPct: Number(yellowPct), redPct: Number(redPct) },
       }),
     onSuccess: () => {
+      toast.success('Budget thresholds saved. Site health is judged against them from now on.');
       void qc.invalidateQueries({ queryKey: ['finance-settings'] });
       void qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (e) => toast.error(errText(e, 'The thresholds were not saved.')),
   });
 
   const saveLabourSource = useMutation({
     mutationFn: (labourCostSource: LabourSource) =>
       api('/settings/labour-source', { method: 'PUT', body: { labourCostSource } }),
     onSuccess: () => {
+      toast.success('Labour cost source saved. Every site total is recalculated from it.');
       void qc.invalidateQueries({ queryKey: ['finance-settings'] });
       void qc.invalidateQueries({ queryKey: ['analytics'] });
     },
+    onError: (e) => toast.error(errText(e, 'The setting was not saved.')),
   });
 
   const bindDevice = useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string | null }) =>
       api(`/devices/${id}`, { method: 'PATCH', body: { projectId } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => {
+      toast.success('Device bound to the site.');
+      void qc.invalidateQueries({ queryKey: ['devices'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The device was not bound.')),
   });
 
   const createDevice = useMutation({
@@ -142,21 +181,37 @@ export function SettingsPage() {
   const toggleDevice = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/devices/${id}`, { method: 'PATCH', body: { active } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: (_r, vars) => {
+      toast.success(vars.active ? 'Device switched on.' : 'Device switched off.');
+      void qc.invalidateQueries({ queryKey: ['devices'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The device was not updated.')),
   });
 
   const syncDevice = useMutation({
     mutationFn: (id: string) => api<{ received: number; accepted: number }>(`/devices/${id}/sync`, { body: {} }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: (r) => {
+      // Received and accepted differ whenever a punch could not be matched to
+      // a worker, and that gap is the whole reason to look at this screen.
+      toast.success(
+        r.received === r.accepted
+          ? `${r.accepted} punches synced.`
+          : `${r.accepted} of ${r.received} punches synced — the rest are listed under sync issues.`,
+      );
+      void qc.invalidateQueries({ queryKey: ['devices'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The device could not be synced.')),
   });
 
   const { data: issues } = useQuery({
     queryKey: ['sync-issues'],
     queryFn: () => api<SyncIssue[]>('/devices/issues'),
+    enabled: section === 'attendance',
   });
   const { data: workers } = useQuery({
     queryKey: ['workers'],
     queryFn: () => api<Worker[]>('/workers'),
+    enabled: section === 'attendance',
   });
   const invalidateIssues = () => {
     void qc.invalidateQueries({ queryKey: ['sync-issues'] });
@@ -164,12 +219,20 @@ export function SettingsPage() {
   };
   const resolveIssue = useMutation({
     mutationFn: (id: string) => api(`/devices/issues/${id}/resolve`, { method: 'POST' }),
-    onSuccess: invalidateIssues,
+    onSuccess: () => {
+      toast.success('Issue dismissed.');
+      invalidateIssues();
+    },
+    onError: (e) => toast.error(errText(e, 'The issue was not dismissed.')),
   });
   const linkIssue = useMutation({
     mutationFn: ({ id, workerId }: { id: string; workerId: string }) =>
       api(`/devices/issues/${id}/link`, { method: 'POST', body: { workerId } }),
-    onSuccess: invalidateIssues,
+    onSuccess: () => {
+      toast.success('Fingerprint enrolled. Future punches will be recorded automatically.');
+      invalidateIssues();
+    },
+    onError: (e) => toast.error(errText(e, 'The fingerprint was not enrolled.')),
   });
 
   return (
@@ -179,253 +242,277 @@ export function SettingsPage() {
         description="Budget rules, documents, attendance devices and the audit trail"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Budget health thresholds</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-fg-muted">
-            A category is <Badge tone="green">Healthy</Badge> below the watch threshold,{' '}
-            <Badge tone="yellow">Watch</Badge> once consumption reaches it, and{' '}
-            <Badge tone="red">At risk</Badge> at the risk threshold.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Watch threshold (%)">
-              <Input
-                type="number"
-                min="1"
-                max="200"
-                value={yellowPct}
-                onChange={(e) => setYellowPct(e.target.value)}
-              />
-            </Field>
-            <Field label="Risk threshold (%)">
-              <Input
-                type="number"
-                min="1"
-                max="300"
-                value={redPct}
-                onChange={(e) => setRedPct(e.target.value)}
-              />
-            </Field>
-          </div>
-          {saveThresholds.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-          {saveThresholds.isError && (
-            <p className="text-sm text-red-600">Risk threshold must exceed watch threshold</p>
-          )}
-          <Button onClick={() => saveThresholds.mutate()} disabled={saveThresholds.isPending}>
-            Save thresholds
-          </Button>
-        </CardContent>
-      </Card>
+      <Tabs
+        tabs={SECTIONS.map((s) => ({ id: s.id, label: s.label }))}
+        active={section}
+        onChange={(id) => navigate(`/admin/settings/${id}`)}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Labour cost source</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-fg-muted">
-            Prevents double-counting wages. Choose where LABOUR actuals come from: biometric
-            attendance (recommended once devices are live), labour expense entries, or both
-            (conservative — may overstate costs if wages appear in both places).
-          </p>
-          <Select
-            value={finance?.labourCostSource ?? 'BOTH'}
-            onChange={(e) => saveLabourSource.mutate(e.target.value as LabourSource)}
-            className="max-w-sm"
-            aria-label="Labour cost source"
-          >
-            <option value="ATTENDANCE">Biometric attendance only</option>
-            <option value="EXPENSES">Labour expenses only</option>
-            <option value="BOTH">Both (may double-count)</option>
-          </Select>
-          {saveLabourSource.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-        </CardContent>
-      </Card>
+      {section === 'company' && <CompanyLetterheadCard />}
 
-      <CompanyLetterheadCard />
-      <InvoicingCard />
-      <PurchaseTaxCard />
-      <PayrollCard />
-      <PipelineCard />
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Fingerprint attendance devices</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => setDeviceOpen(true)}>
-              <Plus size={14} /> Register device
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {devices?.length === 0 && (
-            <p className="text-sm text-fg-muted">
-              No devices registered. Register a device to get its API key for attendance sync.
-            </p>
-          )}
-          {devices?.map((d) => (
-            <div
-              key={d.id}
-              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline p-3"
-            >
-              <div className="flex items-center gap-3">
-                <Fingerprint size={18} className="text-brand-600" />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-sm font-medium text-fg">{d.name}</p>
-                    <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : 'slate'}>
-                      {d.vendor === 'SUPREMA' ? 'Suprema · BioStar 2' : 'ZKTeco'}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-fg-subtle">
-                    {d.serialNumber && (
-                      <>
-                        SN <span className="font-mono">{d.serialNumber}</span> ·{' '}
-                      </>
-                    )}
-                    {d.vendor === 'SUPREMA' && d.biostarBaseUrl && (
-                      <>
-                        <span className="font-mono">{d.biostarBaseUrl}</span> ·{' '}
-                      </>
-                    )}
-                    Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {d.vendor === 'SUPREMA' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={syncDevice.isPending}
-                    onClick={() => syncDevice.mutate(d.id)}
-                  >
-                    <RefreshCw size={14} /> Sync now
-                  </Button>
-                )}
-                <Select
-                  value={d.projectId ?? ''}
-                  onChange={(e) =>
-                    bindDevice.mutate({ id: d.id, projectId: e.target.value || null })
-                  }
-                  className="h-9 w-40 text-xs"
-                  aria-label={`Site binding for ${d.name}`}
-                >
-                  <option value="">Any site</option>
-                  {projects?.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </Select>
-                <Badge tone={d.active ? 'green' : 'red'}>{d.active ? 'Active' : 'Disabled'}</Badge>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => toggleDevice.mutate({ id: d.id, active: !d.active })}
-                >
-                  {d.active ? 'Disable' : 'Enable'}
-                </Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {issues && issues.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <AlertTriangle size={16} className="text-amber-600" />
-              <CardTitle>Sync issues ({issues.length})</CardTitle>
-            </div>
-            <p className="text-xs text-fg-muted">
-              Punches the system couldn&rsquo;t match to a worker. Link an unrecognised fingerprint
-              to enrol that worker; future punches are then recorded automatically.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {issues.map((issue) => (
-              <IssueRow
-                key={issue.id}
-                issue={issue}
-                workers={workers ?? []}
-                onLink={(workerId) => linkIssue.mutate({ id: issue.id, workerId })}
-                onDismiss={() => resolveIssue.mutate(issue.id)}
-                busy={linkIssue.isPending || resolveIssue.isPending}
-              />
-            ))}
-            {linkIssue.isError && (
-              <p className="text-sm text-red-600">{(linkIssue.error as Error).message}</p>
-            )}
-          </CardContent>
-        </Card>
+      {section === 'documents' && (
+        <>
+          <InvoicingCard />
+          <PipelineCard />
+        </>
       )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <ScrollText size={16} className="text-fg-muted" />
-            <CardTitle>Audit log</CardTitle>
-          </div>
-          <p className="text-xs text-fg-muted">
-            Every create, update, and delete across the system, with who did it. Superadmin-only.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {auditLoading && <p className="text-sm text-fg-muted">Loading…</p>}
-          {!auditLoading && auditLog?.items.length === 0 && (
-            <Empty icon={ScrollText}>No activity recorded yet</Empty>
-          )}
-          <div className="divide-y divide-hairline">
-            {auditLog?.items.map((entry) => {
-              const actor = entry.user?.name ?? (entry.meta?.email as string | undefined) ?? 'Unknown';
-              return (
-                <div key={entry.id} className="flex items-start justify-between gap-3 py-2 text-sm">
-                  <div className="min-w-0">
-                    <p className="flex flex-wrap items-center gap-1.5 text-fg">
-                      <span className="font-medium">{actor}</span>
-                      {entry.user && (
-                        <Badge tone={entry.user.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
-                          {entry.user.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
+      {section === 'money' && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Budget health thresholds</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-fg-muted">
+                A category is <Badge tone="green">Healthy</Badge> below the watch threshold,{' '}
+                <Badge tone="yellow">Watch</Badge> once consumption reaches it, and{' '}
+                <Badge tone="red">At risk</Badge> at the risk threshold.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Watch threshold (%)">
+                  <Input
+                    type="number"
+                    min="1"
+                    max="200"
+                    value={yellowPct}
+                    onChange={(e) => setYellowPct(e.target.value)}
+                  />
+                </Field>
+                <Field label="Risk threshold (%)">
+                  <Input
+                    type="number"
+                    min="1"
+                    max="300"
+                    value={redPct}
+                    onChange={(e) => setRedPct(e.target.value)}
+                  />
+                </Field>
+              </div>
+              {saveThresholds.isError && (
+                <p className="text-sm text-danger-fg">Risk threshold must exceed watch threshold</p>
+              )}
+              <Button onClick={() => saveThresholds.mutate()} disabled={saveThresholds.isPending}>
+                Save thresholds
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Labour cost source</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-fg-muted">
+                Prevents double-counting wages. Choose where LABOUR actuals come from: biometric
+                attendance (recommended once devices are live), labour expense entries, or both
+                (conservative — may overstate costs if wages appear in both places).
+              </p>
+              <Select
+                value={finance?.labourCostSource ?? 'BOTH'}
+                onChange={(e) => saveLabourSource.mutate(e.target.value as LabourSource)}
+                className="max-w-sm"
+                aria-label="Labour cost source"
+              >
+                <option value="ATTENDANCE">Biometric attendance only</option>
+                <option value="EXPENSES">Labour expenses only</option>
+                <option value="BOTH">Both (may double-count)</option>
+              </Select>
+            </CardContent>
+          </Card>
+
+          <PurchaseTaxCard />
+          <PayrollCard />
+        </>
+      )}
+
+      {section === 'attendance' && (
+        <>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Fingerprint attendance devices</CardTitle>
+                <Button size="sm" variant="outline" onClick={() => setDeviceOpen(true)}>
+                  <Plus size={14} /> Register device
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {devices?.length === 0 && (
+                <p className="text-sm text-fg-muted">
+                  No devices registered. Register a device to get its API key for attendance sync.
+                </p>
+              )}
+              {devices?.map((d) => (
+                <div
+                  key={d.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-hairline p-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <Fingerprint size={18} className="text-brand-600" />
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-fg">{d.name}</p>
+                        <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : 'slate'}>
+                          {d.vendor === 'SUPREMA' ? 'Suprema · BioStar 2' : 'ZKTeco'}
                         </Badge>
-                      )}
-                    </p>
-                    <p className="text-xs text-fg-subtle">
-                      {humanizeAction(entry.action)} · {entry.entity}
-                    </p>
+                      </div>
+                      <p className="text-xs text-fg-subtle">
+                        {d.serialNumber && (
+                          <>
+                            SN <span className="font-mono">{d.serialNumber}</span> ·{' '}
+                          </>
+                        )}
+                        {d.vendor === 'SUPREMA' && d.biostarBaseUrl && (
+                          <>
+                            <span className="font-mono">{d.biostarBaseUrl}</span> ·{' '}
+                          </>
+                        )}
+                        Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}
+                      </p>
+                    </div>
                   </div>
-                  <span className="shrink-0 whitespace-nowrap text-xs text-fg-subtle">
-                    {fmtDate(entry.createdAt)} {fmtTime(entry.createdAt)}
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {d.vendor === 'SUPREMA' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={syncDevice.isPending}
+                        onClick={() => syncDevice.mutate(d.id)}
+                      >
+                        <RefreshCw size={14} /> Sync now
+                      </Button>
+                    )}
+                    <Select
+                      value={d.projectId ?? ''}
+                      onChange={(e) =>
+                        bindDevice.mutate({ id: d.id, projectId: e.target.value || null })
+                      }
+                      className="h-9 w-40 text-xs"
+                      aria-label={`Site binding for ${d.name}`}
+                    >
+                      <option value="">Any site</option>
+                      {projects?.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </Select>
+                    <Badge tone={d.active ? 'green' : 'red'}>{d.active ? 'Active' : 'Disabled'}</Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggleDevice.mutate({ id: d.id, active: !d.active })}
+                    >
+                      {d.active ? 'Disable' : 'Enable'}
+                    </Button>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
-          {auditLog && (auditPage > 1 || auditLog.hasMore) && (
-            <div className="flex items-center justify-between pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={auditPage <= 1}
-                onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
-              >
-                Previous
-              </Button>
-              <span className="text-xs text-fg-subtle">Page {auditPage}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!auditLog.hasMore}
-                onClick={() => setAuditPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          {issues && issues.length > 0 && (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-warn-fg" />
+                  <CardTitle>Sync issues ({issues.length})</CardTitle>
+                </div>
+                <p className="text-xs text-fg-muted">
+                  Punches the system couldn&rsquo;t match to a worker. Link an unrecognised fingerprint
+                  to enrol that worker; future punches are then recorded automatically.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {issues.map((issue) => (
+                  <IssueRow
+                    key={issue.id}
+                    issue={issue}
+                    workers={workers ?? []}
+                    onLink={(workerId) => linkIssue.mutate({ id: issue.id, workerId })}
+                    onDismiss={() => resolveIssue.mutate(issue.id)}
+                    busy={linkIssue.isPending || resolveIssue.isPending}
+                  />
+                ))}
+                {linkIssue.isError && (
+                  <p className="text-sm text-danger-fg">{(linkIssue.error as Error).message}</p>
+                )}
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+        </>
+      )}
+
+      {section === 'assistant' && <AssistantCard />}
+
+      {section === 'audit' && (
+        <>
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <ScrollText size={16} className="text-fg-muted" />
+                <CardTitle>Audit log</CardTitle>
+              </div>
+              <p className="text-xs text-fg-muted">
+                Every create, update, and delete across the system, with who did it. Superadmin-only.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {auditLoading && <p className="text-sm text-fg-muted">Loading…</p>}
+              {!auditLoading && auditLog?.items.length === 0 && (
+                <Empty icon={ScrollText}>No activity recorded yet</Empty>
+              )}
+              <div className="divide-y divide-hairline">
+                {auditLog?.items.map((entry) => {
+                  const actor = entry.user?.name ?? (entry.meta?.email as string | undefined) ?? 'Unknown';
+                  return (
+                    <div key={entry.id} className="flex items-start justify-between gap-3 py-2 text-sm">
+                      <div className="min-w-0">
+                        <p className="flex flex-wrap items-center gap-1.5 text-fg">
+                          <span className="font-medium">{actor}</span>
+                          {entry.user && (
+                            <Badge tone={entry.user.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
+                              {entry.user.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="text-xs text-fg-subtle">
+                          {humanizeAction(entry.action)} · {entry.entity}
+                        </p>
+                      </div>
+                      <span className="shrink-0 whitespace-nowrap text-xs text-fg-subtle">
+                        {fmtDate(entry.createdAt)} {fmtTime(entry.createdAt)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {auditLog && (auditPage > 1 || auditLog.hasMore) && (
+                <div className="flex items-center justify-between pt-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={auditPage <= 1}
+                    onClick={() => setAuditPage((p) => Math.max(1, p - 1))}
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-xs text-fg-subtle">Page {auditPage}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!auditLog.hasMore}
+                    onClick={() => setAuditPage((p) => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <Dialog
         open={deviceOpen}
@@ -561,7 +648,7 @@ export function SettingsPage() {
               </Select>
             </Field>
             {createDevice.isError && (
-              <p className="text-sm text-red-600">
+              <p className="text-sm text-danger-fg">
                 {createDevice.error instanceof ApiRequestError
                   ? createDevice.error.message
                   : "Couldn't register — is that serial number already in use?"}
@@ -574,6 +661,125 @@ export function SettingsPage() {
         )}
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * How much of the day's free allowance the assistant may spend.
+ *
+ * All three AI features share one key and therefore one daily cap. Without a
+ * reserve the assistant — much the hungriest of them — would quietly eat the
+ * allowance and the receipt reader would stop working by mid-morning with
+ * nothing to explain why. Today's counts are shown beside the setting so the
+ * reserve can be sized from what actually happens here.
+ */
+function AssistantCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'ai'],
+    queryFn: () => api<AiSettings>('/settings/ai'),
+  });
+
+  const [dailyCalls, setDailyCalls] = useState('');
+  const [reserved, setReserved] = useState('');
+  useEffect(() => {
+    if (data) {
+      setDailyCalls(String(data.budget.dailyCalls));
+      setReserved(String(data.budget.reservedForWork));
+    }
+  }, [data]);
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api('/settings/ai', { method: 'PUT', body }),
+    onSuccess: () => {
+      toast.success('Assistant allowance saved.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'ai'] });
+      void qc.invalidateQueries({ queryKey: ['chat', 'status'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The allowance was not saved.')),
+  });
+
+  if (!data) return <Card><CardContent className="pt-5 text-sm text-fg-muted">Loading…</CardContent></Card>;
+
+  if (!data.available) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Assistant</CardTitle>
+          <p className="text-xs text-fg-muted">
+            No AI key is configured, so receipt reading, report drafting and the assistant are all
+            switched off. Every form works by hand exactly as before.
+          </p>
+        </CardHeader>
+      </Card>
+    );
+  }
+
+  const chatCeiling = Math.max(0, data.budget.dailyCalls - data.budget.reservedForWork);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Assistant allowance</CardTitle>
+        <p className="text-xs text-fg-muted">
+          Reading receipts, drafting site reports and answering questions all draw on the same
+          free daily allowance. The assistant stops early so the other two keep working.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-lg border border-hairline bg-surface-muted p-3">
+          <p className="text-xs font-medium text-fg-muted">Used today ({data.usage.day})</p>
+          <p className="mt-1 text-sm text-fg">
+            <span className="font-semibold tabular-nums">{data.used}</span> of{' '}
+            <span className="tabular-nums">{data.budget.dailyCalls}</span> — {data.usage.receipt}{' '}
+            receipts, {data.usage.report} reports, {data.usage.chat} questions.
+          </p>
+          <p className="mt-1 text-xs text-fg-subtle">
+            {data.chat.allowed
+              ? `The assistant has ${data.chat.remaining} left before it yields.`
+              : 'The assistant has stopped for today; receipts and reports still work.'}
+          </p>
+        </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate({ dailyCalls: Number(dailyCalls), reservedForWork: Number(reserved) });
+          }}
+          className="space-y-3"
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Requests a day your key allows">
+              <Input
+                type="number"
+                min="1"
+                inputMode="numeric"
+                value={dailyCalls}
+                onChange={(e) => setDailyCalls(e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Held back for receipts and reports">
+              <Input
+                type="number"
+                min="0"
+                inputMode="numeric"
+                value={reserved}
+                onChange={(e) => setReserved(e.target.value)}
+                required
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-fg-subtle">
+            The assistant may use {chatCeiling} request{chatCeiling === 1 ? '' : 's'} a day; the
+            remaining {data.budget.reservedForWork} are kept for the work the business depends on.
+          </p>
+          <Button type="submit" disabled={save.isPending}>
+            Save
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -591,11 +797,19 @@ function CompanyLetterheadCard() {
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/settings/company', { method: 'PUT', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'company'] }),
+    onSuccess: () => {
+      toast.success('Letterhead saved. New invoices and receipts will carry it.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'company'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The letterhead was not saved.')),
   });
   const uploadLogo = useMutation({
     mutationFn: (formData: FormData) => api('/settings/company/logo', { formData }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'company'] }),
+    onSuccess: () => {
+      toast.success('Logo uploaded.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'company'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The logo was not uploaded.')),
   });
 
   if (!data) return null;
@@ -663,7 +877,7 @@ function CompanyLetterheadCard() {
             </Field>
           </div>
           {uploadLogo.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {uploadLogo.error instanceof ApiRequestError
                 ? uploadLogo.error.message
                 : 'Failed to upload the logo'}
@@ -721,9 +935,8 @@ function CompanyLetterheadCard() {
             </Field>
           </div>
 
-          {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
           {save.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
             </p>
           )}
@@ -755,8 +968,10 @@ function PurchaseTaxCard() {
     mutationFn: (body: Record<string, unknown>) =>
       api('/settings/purchase-tax', { method: 'PUT', body }),
     onSuccess: () => {
+      toast.success('Purchase tax settings saved.');
       void qc.invalidateQueries({ queryKey: ['settings', 'purchase-tax'] });
     },
+    onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
   });
 
   if (!data) return null;
@@ -858,7 +1073,7 @@ function PurchaseTaxCard() {
           )}
 
           {save.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
             </p>
           )}
@@ -889,7 +1104,11 @@ function PayrollCard() {
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api('/settings/payroll', { method: 'PUT', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'payroll'] }),
+    onSuccess: () => {
+      toast.success('Payroll rates saved. They apply to runs created from now on.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'payroll'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The rates were not saved.')),
   });
 
   if (!data) return null;
@@ -1062,7 +1281,7 @@ function PayrollCard() {
           )}
 
           {save.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
             </p>
           )}
@@ -1085,9 +1304,11 @@ function PipelineCard() {
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/settings/pipeline', { method: 'PUT', body }),
     onSuccess: () => {
+      toast.success('Quotation and contract defaults saved.');
       void qc.invalidateQueries({ queryKey: ['settings', 'pipeline'] });
       void qc.invalidateQueries({ queryKey: ['settings', 'quotationDefaults'] });
     },
+    onError: (e) => toast.error(errText(e, 'The defaults were not saved.')),
   });
 
   if (!data) return null;
@@ -1169,8 +1390,7 @@ function PipelineCard() {
             them reviewed before you rely on them.
           </p>
 
-          {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-          {save.isError && <p className="text-sm text-red-600">Couldn&rsquo;t save those settings</p>}
+          {save.isError && <p className="text-sm text-danger-fg">Couldn&rsquo;t save those settings</p>}
           <Button type="submit" disabled={save.isPending}>
             Save quotation &amp; contract settings
           </Button>
@@ -1190,7 +1410,11 @@ function InvoicingCard() {
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api('/settings/invoicing', { method: 'PUT', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'invoicing'] }),
+    onSuccess: () => {
+      toast.success('Invoicing settings saved.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'invoicing'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
   });
 
   if (!data) return null;
@@ -1307,9 +1531,8 @@ function InvoicingCard() {
             />
           </Field>
 
-          {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
           {save.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
             </p>
           )}

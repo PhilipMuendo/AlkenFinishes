@@ -1,6 +1,12 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Opt-in rather than Tailwind's `media` default. There is no dark palette
+  // yet, and under `media` a stray `dark:` variant would activate against the
+  // light tokens on any phone set to dark — which is what was happening to the
+  // amber warning panels. When a dark theme is built it is a `:root` block
+  // swap plus this flag, and no component changes.
+  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: {
@@ -60,6 +66,29 @@ export default {
           DEFAULT: 'rgb(var(--fg) / <alpha-value>)',
           muted: 'rgb(var(--fg-muted) / <alpha-value>)',
           subtle: 'rgb(var(--fg-subtle) / <alpha-value>)',
+        },
+        // Status tones. Always a set: `bg-warn-surface border-warn-hairline
+        // text-warn-fg`, or just `text-warn-fg` for inline emphasis. Prefer the
+        // <Notice> component over spelling the set out by hand.
+        warn: {
+          surface: 'rgb(var(--warn-surface) / <alpha-value>)',
+          hairline: 'rgb(var(--warn-hairline) / <alpha-value>)',
+          fg: 'rgb(var(--warn-fg) / <alpha-value>)',
+        },
+        danger: {
+          surface: 'rgb(var(--danger-surface) / <alpha-value>)',
+          hairline: 'rgb(var(--danger-hairline) / <alpha-value>)',
+          fg: 'rgb(var(--danger-fg) / <alpha-value>)',
+        },
+        good: {
+          surface: 'rgb(var(--good-surface) / <alpha-value>)',
+          hairline: 'rgb(var(--good-hairline) / <alpha-value>)',
+          fg: 'rgb(var(--good-fg) / <alpha-value>)',
+        },
+        info: {
+          surface: 'rgb(var(--info-surface) / <alpha-value>)',
+          hairline: 'rgb(var(--info-hairline) / <alpha-value>)',
+          fg: 'rgb(var(--info-fg) / <alpha-value>)',
         },
       },
       borderRadius: {

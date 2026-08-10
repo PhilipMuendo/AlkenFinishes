@@ -19,6 +19,7 @@ import safetyRouter from './modules/safety';
 import calendarRouter from './modules/calendar';
 import businessReportsRouter from './modules/businessReports';
 import commandCentreRouter from './modules/commandCentre';
+import chatRouter from './modules/chat';
 import paymentsRouter from './modules/payments';
 import invoicesRouter, { companyInvoicesRouter } from './modules/invoices';
 import tasksRouter from './modules/tasks';
@@ -86,6 +87,7 @@ export function createApp() {
   v1.use('/calendar', calendarRouter);
   v1.use('/projects/:projectId/business-reports', businessReportsRouter);
   v1.use('/projects/:projectId/command-centre', commandCentreRouter);
+  v1.use('/chat', chatRouter); // read-only Q&A, scoped by the asking user
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);

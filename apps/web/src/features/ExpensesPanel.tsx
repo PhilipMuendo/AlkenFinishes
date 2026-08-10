@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, Plus, Receipt, ScanLine, Wallet } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type {
   Expense,
@@ -20,6 +20,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
+import { Notice } from '@/components/ui/notice';
+import { toast } from '@/components/ui/toast';
 
 const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'MATERIALS', label: 'Materials' },
@@ -79,6 +81,9 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/expenses`, { formData }),
     onSuccess: () => {
+      toast.success(
+        canBrowse ? 'Expense logged.' : 'Expense submitted. The office will review it.',
+      );
       invalidate();
       setOpen(false);
       if (!canBrowse) {
@@ -90,16 +95,22 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
   const approve = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/expenses/${id}/approve`, { body: {} }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.success('Expense approved. It now counts against the budget and is owed to the supplier.');
+      invalidate();
+    },
+    onError: (e) => toast.error(errText(e, 'The expense was not approved.')),
   });
 
   const reject = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       api(`/projects/${projectId}/expenses/${id}/reject`, { body: { reason } }),
     onSuccess: () => {
+      toast.success('Expense rejected. The reason is on the record.');
       invalidate();
       setRejecting(null);
     },
+    onError: (e) => toast.error(errText(e, 'The expense was not rejected.')),
   });
 
   // Supervisors can log a purchase (money leaves their hand on site and needs
@@ -110,8 +121,8 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
     return (
       <div className="space-y-4">
         {justSubmitted && (
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-            <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
+          <div className="flex items-center gap-2 rounded-xl border border-good-hairline bg-good-surface px-4 py-3 text-sm text-good-fg">
+            <CheckCircle2 size={18} className="shrink-0 text-good-fg" />
             Expense recorded and sent to the office.
           </div>
         )}
@@ -151,7 +162,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                   </div>
                 </div>
                 {e.rejectReason && (
-                  <p className="mt-2 text-xs text-red-600">Declined: {e.rejectReason}</p>
+                  <p className="mt-2 text-xs text-danger-fg">Declined: {e.rejectReason}</p>
                 )}
               </Card>
             ))}
@@ -238,7 +249,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                       <Badge tone="green">Paid</Badge>
                     ) : (
                       <>
-                        <p className={e.position.overdue ? 'font-medium text-red-600' : 'text-fg'}>
+                        <p className={e.position.overdue ? 'font-medium text-danger-fg' : 'text-fg'}>
                           {fmtMoney(e.position.outstanding)}
                         </p>
                         <p className="text-xs text-fg-subtle">
@@ -354,7 +365,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
             <Textarea name="reason" required rows={2} autoFocus />
           </Field>
           {reject.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {reject.error instanceof ApiRequestError ? reject.error.message : 'Failed to save'}
             </p>
           )}
@@ -541,7 +552,7 @@ function ExpenseForm({
         <Input name="receipt" type="file" accept="image/*,.pdf" capture="environment" />
       </Field>
       {error != null && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {error instanceof ApiRequestError ? error.message : 'Failed to save expense'}
         </p>
       )}
@@ -576,8 +587,7 @@ function ReceiptScanner({
   // enabled button that cannot work is worse than no button.
   if (outOfQuota && !scan) {
     return (
-      <div className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
-        <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+      <Notice tone="warn" icon={AlertTriangle}>
         <div className="min-w-0">
           <p className="font-medium text-fg">Today&rsquo;s free receipt reading is used up</p>
           <p className="mt-0.5 text-fg-muted">
@@ -585,7 +595,7 @@ function ReceiptScanner({
             changed.
           </p>
         </div>
-      </div>
+      </Notice>
     );
   }
 
@@ -623,7 +633,7 @@ function ReceiptScanner({
       </div>
 
       {state.isError && (
-        <p className="mt-2 text-sm text-red-600">
+        <p className="mt-2 text-sm text-danger-fg">
           {state.error instanceof ApiRequestError
             ? state.error.message
             : 'Could not read that receipt. Enter it by hand.'}
@@ -641,16 +651,16 @@ function ReceiptScanner({
             {scan.checks.map((c) => (
               <li key={c.id} className="flex items-start gap-1.5 text-xs">
                 {c.status === 'OK' ? (
-                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-emerald-600" />
+                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-good-fg" />
                 ) : (
                   <AlertTriangle
                     size={14}
                     className={`mt-0.5 shrink-0 ${
-                      c.status === 'WARN' ? 'text-amber-600' : 'text-fg-subtle'
+                      c.status === 'WARN' ? 'text-warn-fg' : 'text-fg-subtle'
                     }`}
                   />
                 )}
-                <span className={c.status === 'WARN' ? 'text-amber-800 dark:text-amber-500' : 'text-fg-muted'}>
+                <span className={c.status === 'WARN' ? 'text-warn-fg' : 'text-fg-muted'}>
                   {c.message}
                 </span>
               </li>
@@ -658,7 +668,7 @@ function ReceiptScanner({
           </ul>
 
           {scan.supplierUnmatched && scan.extracted.supplierName && (
-            <p className="text-xs text-amber-800 dark:text-amber-500">
+            <p className="text-xs text-warn-fg">
               “{scan.extracted.supplierName}” is not on your supplier list. Pick the right one
               below, or add them first — a bill on the wrong supplier misstates what both are owed.
             </p>

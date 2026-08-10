@@ -17,12 +17,39 @@
     --surface-sunken: 241 245 249; /* wells, hover on muted */
     --border: 226 232 240; /* hairlines, dividers */
     --border-strong: 203 213 225; /* input borders, emphasis */
-    --fg: 15 23 42; /* primary text */
-    --fg-muted: 100 116 139; /* secondary text */
-    --fg-subtle: 148 163 184; /* placeholders, captions */
+    /* Text ramp. Every step clears WCAG AA (4.5:1) on --surface, because this
+     * is read on a phone in direct sun as often as at a desk. The old ramp put
+     * --fg-subtle at slate-400, which is 2.6:1 — it was being used for table
+     * headings and captions, so real content was failing. The whole ramp moved
+     * one step darker rather than collapsing subtle into muted. */
+    --fg: 15 23 42; /* primary text — 16.7:1 */
+    --fg-muted: 71 85 105; /* secondary text — 7.5:1 */
+    --fg-subtle: 100 116 139; /* captions, table headings — 4.9:1 */
     --primary: 30 60 102; /* brand-600 navy */
     --primary-fg: 255 255 255;
     --ring: 45 81 131; /* brand-500 navy focus ring */
+
+    /* Status tones.
+     *
+     * These exist so a warning panel is not twelve copies of `border-amber-300
+     * bg-amber-50` scattered across the codebase — which is exactly how this
+     * app ended up with dark-mode variants on some of them and not others. A
+     * tone is three values, always used together; see `ui/notice.tsx`. */
+    --warn-surface: 255 251 235;
+    --warn-hairline: 252 211 77;
+    --warn-fg: 146 64 14; /* 6.8:1 on --warn-surface */
+
+    --danger-surface: 254 242 242;
+    --danger-hairline: 254 202 202;
+    --danger-fg: 185 28 28;
+
+    --good-surface: 236 253 245;
+    --good-hairline: 110 231 183;
+    --good-fg: 6 95 70;
+
+    --info-surface: 238 243 249; /* brand-50 */
+    --info-hairline: 176 196 221; /* brand-200 */
+    --info-fg: 24 47 80; /* brand-700 */
   }
 
   html {

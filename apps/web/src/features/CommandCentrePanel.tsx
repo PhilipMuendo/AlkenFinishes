@@ -25,6 +25,7 @@ import { fmtDate, fmtMoney } from '@/lib/format';
 import { Badge, HealthBadge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Notice } from '@/components/ui/notice';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -92,11 +93,11 @@ function Row({
 }) {
   const toneClass =
     tone === 'bad'
-      ? 'text-red-600'
+      ? 'text-danger-fg'
       : tone === 'warn'
-        ? 'text-amber-700'
+        ? 'text-warn-fg'
         : tone === 'good'
-          ? 'text-emerald-600'
+          ? 'text-good-fg'
           : 'text-fg';
   return (
     <div className="flex items-baseline justify-between gap-3 py-0.5 text-sm">
@@ -186,8 +187,7 @@ export function CommandCentrePanel({
           the system and otherwise gives no sign of it — you would find out
           weeks later, at the claim screen. */}
       {contractLinked === false && (
-        <div className="flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm sm:flex-row sm:items-start dark:border-amber-800 dark:bg-amber-950/40">
-          <FileSignature size={18} className="mt-0.5 shrink-0 text-amber-600" />
+        <Notice tone="warn" icon={FileSignature} className="flex-col rounded-xl sm:flex-row sm:items-start">
           <div className="min-w-0 flex-1">
             <p className="font-medium text-fg">This site has no contract behind it</p>
             <p className="mt-0.5 text-fg-muted">
@@ -204,7 +204,7 @@ export function CommandCentrePanel({
               </Link>
             )}
           </div>
-        </div>
+        </Notice>
       )}
 
       <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -234,7 +234,7 @@ export function CommandCentrePanel({
               <Badge tone="green">On programme</Badge>
             )}
             {programme.unweightedTaskCount > 0 && (
-              <p className="mt-1.5 text-xs text-amber-700">
+              <p className="mt-1.5 text-xs text-warn-fg">
                 {programme.unweightedTaskCount} of {programme.taskCount} tasks have no size set
               </p>
             )}
@@ -247,11 +247,11 @@ export function CommandCentrePanel({
             {[
               { label: 'Workers', value: attendance.assignedWorkers, cls: 'text-fg' },
               { label: 'Present', value: attendance.checkedInToday, cls: 'text-fg' },
-              { label: 'Late', value: attendance.late, cls: attendance.late > 0 ? 'text-amber-700' : 'text-fg-subtle' },
+              { label: 'Late', value: attendance.late, cls: attendance.late > 0 ? 'text-warn-fg' : 'text-fg-subtle' },
               {
                 label: 'Absent',
                 value: attendance.absent ?? '—',
-                cls: attendance.absent ? 'text-red-600' : 'text-fg-subtle',
+                cls: attendance.absent ? 'text-danger-fg' : 'text-fg-subtle',
               },
             ].map((c) => (
               <div key={c.label} className="rounded-lg bg-surface-sunken px-1 py-2">
@@ -400,7 +400,7 @@ export function CommandCentrePanel({
             {snags.open === 0 && <Badge tone="green">All clear</Badge>}
           </div>
           {snags.rework > 0 && (
-            <p className="mt-2 text-xs text-amber-700">
+            <p className="mt-2 text-xs text-warn-fg">
               Sent back for rework {snags.rework} {snags.rework === 1 ? 'time' : 'times'}
             </p>
           )}
@@ -492,10 +492,10 @@ const SEVERITY_STYLE: Record<
   InsightSeverity,
   { icon: LucideIcon; chip: string; text: string; label: string }
 > = {
-  CRITICAL: { icon: AlertOctagon, chip: 'bg-red-50 text-red-600', text: 'text-red-700', label: 'Act now' },
-  WARNING: { icon: AlertTriangle, chip: 'bg-amber-50 text-amber-600', text: 'text-amber-800', label: 'Watch' },
+  CRITICAL: { icon: AlertOctagon, chip: 'bg-danger-surface text-danger-fg', text: 'text-danger-fg', label: 'Act now' },
+  WARNING: { icon: AlertTriangle, chip: 'bg-warn-surface text-warn-fg', text: 'text-warn-fg', label: 'Watch' },
   INFO: { icon: Info, chip: 'bg-brand-50 text-brand-600', text: 'text-fg', label: 'Note' },
-  GOOD: { icon: CheckCircle2, chip: 'bg-emerald-50 text-emerald-600', text: 'text-fg', label: 'On track' },
+  GOOD: { icon: CheckCircle2, chip: 'bg-good-surface text-good-fg', text: 'text-fg', label: 'On track' },
 };
 
 /**

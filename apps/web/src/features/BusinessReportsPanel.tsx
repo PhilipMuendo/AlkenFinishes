@@ -11,11 +11,12 @@ import {
   ScrollText,
   Wallet,
 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import { todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
+import { toast } from '@/components/ui/toast';
 
 const REPORTS = [
   { type: 'financial-summary', label: 'Financial Summary', icon: BarChart3, ranged: false },
@@ -55,7 +56,10 @@ export function BusinessReportsPanel({ projectId }: { projectId: string }) {
       window.open(url, '_blank', 'noopener');
       setDownloading(null);
     },
-    onError: () => setDownloading(null),
+    onError: (e) => {
+      toast.error(errText(e, 'The report could not be generated.'));
+      setDownloading(null);
+    },
   });
 
   return (
@@ -77,7 +81,7 @@ export function BusinessReportsPanel({ projectId }: { projectId: string }) {
       </Card>
 
       {download.isError && (
-        <p className="text-sm text-red-600">
+        <p className="text-sm text-danger-fg">
           {download.error instanceof ApiRequestError ? download.error.message : 'Failed to generate that report'}
         </p>
       )}

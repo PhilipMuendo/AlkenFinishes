@@ -10,6 +10,7 @@ import {
   HardHat,
   LogOut,
   Menu,
+  Search,
   Landmark,
   Banknote,
   ReceiptText,
@@ -25,6 +26,9 @@ import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Wordmark } from '@/components/Wordmark';
+import { Toaster } from '@/components/ui/toast';
+import { CommandPalette, useCommandPalette } from '@/components/CommandPalette';
+import { Assistant } from '@/features/Assistant';
 
 /**
  * Grouped in the order work actually moves through the business: win it, agree
@@ -133,9 +137,29 @@ function UserFooter({ name, onSignOut }: { name?: string; onSignOut: () => void 
   );
 }
 
+/** Shown in the sidebar so the shortcut is discoverable rather than folklore. */
+function SearchTrigger({ onClick, className }: { onClick: () => void; className?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-lg border border-hairline bg-surface-muted px-3 py-2 text-sm text-fg-subtle transition-colors hover:border-hairline-strong hover:text-fg-muted',
+        className,
+      )}
+    >
+      <Search size={16} className="shrink-0" />
+      <span className="flex-1 text-left">Search…</span>
+      <kbd className="hidden shrink-0 rounded border border-hairline-strong px-1.5 py-0.5 text-[10px] font-medium lg:block">
+        Ctrl K
+      </kbd>
+    </button>
+  );
+}
+
 export function AdminLayout() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const palette = useCommandPalette();
 
   return (
     <div className="flex min-h-screen bg-surface-muted">
@@ -144,6 +168,9 @@ export function AdminLayout() {
         <div className="flex items-center gap-2.5 px-5 py-[18px]">
           <img src="/favicon.svg" alt="" className="h-8 w-8" />
           <Wordmark className="text-[15px]" />
+        </div>
+        <div className="px-3 pb-1">
+          <SearchTrigger onClick={() => palette.setOpen(true)} />
         </div>
         <NavItems />
         <UserFooter name={user?.name} onSignOut={() => void logout()} />
@@ -156,14 +183,23 @@ export function AdminLayout() {
             <img src="/favicon.svg" alt="" className="h-7 w-7" />
             <Wordmark />
           </div>
-          <button
-            aria-label={open ? 'Close menu' : 'Open menu'}
-            aria-expanded={open}
-            onClick={() => setOpen(!open)}
-            className="rounded-lg p-2 text-fg-muted transition-colors hover:bg-surface-sunken"
-          >
-            {open ? <X size={22} /> : <Menu size={22} />}
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              aria-label="Search"
+              onClick={() => palette.setOpen(true)}
+              className="rounded-lg p-2 text-fg-muted transition-colors hover:bg-surface-sunken"
+            >
+              <Search size={21} />
+            </button>
+            <button
+              aria-label={open ? 'Close menu' : 'Open menu'}
+              aria-expanded={open}
+              onClick={() => setOpen(!open)}
+              className="rounded-lg p-2 text-fg-muted transition-colors hover:bg-surface-sunken"
+            >
+              {open ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          </div>
         </header>
 
         {/* Mobile drawer */}
@@ -189,6 +225,10 @@ export function AdminLayout() {
           <Outlet />
         </main>
       </div>
+
+      <CommandPalette open={palette.open} onClose={() => palette.setOpen(false)} />
+      <Assistant office />
+      <Toaster />
     </div>
   );
 }

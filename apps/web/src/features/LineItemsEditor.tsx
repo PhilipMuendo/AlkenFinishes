@@ -98,7 +98,7 @@ export function LineItemsEditor({
                 onClick={() => onChange(lines.filter((x) => x.key !== l.key))}
                 disabled={lines.length === 1}
                 aria-label={`Remove line ${i + 1}`}
-                className="mt-0.5 shrink-0 rounded-lg p-2.5 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600 disabled:pointer-events-none disabled:opacity-30"
+                className="mt-0.5 shrink-0 rounded-lg p-2.5 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg disabled:pointer-events-none disabled:opacity-30"
               >
                 <Trash2 size={16} />
               </button>

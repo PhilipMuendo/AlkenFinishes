@@ -28,8 +28,8 @@ export function StatTile({
       <p
         className={cn(
           'nums mt-2 text-2xl font-semibold tracking-tight text-fg',
-          accent === 'positive' && 'text-emerald-700',
-          accent === 'negative' && 'text-red-700',
+          accent === 'positive' && 'text-good-fg',
+          accent === 'negative' && 'text-danger-fg',
         )}
       >
         {value}

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Expense, PaymentMethodValue, PaymentSuggestion } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Notice } from '@/components/ui/notice';
+import { toast } from '@/components/ui/toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * Paying a supplier, in part or in full.
@@ -93,11 +96,21 @@ export function SupplierPaymentDialog({
       return api(`/projects/${projectId}/expenses/${expense.id}/payments`, { formData: fd });
     },
     onSuccess: () => {
+      // Withheld tax settles the bill exactly as cash does, so the message has
+      // to state both — otherwise the figure here disagrees with the ledger.
+      const supplier = expense.supplier?.name ?? 'the supplier';
+      toast.success(
+        withheld > 0
+          ? `${fmtMoney(num(amount))} paid to ${supplier} plus ${fmtMoney(withheld)} withheld for KRA — ${fmtMoney(settles)} off the bill.`
+          : `${fmtMoney(num(amount))} paid to ${supplier}.` +
+            (remainingAfter > 0 ? ` ${fmtMoney(remainingAfter)} still owed.` : ' Bill settled.'),
+      );
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['suppliers'] });
       void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
       onDone();
     },
+    onError: (e) => toast.error(errText(e, 'The payment was not recorded.')),
   });
 
   const remove = useMutation({
@@ -106,15 +119,17 @@ export function SupplierPaymentDialog({
         method: 'DELETE',
       }),
     onSuccess: () => {
+      toast.success('Payment removed. The bill is owed again in full.');
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['suppliers'] });
       void qc.invalidateQueries({
         queryKey: ['expenses', projectId, expense.id, 'payment-suggestion'],
       });
     },
+    onError: (e) => toast.error(errText(e, 'The payment was not removed.')),
   });
 
-  if (!position) return <p className="py-8 text-center text-sm text-fg-muted">Loading…</p>;
+  if (!position) return <Skeleton className="h-48 w-full rounded-xl" />;
 
   const blocked =
     settles <= 0 || (isOverpayment && !overpayAccepted) || pay.isPending || position.settled;
@@ -144,14 +159,12 @@ export function SupplierPaymentDialog({
           <Row label="Still owed" value={position.outstanding} strong />
         </div>
         {position.overdue && (
-          <p className="mt-1 text-xs text-red-600">{position.daysOverdue} days past due</p>
+          <p className="mt-1 text-xs text-danger-fg">{position.daysOverdue} days past due</p>
         )}
       </div>
 
       {position.settled ? (
-        <p className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40">
-          This bill is fully settled. Nothing further is owed.
-        </p>
+        <Notice tone="good">This bill is fully settled. Nothing further is owed.</Notice>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -264,8 +277,7 @@ export function SupplierPaymentDialog({
           </Field>
 
           {isOverpayment && (
-            <label className="flex gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
-              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+            <Notice as="label" tone="warn" icon={AlertTriangle}>
               <span>
                 <span className="font-medium text-fg">
                   This is {fmtMoney(round2(settles - outstanding))} more than is owed
@@ -283,11 +295,11 @@ export function SupplierPaymentDialog({
                   The bank statement says this is right
                 </span>
               </span>
-            </label>
+            </Notice>
           )}
 
           {pay.isError && (
-            <p className="text-sm text-red-600">
+            <p className="text-sm text-danger-fg">
               {pay.error instanceof ApiRequestError
                 ? pay.error.message
                 : 'Failed to record this payment'}
@@ -351,7 +363,7 @@ export function SupplierPaymentDialog({
                       type="button"
                       onClick={() => remove.mutate(p.id)}
                       disabled={remove.isPending}
-                      className="text-fg-subtle hover:text-red-600"
+                      className="text-fg-subtle hover:text-danger-fg"
                       title="Remove this payment"
                     >
                       <Trash2 size={15} />
@@ -362,7 +374,7 @@ export function SupplierPaymentDialog({
             ))}
           </div>
           {remove.isError && (
-            <p className="mt-2 text-sm text-red-600">
+            <p className="mt-2 text-sm text-danger-fg">
               {remove.error instanceof ApiRequestError
                 ? remove.error.message
                 : 'Failed to remove that payment'}

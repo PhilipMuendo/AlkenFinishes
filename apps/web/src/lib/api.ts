@@ -31,6 +31,18 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * The message to show when a mutation fails.
+ *
+ * The API's own wording is nearly always the more useful of the two — it knows
+ * the bill was already settled, or that the claim went backwards. `fallback` is
+ * for the cases where the request never reached it at all, and should say what
+ * did not happen rather than "Error".
+ */
+export function errText(error: unknown, fallback: string): string {
+  return error instanceof ApiRequestError && error.message ? error.message : fallback;
+}
+
 async function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   const res = await fetch(`${BASE}/auth/refresh`, {
