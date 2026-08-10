@@ -58,7 +58,7 @@ const TYPE_TONE: Record<AnyCalendarEventType, Tone> = {
 };
 
 function startOfToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayISO();
 }
 
 export function CalendarPage() {

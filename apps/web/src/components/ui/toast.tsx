@@ -104,9 +104,13 @@ function ToastRow({ t }: { t: Toast }) {
  * Rendered once per layout, above everything.
  *
  * `aria-live="polite"` so the confirmation reaches a screen reader without
- * interrupting. `aboveNav` is for the supervisor shell, whose fixed bottom
- * navigation would otherwise sit on top of the message — this is read on a
- * phone at least as often as at a desk.
+ * interrupting.
+ *
+ * The bottom offset has to clear whatever else is anchored down there, because
+ * a toast is worthless if it lands on the thing it covers. Both shells carry
+ * the assistant launcher (3rem tall, bottom-right); the supervisor shell adds
+ * its navigation bar under that. `aboveNav` picks the taller of the two
+ * clearances.
  */
 export function Toaster({ aboveNav = false }: { aboveNav?: boolean }) {
   const items = useSyncExternalStore(
@@ -125,8 +129,10 @@ export function Toaster({ aboveNav = false }: { aboveNav?: boolean }) {
       className={cn(
         'pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 p-4 sm:inset-x-auto sm:right-0 sm:items-end',
         aboveNav
-          ? 'pb-[calc(4.75rem+env(safe-area-inset-bottom))]'
-          : 'pb-[calc(1rem+env(safe-area-inset-bottom))]',
+          ? // nav (4.75rem) + launcher (3rem) + gap
+            'pb-[calc(8.5rem+env(safe-area-inset-bottom))]'
+          : // launcher (1rem offset + 3rem) + gap
+            'pb-[calc(4.75rem+env(safe-area-inset-bottom))]',
       )}
     >
       <div className="flex w-full max-w-sm flex-col gap-2">

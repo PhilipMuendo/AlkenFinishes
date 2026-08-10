@@ -1340,7 +1340,7 @@ function PipelineCard() {
           }}
           className="space-y-3"
         >
-          <dl className="grid grid-cols-3 gap-3 rounded-lg border border-hairline bg-surface-muted/40 p-3 text-sm">
+          <dl className="grid gap-3 sm:grid-cols-3 rounded-lg border border-hairline bg-surface-muted/40 p-3 text-sm">
             {[
               ['Next quotation', data.nextQuotationNo],
               ['Next contract', data.nextContractNo],

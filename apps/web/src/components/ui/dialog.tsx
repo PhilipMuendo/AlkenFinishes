@@ -32,7 +32,7 @@ export function Dialog({
         if (e.target === ref.current) onClose();
       }}
       className={cn(
-        'flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-2xl border border-hairline bg-surface p-0 text-fg shadow-lg backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] open:animate-fade-in',
+        'flex max-h-[85dvh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-2xl border border-hairline bg-surface p-0 text-fg shadow-lg backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] open:animate-fade-in',
         className,
       )}
     >

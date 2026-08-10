@@ -81,8 +81,18 @@ function toSeries(rows: MonthRow[]) {
     .map((row) => ({ ...row, cumulative: (cum += row.total) }));
 }
 
+/**
+ * One project's financial position.
+ *
+ * Superadmin-only despite being project-scoped: it returns contract value,
+ * actual spend and estimated profit, which is exactly the data the supervisor
+ * shell is built to withhold. `requireProjectAccess` alone let an assigned
+ * supervisor read their own site's margin straight from the API — the screen
+ * never offered it, but the boundary has to hold at the route, not the UI.
+ */
 router.get(
   '/projects/:projectId',
+  requireSuperadmin,
   requireProjectAccess,
   asyncHandler(async (req, res) => {
     const projectId = req.params.projectId;

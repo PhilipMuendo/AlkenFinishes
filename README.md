@@ -1,12 +1,12 @@
 # AlkenFinishes
 
-Internal management platform for a finishing construction company: projects,
-budgets & profitability, biometric attendance, site stock, expenses with
-receipts, progress tasks, documents, and daily site reports.
+Internal management platform for a finishing construction company. It follows
+the work end to end: a lead becomes a quotation, an accepted quotation becomes
+a contract, a signed contract becomes a site, the site is run and costed, and
+what was built gets claimed for, invoiced, received and taxed.
 
-Two roles: **Superadmin** (owner — full visibility, financial dashboards) and
-**Site Supervisor** (mobile-first, restricted to assigned sites, no financial
-overview).
+Two roles: **Superadmin** (the office — everything, including money) and **Site
+Supervisor** (mobile-first, restricted to assigned sites, no company money).
 
 ## Stack
 
@@ -16,10 +16,31 @@ PostgreSQL + Prisma · Docker Compose + Nginx.
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
 [`docs/API.md`](docs/API.md).
 
+## What it does
+
+**Winning work** — clients, a lead pipeline, priced quotations, contracts with
+variations and a signature record. A quotation converts to a contract, and a
+contract adopts or creates the site, carrying the priced schedule with it.
+
+**On site** — the programme (phases and tasks), biometric attendance, daily and
+weekly reports, snags with photographs, safety incidents, material requests,
+site stock, a tool register with transfers, and a document repository.
+
+**Money** — progress claims measured against the contract schedule, invoices
+with VAT and retention, client receipts, supplier bills with part-payments,
+payables ageing, payroll from recorded attendance, and a VAT and withholding
+position for the month. Money is superadmin-only, enforced at the route.
+
+**Assistance** — optional, and off unless a key is configured: reading figures
+off a photographed receipt, drafting the evening site diary from what the day
+already recorded, and answering questions about the business. Every one of
+these produces a draft or an answer that shows its workings; none of them
+writes anything on its own.
+
 ## Production deployment
 
 ```bash
-cp .env.example .env        # set strong POSTGRES_PASSWORD, JWT_SECRET, seed admin
+cp .env.example .env        # set POSTGRES_PASSWORD, JWT_SECRET, ENCRYPTION_KEY, seed admin
 docker compose up -d --build
 docker compose exec api npx prisma db seed   # first boot only: creates superadmin
 ```
@@ -27,6 +48,11 @@ docker compose exec api npx prisma db seed   # first boot only: creates superadm
 Open `http://<host>/` and sign in with the seeded admin credentials
 (`SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`). Change the password immediately
 via Team → your user.
+
+Set `APP_TIMEZONE` to the zone the business actually runs in. It pins both the
+container clock and the zone the code reasons in; leaving the container on UTC
+while working three hours ahead of it files late-evening work against the wrong
+day.
 
 ## Local development
 
@@ -38,11 +64,36 @@ npm run dev:api     # http://localhost:4000
 npm run dev:web     # http://localhost:5173 (proxies /api)
 ```
 
+## Switching on the AI features
+
+Entirely optional. Without a key they are absent from the UI and every form
+works by hand.
+
+```bash
+echo "GEMINI_API_KEY=AIza..." >> .env
+docker compose up -d api
+```
+
+Get the key from [aistudio.google.com](https://aistudio.google.com) — it starts
+with `AIza`. A Google OAuth access token (`AQ.…`) is a different credential and
+will not work.
+
+One key powers all three features, which therefore share one daily allowance.
+The assistant is much the hungriest of them, so it yields: it stops at a
+reserve kept for receipts and reports, and says so rather than failing
+silently. Size the reserve under **Settings → Assistant**, where today's usage
+is shown beside it.
+
+Nothing the model produces is trusted. Extracted receipt figures are checked
+against arithmetic it cannot influence, the diary's counts come from the
+database rather than the model, and the assistant answers only from a fixed set
+of lookups that call the same code the screens call — so an answer cannot
+disagree with the page it came from.
+
 ## Attendance devices
 
 Two ways a fingerprint terminal gets attendance into the system, depending on
-what it speaks — register either under **Settings → Fingerprint attendance
-devices**.
+what it speaks — register either under **Settings → Attendance**.
 
 **ZKTeco / ADMS push terminals.** Registering one issues a one-time API key.
 Point the terminal's server address at this app; it pushes to `/iclock`
@@ -67,5 +118,6 @@ match punches against.
 
 ```bash
 npm run typecheck   # strict TS across both apps
+npm run test        # node:test across both apps
 npm run build
 ```

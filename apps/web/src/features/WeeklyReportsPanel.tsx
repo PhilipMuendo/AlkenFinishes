@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarRange, Plus } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { WeeklyReport } from '@/lib/types';
-import { fmtDate, thumbUrl } from '@/lib/format';
+import { fmtDate, isoDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -16,7 +16,7 @@ function thisWeekEnding() {
   const d = new Date();
   const day = d.getDay(); // 0 = Sunday
   d.setDate(d.getDate() + (day === 0 ? 0 : 7 - day));
-  return d.toISOString().slice(0, 10);
+  return isoDate(d);
 }
 
 const FIELDS: { key: keyof WeeklyReport; label: string }[] = [

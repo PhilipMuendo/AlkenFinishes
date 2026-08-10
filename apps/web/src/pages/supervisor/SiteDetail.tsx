@@ -95,7 +95,10 @@ export function SiteDetailPage() {
     const next = new URLSearchParams(params);
     if (id) next.set('view', id);
     else next.delete('view');
-    setParams(next, { replace: true });
+    // A push, not a replace: opening a panel is a place you can come back
+    // from, so the phone's back button closes it instead of leaving the site
+    // entirely. That is the gesture a supervisor reaches for one-handed.
+    setParams(next);
   };
 
   const { data: project } = useQuery({

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Lock, Plus, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { PayrollPreview, PayrollRunDetail, PayrollRunSummary, Project } from '@/lib/types';
-import { fmtDate, fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney, isoDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -24,15 +24,14 @@ import { toast } from '@/components/ui/toast';
 
 const monthStart = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), 1);
 const monthEnd = (d = new Date()) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
-const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export function PayrollPage() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  const [periodFrom, setPeriodFrom] = useState(iso(monthStart()));
-  const [periodTo, setPeriodTo] = useState(iso(monthEnd()));
+  const [periodFrom, setPeriodFrom] = useState(isoDate(monthStart()));
+  const [periodTo, setPeriodTo] = useState(isoDate(monthEnd()));
   const [projectId, setProjectId] = useState('');
   const [notes, setNotes] = useState('');
 

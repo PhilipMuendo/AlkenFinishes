@@ -38,7 +38,11 @@ export function SuppliersPage() {
     queryFn: () => api<PayablesReport>('/suppliers/payables'),
   });
   const { data: suppliers, isLoading } = useQuery({
-    queryKey: ['suppliers'],
+    // Its own key. This list includes retired suppliers; the pickers elsewhere
+    // fetch active-only from `/suppliers`. Sharing one key meant whichever
+    // screen fetched last won, and the retired rows — the only ones with a
+    // Reactivate button — vanished from this page at random.
+    queryKey: ['suppliers', 'all'],
     queryFn: () => api<Supplier[]>('/suppliers?includeInactive=true'),
   });
 

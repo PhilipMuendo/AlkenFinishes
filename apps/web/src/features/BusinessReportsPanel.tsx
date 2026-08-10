@@ -12,7 +12,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import { todayISO } from '@/lib/format';
+import { isoDate, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
@@ -32,7 +32,7 @@ const REPORTS = [
 function monthAgo(): string {
   const d = new Date();
   d.setMonth(d.getMonth() - 1);
-  return d.toISOString().slice(0, 10);
+  return isoDate(d);
 }
 
 /**

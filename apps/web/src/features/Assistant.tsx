@@ -133,7 +133,7 @@ export function Assistant({ office }: { office: boolean }) {
           <div
             role="dialog"
             aria-label="Assistant"
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] animate-fade-in flex-col rounded-t-2xl border border-hairline bg-surface shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-h-[min(36rem,80vh)] sm:w-[26rem] sm:rounded-2xl"
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] animate-fade-in flex-col rounded-t-2xl border border-hairline bg-surface shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-h-[min(36rem,80dvh)] sm:w-[26rem] sm:rounded-2xl"
           >
             <div className="flex shrink-0 items-center justify-between border-b border-hairline px-4 py-3">
               <div className="flex items-center gap-2">

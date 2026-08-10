@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Plus } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { SafetyIncident, SafetyIncidentSeverity } from '@/lib/types';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, nowLocalDateTime } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,12 +22,6 @@ const SEVERITY_TONE: Record<SafetyIncidentSeverity, 'slate' | 'yellow' | 'red'> 
   MINOR: 'yellow',
   SERIOUS: 'red',
 };
-
-function nowLocalISO(): string {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 16);
-}
 
 export function SafetyPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
@@ -104,7 +98,7 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
           className="space-y-3"
         >
           <Field label="When">
-            <Input name="occurredAt" type="datetime-local" defaultValue={nowLocalISO()} required />
+            <Input name="occurredAt" type="datetime-local" defaultValue={nowLocalDateTime()} required />
           </Field>
           <Field label="Severity">
             <Select name="severity" defaultValue="NEAR_MISS">

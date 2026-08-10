@@ -222,7 +222,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         role="dialog"
         aria-modal="true"
         aria-label="Search"
-        className="relative flex max-h-[70vh] w-full max-w-xl animate-fade-in flex-col overflow-hidden rounded-2xl border border-hairline bg-surface shadow-lg"
+        className="relative flex max-h-[70dvh] w-full max-w-xl animate-fade-in flex-col overflow-hidden rounded-2xl border border-hairline bg-surface shadow-lg"
       >
         <div className="flex items-center gap-2.5 border-b border-hairline px-4">
           <Search size={17} className="shrink-0 text-fg-subtle" />
@@ -289,10 +289,14 @@ export function useCommandPalette() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        setOpen((v) => !v);
-      }
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey)) return;
+      // A native <dialog> renders in the top layer, above any z-index. Opening
+      // the palette behind an open form would look like the shortcut is broken
+      // and would leave a focus trap the user cannot see, so it stays shut
+      // until the dialog is dealt with.
+      if (document.querySelector('dialog[open]')) return;
+      e.preventDefault();
+      setOpen((v) => !v);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

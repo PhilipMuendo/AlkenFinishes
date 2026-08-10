@@ -8,7 +8,11 @@ import { audit } from '../middleware/audit';
 import { signFileUrl } from '../middleware/upload';
 import { getCompanyProfile } from '../services/invoicing';
 import { projectFinancials } from '../services/finance';
-import { projectReceivables } from '../services/invoicing';
+import {
+  projectReceivables,
+  paymentSettledCents,
+  LIVE_INVOICE_STATUSES,
+} from '../services/invoicing';
 import { printDate as fmtDate } from '../services/pdf';
 import { renderReportPdf, type ReportSection, type SummaryLine } from '../services/documents/reportPdf';
 
@@ -250,7 +254,10 @@ async function buildReport(
     case 'client-statement': {
       const [invoices, payments] = await Promise.all([
         prisma.invoice.findMany({
-          where: { projectId, status: { not: 'DRAFT' } },
+          // LIVE only. `not: 'DRAFT'` also let VOID invoices through, and a
+          // voided invoice billed the client nothing — carrying it as a debit
+          // overstated the balance on a document that goes to them.
+          where: { projectId, status: { in: LIVE_INVOICE_STATUSES } },
           orderBy: { issueDate: 'asc' },
         }),
         prisma.payment.findMany({
@@ -266,12 +273,23 @@ async function buildReport(
           debit: Number(i.netPayable),
           credit: 0,
         })),
-        ...payments.map((p) => ({
-          date: p.paymentDate,
-          desc: p.receiptNo ? `Receipt ${p.receiptNo}` : `Payment (${p.method})`,
-          debit: 0,
-          credit: Number(p.amount),
-        })),
+        ...payments.map((p) => {
+          // Tax the client withheld settles the invoice exactly as cash does —
+          // they paid it to KRA on our behalf. Crediting only the cash chased
+          // the client for money they had already surrendered, which is the
+          // one thing a statement must never do.
+          const withheld = Number(p.whtAmount) + Number(p.whtVatAmount);
+          const label = p.receiptNo ? `Receipt ${p.receiptNo}` : `Payment (${p.method})`;
+          return {
+            date: p.paymentDate,
+            desc:
+              withheld > 0
+                ? `${label} (incl. KES ${withheld.toLocaleString()} withheld for KRA)`
+                : label,
+            debit: 0,
+            credit: paymentSettledCents(p) / 100,
+          };
+        }),
       ].sort((a, b) => a.date.getTime() - b.date.getTime());
       let running = 0;
       const rows = lines.map((l) => {

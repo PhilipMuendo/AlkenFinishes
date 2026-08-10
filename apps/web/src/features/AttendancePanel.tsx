@@ -416,7 +416,7 @@ function GeofenceCard({ project }: { project: Project }) {
         >
           <MapPin size={14} /> Use my current location
         </Button>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Latitude">
             <Input
               name="geofenceLat"

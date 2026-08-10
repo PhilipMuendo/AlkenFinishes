@@ -2,7 +2,7 @@
   "name": "alkenfinishes",
   "private": true,
   "version": "1.0.0",
-  "description": "AlkenFinishes — Construction Finishes Management System",
+  "description": "AlkenFinishes \u2014 Construction Finishes Management System",
   "workspaces": [
     "apps/*"
   ],
@@ -11,6 +11,7 @@
     "dev:web": "npm run dev -w @alken/web",
     "build": "npm run build -w @alken/api && npm run build -w @alken/web",
     "typecheck": "npm run typecheck -w @alken/api && npm run typecheck -w @alken/web",
+    "test": "npm run test -w @alken/api && npm run test -w @alken/web",
     "db:migrate": "npm run db:migrate -w @alken/api",
     "db:seed": "npm run db:seed -w @alken/api",
     "deploy": "git pull && docker compose build && docker compose up -d --force-recreate && docker image prune -f",

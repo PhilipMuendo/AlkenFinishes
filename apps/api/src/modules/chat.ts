@@ -22,7 +22,9 @@ const router = Router();
 router.use(requireAuth);
 
 const askSchema = z.object({
-  question: z.string().min(2, 'Ask a question').max(500).trim(),
+  // Trim first: `.min(2)` runs before `.trim()` in schema order, so a string of
+  // spaces would otherwise pass the length check and reach the model empty.
+  question: z.string().trim().min(2, 'Ask a question').max(500),
   /** The site the user is looking at, so "this site" resolves. */
   projectId: z.string().optional(),
 });

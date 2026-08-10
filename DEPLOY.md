@@ -69,6 +69,39 @@ The app is a PWA and the browser caches it. After a deploy it self-updates
 within a load or two; to force it immediately, hard-refresh (**Ctrl+Shift+R**)
 or open the site in a private window.
 
+### Changing configuration
+
+Everything is configured through `.env` (see `.env.example`). It is gitignored
+— keep the real values off the repo and out of chat logs.
+
+Changing a variable needs the container recreated, not just restarted:
+
+```bash
+docker compose up -d api      # picks up the new environment
+```
+
+`npm run restart` will **not** pick up `.env` changes.
+
+Two worth knowing about:
+
+- **`APP_TIMEZONE`** sets both the container clock and the zone the code
+  reasons in. Leave it at `Africa/Nairobi` unless the business moves. Getting
+  it wrong files late-evening work against the wrong day.
+- **`GEMINI_API_KEY`** switches on the three AI features. Without it they are
+  absent and every form works by hand. It is an AI Studio key beginning
+  `AIza`; an OAuth token (`AQ.…`) is a different credential and will not work.
+
+### Database migrations
+
+The `api` container runs `prisma migrate deploy` on every boot, so a deploy
+that includes a new migration applies it automatically. Nothing to do by hand.
+
+Back up before a deploy that changes the schema:
+
+```bash
+docker compose exec db pg_dump -U alken alkenfinishes > backup-$(date +%F).sql
+```
+
 ---
 
 ## Going further — push to deploy (no local Docker at all)

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Invoice, InvoiceType } from '@/lib/types';
-import { fmtMoney, todayISO } from '@/lib/format';
+import { addDays, fmtMoney, todayISO } from '@/lib/format';
 import { previewInvoiceTotals } from '@/lib/invoiceMath';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -35,12 +35,6 @@ export interface InvoicePayload {
     unitPrice: number;
     taxable: boolean;
   }[];
-}
-
-function addDays(iso: string, days: number): string {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 /**

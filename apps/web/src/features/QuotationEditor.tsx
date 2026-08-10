@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Client, Lead, Quotation } from '@/lib/types';
-import { fmtMoney, todayISO } from '@/lib/format';
+import { addDays, fmtMoney, todayISO } from '@/lib/format';
 import { previewInvoiceTotals } from '@/lib/invoiceMath';
 import { Button } from '@/components/ui/button';
 import { Combobox } from '@/components/ui/combobox';
@@ -23,12 +23,6 @@ export interface QuotationPayload {
   termsText?: string;
   notes?: string;
   lines: ReturnType<typeof linesPayload>;
-}
-
-function addDays(iso: string, days: number): string {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
 }
 
 /**

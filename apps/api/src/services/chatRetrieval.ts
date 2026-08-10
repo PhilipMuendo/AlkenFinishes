@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
-import { fromCents, kes, sumCents, toCents } from './money';
+import { kes, sumCents, toCents } from './money';
 import { companyReceivables, projectReceivables } from './invoicing';
 import {
   payablesSummary,
@@ -99,6 +99,8 @@ async function loadLedger(where: Prisma.ExpenseWhereInput = {}) {
   return { costs, paymentsByCost };
 }
 
+export class RetrievalDenied extends Error {}
+
 export const LOOKUPS: Lookup[] = [
   {
     name: 'company_overview',
@@ -184,6 +186,9 @@ export const LOOKUPS: Lookup[] = [
     args: ['projectId'],
     run: async ({ args }) => {
       const projectId = args.projectId;
+      // Office scope skips the site check in runLookup, so guard here rather
+      // than letting an undefined id reach Prisma as an opaque failure.
+      if (!projectId) throw new RetrievalDenied('Which site do you mean?');
       const project = await prisma.project.findUniqueOrThrow({
         where: { id: projectId },
         select: { name: true, contractValue: true },
@@ -419,8 +424,6 @@ export async function visibleProjects(user: ChatUser) {
   });
 }
 
-export class RetrievalDenied extends Error {}
-
 /**
  * Run one lookup on behalf of a user.
  *
@@ -462,5 +465,3 @@ export function catalogueFor(user: ChatUser): string {
     })
     .join('\n');
 }
-
-export { fromCents };
