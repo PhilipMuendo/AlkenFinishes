@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowUp, ExternalLink, MessageSquare, Sparkles, X } from 'lucide-react';
+import { ArrowUp, ExternalLink, MessageSquare, RotateCcw, Sparkles, X } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { ChatAnswer, ChatStatus } from '@/lib/types';
 import { Notice } from '@/components/ui/notice';
@@ -20,14 +20,16 @@ import { Notice } from '@/components/ui/notice';
  */
 
 const SUGGESTIONS_OFFICE = [
+  'Which sites are active?',
   'Who do we owe the most money to?',
-  'Which invoices are overdue?',
-  'What is our VAT position this month?',
+  'How many workers do we have?',
+  'What needs my attention?',
 ];
 const SUGGESTIONS_SITE = [
   'What happened on site today?',
-  'How is this site going?',
   'What defects are still open?',
+  'Who has been on site this week?',
+  'What materials are we waiting on?',
 ];
 
 interface Turn {
@@ -38,12 +40,52 @@ interface Turn {
   spent?: boolean;
 }
 
+/**
+ * How far the on-screen keyboard has eaten into the window.
+ *
+ * A panel pinned to `bottom-0` sits underneath the keyboard on Android, where
+ * the layout viewport deliberately does not shrink — so the field being typed
+ * into is the one thing hidden. `dvh` does not help: it tracks browser chrome,
+ * not the keyboard. The visual viewport is the only thing that actually knows,
+ * and on desktop it stays 0 and costs nothing.
+ */
+function useKeyboardInset(active: boolean): number {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!active || !vv) return;
+    const read = () => {
+      // How much of the window the viewport no longer covers, from the bottom.
+      const hidden = window.innerHeight - vv.height - vv.offsetTop;
+      // Small values are browser chrome, not a keyboard. Ignore the noise.
+      setInset(hidden > 120 ? hidden : 0);
+    };
+    read();
+    vv.addEventListener('resize', read);
+    vv.addEventListener('scroll', read);
+    return () => {
+      vv.removeEventListener('resize', read);
+      vv.removeEventListener('scroll', read);
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) setInset(0);
+  }, [active]);
+
+  return inset;
+}
+
 export function Assistant({ office }: { office: boolean }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const [showFacts, setShowFacts] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const keyboard = useKeyboardInset(open);
 
   // The site in view, so "this site" and "today" resolve without being typed.
   // Read from the path rather than useParams: this is mounted in the layout,
@@ -60,7 +102,17 @@ export function Assistant({ office }: { office: boolean }) {
   const ask = useMutation({
     mutationFn: (question: string) =>
       api<ChatAnswer>('/chat/ask', {
-        body: { question, ...(projectId ? { projectId } : {}) },
+        body: {
+          question,
+          ...(projectId ? { projectId } : {}),
+          // What has already been asked and answered, so "how is it going?"
+          // means something. Only exchanges that produced an answer: a failed
+          // turn tells the planner nothing and would only crowd the prompt.
+          history: turns
+            .filter((t) => t.answer)
+            .slice(-4)
+            .map((t) => ({ question: t.question, answer: t.answer!.answer })),
+        },
       }),
     onSuccess: (answer) => {
       setTurns((t) => t.map((turn, i) => (i === t.length - 1 ? { ...turn, answer } : turn)));
@@ -87,7 +139,29 @@ export function Assistant({ office }: { office: boolean }) {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [turns, ask.isPending]);
+  }, [turns, ask.isPending, keyboard]);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    // Send focus back where it came from, or a keyboard user is dropped at the
+    // top of the page having lost their place.
+    launcherRef.current?.focus();
+  }, []);
+
+  // Escape closes it. The native <dialog> gives this away free, but this panel
+  // cannot be one: a modal dialog is the wrong shape for something meant to sit
+  // beside the page you are asking about.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, close]);
 
   // No key configured: the assistant simply does not exist.
   if (!status?.available) return null;
@@ -102,12 +176,21 @@ export function Assistant({ office }: { office: boolean }) {
     ask.mutate(text);
   };
 
+  /** Ask the same question again, replacing the turn that failed. */
+  const retry = (index: number) => {
+    const turn = turns[index];
+    if (!turn || ask.isPending || outOfAllowance) return;
+    setTurns((t) => t.map((x, i) => (i === index ? { question: x.question } : x)));
+    ask.mutate(turn.question);
+  };
+
   const suggestions = projectId ? SUGGESTIONS_SITE : office ? SUGGESTIONS_OFFICE : SUGGESTIONS_SITE;
 
   return (
     <>
       {!open && (
         <button
+          ref={launcherRef}
           onClick={() => setOpen(true)}
           aria-label="Ask about your projects"
           className={`fixed right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand-600 px-4 text-sm font-medium text-white shadow-lg transition-transform hover:bg-brand-700 active:scale-95 ${
@@ -125,31 +208,58 @@ export function Assistant({ office }: { office: boolean }) {
 
       {open && (
         <>
+          {/* Mobile only, where the panel fills the screen and genuinely is
+              modal. On a desktop it sits beside the page being asked about,
+              which stays usable — so no backdrop, and no aria-modal claiming
+              otherwise to a screen reader. */}
           <button
             aria-label="Close assistant"
             className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-[2px] sm:hidden"
-            onClick={() => setOpen(false)}
+            onClick={close}
           />
           <div
             role="dialog"
             aria-label="Assistant"
+            // The keyboard inset lifts the panel clear of the on-screen
+            // keyboard; it is 0 on desktop and whenever the keyboard is down.
+            style={keyboard ? { bottom: keyboard } : undefined}
             className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] animate-fade-in flex-col rounded-t-2xl border border-hairline bg-surface shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-h-[min(36rem,80dvh)] sm:w-[26rem] sm:rounded-2xl"
           >
             <div className="flex shrink-0 items-center justify-between border-b border-hairline px-4 py-3">
-              <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-brand-600" />
-                <h2 className="text-sm font-semibold text-fg">Ask about your projects</h2>
+              <div className="flex min-w-0 items-center gap-2">
+                <Sparkles size={16} className="shrink-0 text-brand-600" />
+                <h2 className="truncate text-sm font-semibold text-fg">Ask about your projects</h2>
               </div>
-              <button
-                onClick={() => setOpen(false)}
-                aria-label="Close"
-                className="-mr-1 rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex shrink-0 items-center">
+                {turns.length > 0 && (
+                  <button
+                    onClick={() => {
+                      setTurns([]);
+                      setShowFacts(null);
+                      inputRef.current?.focus();
+                    }}
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  onClick={close}
+                  aria-label="Close"
+                  className="-mr-1 rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+            {/* Answers arrive after a pause and replace nothing on screen, so a
+                screen reader is told about them rather than left waiting. */}
+            <div
+              aria-live="polite"
+              aria-atomic="false"
+              className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4"
+            >
               {turns.length === 0 && (
                 <div className="space-y-3">
                   <p className="text-sm text-fg-muted">
@@ -162,7 +272,7 @@ export function Assistant({ office }: { office: boolean }) {
                         key={s}
                         onClick={() => submit(s)}
                         disabled={outOfAllowance}
-                        className="block w-full rounded-lg border border-hairline px-3 py-2 text-left text-sm text-fg-muted transition-colors hover:border-hairline-strong hover:text-fg disabled:opacity-50"
+                        className="block min-h-[2.75rem] w-full rounded-lg border border-hairline px-3 py-2 text-left text-sm text-fg-muted transition-colors hover:border-hairline-strong hover:text-fg disabled:opacity-50"
                       >
                         {s}
                       </button>
@@ -173,13 +283,15 @@ export function Assistant({ office }: { office: boolean }) {
 
               {turns.map((turn, i) => (
                 <div key={i} className="space-y-2">
-                  <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
+                  <p className="ml-auto w-fit max-w-[85%] break-words rounded-2xl rounded-br-sm bg-brand-600 px-3 py-2 text-sm text-white">
                     {turn.question}
                   </p>
 
                   {turn.answer && (
                     <div className="w-fit max-w-full rounded-2xl rounded-bl-sm bg-surface-sunken px-3 py-2">
-                      <p className="whitespace-pre-wrap text-sm text-fg">{turn.answer.answer}</p>
+                      <p className="whitespace-pre-wrap break-words text-sm text-fg">
+                        {turn.answer.answer}
+                      </p>
 
                       {turn.answer.sources.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
@@ -215,9 +327,24 @@ export function Assistant({ office }: { office: boolean }) {
                   )}
 
                   {turn.error && (
-                    <Notice tone={turn.spent ? 'warn' : 'danger'} className="text-xs">
-                      {turn.error}
-                    </Notice>
+                    <div className="space-y-1.5">
+                      <Notice tone={turn.spent ? 'warn' : 'danger'} className="text-xs">
+                        {turn.error}
+                      </Notice>
+                      {/* A rate limit or a dropped connection clears on its
+                          own; retyping the question to find out is busywork.
+                          Not offered when the allowance is spent, because
+                          then it genuinely cannot succeed. */}
+                      {!turn.spent && i === turns.length - 1 && (
+                        <button
+                          onClick={() => retry(i)}
+                          disabled={ask.isPending}
+                          className="inline-flex min-h-[2rem] items-center gap-1.5 rounded-lg border border-hairline px-2.5 text-xs font-medium text-fg-muted transition-colors hover:border-hairline-strong hover:text-fg disabled:opacity-50"
+                        >
+                          <RotateCcw size={13} /> Try again
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -238,17 +365,27 @@ export function Assistant({ office }: { office: boolean }) {
               className="flex shrink-0 items-end gap-2 border-t border-hairline p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pb-3"
             >
               <input
+                ref={inputRef}
+                // Opening the panel is unambiguously an intent to type. Held
+                // back on touch, where focusing throws the keyboard up over
+                // the suggestions before they have been read.
+                autoFocus={typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 disabled={outOfAllowance}
+                enterKeyHint="send"
+                autoComplete="off"
+                autoCorrect="off"
                 placeholder={outOfAllowance ? 'Not available until tomorrow' : 'Ask a question…'}
-                className="min-w-0 flex-1 rounded-lg border border-hairline-strong bg-surface px-3 py-2 text-sm text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-brand-500 disabled:bg-surface-muted"
+                // 16px on a phone or iOS zooms the page in on focus and stays
+                // there. See components/ui/input.tsx.
+                className="min-h-[2.75rem] min-w-0 flex-1 rounded-lg border border-hairline-strong bg-surface px-3 py-2 text-base text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-brand-500 disabled:bg-surface-muted sm:min-h-0 sm:text-sm"
               />
               <button
                 type="submit"
                 aria-label="Ask"
                 disabled={!q.trim() || ask.isPending || outOfAllowance}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:opacity-40 sm:h-9 sm:w-9"
               >
                 <ArrowUp size={17} />
               </button>

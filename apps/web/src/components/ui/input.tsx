@@ -1,12 +1,24 @@
 import { forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 
+/**
+ * 16px on a phone, 14px from `sm` up.
+ *
+ * Not a typographic choice. iOS Safari zooms the page in when a focused field
+ * is smaller than 16px and does not zoom back out when the field is left, so
+ * one tap on a form leaves a supervisor pinched into a magnified layout for
+ * the rest of the page. `text-base` on mobile is the whole fix, and it has to
+ * be on every control that takes a keyboard.
+ */
+const FIELD_TEXT = 'text-base sm:text-sm';
+
 export const Input = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
   ({ className, ...props }, ref) => (
     <input
       ref={ref}
       className={cn(
-        'h-11 w-full rounded-lg border border-hairline-strong bg-surface px-3 text-sm text-fg shadow-xs transition-colors placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:opacity-50',
+        'h-11 w-full rounded-lg border border-hairline-strong bg-surface px-3 text-fg shadow-xs transition-colors placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 disabled:opacity-50',
+        FIELD_TEXT,
         className,
       )}
       {...props}
@@ -22,7 +34,8 @@ export const Textarea = forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      'min-h-[90px] w-full rounded-lg border border-hairline-strong bg-surface p-3 text-sm text-fg shadow-xs transition-colors placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
+      'min-h-[90px] w-full rounded-lg border border-hairline-strong bg-surface p-3 text-fg shadow-xs transition-colors placeholder:text-fg-subtle focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
+      FIELD_TEXT,
       className,
     )}
     {...props}
@@ -35,7 +48,8 @@ export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<H
     <select
       ref={ref}
       className={cn(
-        'h-11 w-full rounded-lg border border-hairline-strong bg-surface px-3 text-sm text-fg shadow-xs transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
+        'h-11 w-full rounded-lg border border-hairline-strong bg-surface px-3 text-fg shadow-xs transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30',
+        FIELD_TEXT,
         className,
       )}
       {...props}

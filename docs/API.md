@@ -222,7 +222,14 @@ which is exactly what the supervisor shell exists to withhold.
 | Method | Path | Role |
 |---|---|---|
 | GET | `/chat/status` | Whether it is configured, and whether it can answer right now |
-| POST | `/chat/ask` | `{question, projectId?}` → `{answer, used, facts, sources}` |
+| POST | `/chat/ask` | `{question, projectId?, history?}` → `{answer, used, facts, sources}` |
+
+`history` is `[{question, answer}]`, oldest first, so a follow-up can say "it"
+and be understood. The client holds it — this endpoint stores nothing, and a
+conversation is the one thing it would otherwise have to write. It reaches the
+**planner only**: it can change which lookup runs, and can never become a
+figure in an answer, which is why accepting it from the client is safe. The
+last four turns are used; the rest are ignored.
 
 Open to supervisors as well as the office, because the boundary is enforced in
 the retrieval layer rather than at the door: a supervisor gets answers about

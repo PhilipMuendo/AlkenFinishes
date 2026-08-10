@@ -43,6 +43,21 @@ export interface ChatAnswer {
   sources: ChatSource[];
 }
 
+/** One earlier exchange, for resolving "it" and "that site" in a follow-up. */
+export interface ChatTurn {
+  question: string;
+  answer: string;
+}
+
+/**
+ * How much of the conversation the planner is shown.
+ *
+ * Enough for a follow-up to resolve, short enough that the prompt does not
+ * grow without bound over a long session — and short enough that a stale
+ * subject from ten questions ago cannot quietly capture a new one.
+ */
+const HISTORY_TURNS = 4;
+
 /** How many lookups one question may trigger. Each is a database read, not a model call. */
 const MAX_LOOKUPS = 4;
 
@@ -57,6 +72,10 @@ Rules:
 - Dates are YYYY-MM-DD, months are YYYY-MM.
 - If nothing in the catalogue can answer the question, return {"lookups":[],"decline":"<short reason>"}.
 - The catalogue reflects what this user is allowed to see. If the question asks for something not in it, decline; do not substitute something else.
+
+Follow-ups:
+- Earlier turns are given only so a follow-up can be resolved. "It", "there", "that site" and "what about X?" mean whatever the previous turn was about — carry the site and the subject forward.
+- A question that names its own subject is not a follow-up. Do not let an earlier site capture it.
 
 Choosing well:
 - A question asking WHICH, WHO, WHAT ARE or HOW MANY needs the lookup that LISTS that kind of thing. The site list below names the sites but carries nothing else about them — never answer from it alone.
@@ -143,6 +162,24 @@ export function parsePlan(text: string): Plan {
   return { lookups, decline };
 }
 
+/**
+ * The conversation so far, as the planner is shown it.
+ *
+ * Only the last few turns: enough for "how is it going?" to resolve, bounded
+ * so a long session cannot grow the prompt without limit, and short enough
+ * that a subject from ten questions ago cannot capture a new one. Empty turns
+ * are dropped rather than sent as blank lines the model has to interpret.
+ */
+export function formatHistory(history: ChatTurn[]): string {
+  const recent = history
+    .filter((t) => t.question.trim() && t.answer.trim())
+    .slice(-HISTORY_TURNS);
+  if (recent.length === 0) return '';
+  return `\nEarlier in this conversation, oldest first:\n${recent
+    .map((t) => `Q: ${t.question.trim()}\nA: ${t.answer.trim()}`)
+    .join('\n')}\n`;
+}
+
 export function parseAnswer(text: string): string {
   const json = firstJsonObject(text);
   if (json) {
@@ -161,6 +198,18 @@ export async function answerQuestion(
   question: string,
   /** The site the user is looking at, if any — used when the question says "this site". */
   contextProjectId?: string,
+  /**
+   * What was asked and answered before this, oldest first.
+   *
+   * Shown to the PLANNER only. A follow-up like "how is it going?" is
+   * unanswerable without it, but the step that states figures still sees
+   * nothing but the facts retrieved for the question in front of it — so
+   * history can change WHICH lookup runs and can never become a number in an
+   * answer. That is also why it is safe to take this from the client: the
+   * planner's output is a lookup name and scalar arguments, both checked
+   * against the catalogue and the user's own permissions.
+   */
+  history: ChatTurn[] = [],
 ): Promise<ChatAnswer> {
   const projects = await visibleProjects(user);
   const allowed = new Set(projects.map((p) => p.id));
@@ -171,6 +220,8 @@ export async function answerQuestion(
   const context = contextProjectId && allowed.has(contextProjectId)
     ? `\nThe user is currently looking at site ${contextProjectId}. "this site", "here" and "today" refer to it.`
     : '';
+
+  const conversation = formatHistory(history);
 
   // --- Step one: which lookups?
   await recordCall('chat');
@@ -183,7 +234,7 @@ ${catalogueFor(user)}
 
 Sites this user may ask about:
 ${siteList}${context}
-
+${conversation}
 Question: ${question}`,
     json: true,
     maxTokens: 600,

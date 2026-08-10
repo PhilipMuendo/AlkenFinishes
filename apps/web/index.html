@@ -3,7 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- viewport-fit=cover puts the safe-area insets in play, which the bottom
+         navigation and the assistant both pad against. interactive-widget
+         makes the keyboard shrink the layout instead of covering it, so a
+         field pinned to the bottom stays visible while it is being typed
+         into. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#14284a" />
     <title>Alken Decor</title>
   </head>

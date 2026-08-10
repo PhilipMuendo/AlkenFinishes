@@ -232,7 +232,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Search sites, contracts, clients, workers…"
-            className="w-full bg-transparent py-3.5 text-sm text-fg outline-none placeholder:text-fg-subtle"
+            className="w-full bg-transparent py-3.5 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm"
           />
           <kbd className="hidden shrink-0 rounded border border-hairline-strong px-1.5 py-0.5 text-[10px] font-medium text-fg-subtle sm:block">
             Esc

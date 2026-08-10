@@ -27,6 +27,24 @@ const askSchema = z.object({
   question: z.string().trim().min(2, 'Ask a question').max(500),
   /** The site the user is looking at, so "this site" resolves. */
   projectId: z.string().optional(),
+  /**
+   * The conversation so far, so a follow-up can say "it" and be understood.
+   *
+   * Held by the client because nothing here is stored — this is a read-only
+   * endpoint and a chat history is the one thing it would otherwise have to
+   * write. Bounded rather than trusted: the planner sees it, and the planner
+   * can only emit a lookup name and scalar arguments that are checked against
+   * the catalogue and this user's own permissions afterwards.
+   */
+  history: z
+    .array(
+      z.object({
+        question: z.string().trim().max(500),
+        answer: z.string().trim().max(2000),
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 
 /** Whether to show the assistant at all, and whether it can answer right now. */
@@ -50,7 +68,7 @@ router.get(
 router.post(
   '/ask',
   asyncHandler(async (req, res) => {
-    const { question, projectId } = askSchema.parse(req.body);
+    const { question, projectId, history } = askSchema.parse(req.body);
 
     if (!aiAvailable()) {
       throw ApiError.badRequest('The assistant is not switched on for this server.');
@@ -72,6 +90,7 @@ router.post(
         { id: req.user!.id, role: req.user!.role },
         question,
         projectId,
+        history,
       );
       // The question is logged; the answer is not. What someone asked is worth
       // knowing if the assistant ever misleads them, and it is also the part

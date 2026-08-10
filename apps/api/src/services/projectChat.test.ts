@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseAnswer, parsePlan } from './projectChat';
+import { formatHistory, parseAnswer, parsePlan } from './projectChat';
 import {
   catalogueFor,
   lookupsFor,
@@ -220,6 +220,45 @@ test('nested objects are not cut short by the first closing brace', () => {
 test('a brace inside a string does not end the object early', () => {
   const p = parsePlan('{"decline":"which site? {unclear}","lookups":[]}');
   assert.equal(p.decline, 'which site? {unclear}');
+});
+
+// ---- Follow-up questions ----
+//
+// History reaches the PLANNER only, so it can change which lookup runs and
+// can never become a figure in an answer. These pin the bound and the shape.
+
+test('no history is no conversation block at all, not an empty heading', () => {
+  assert.equal(formatHistory([]), '');
+  assert.equal(formatHistory([{ question: '  ', answer: '  ' }]), '');
+});
+
+test('a turn that never got an answer is not sent as context', () => {
+  const out = formatHistory([
+    { question: 'Which sites are active?', answer: '' },
+    { question: 'How many workers?', answer: 'One.' },
+  ]);
+  assert.doesNotMatch(out, /Which sites are active/);
+  assert.match(out, /How many workers/);
+});
+
+test('a long conversation is trimmed to the most recent turns', () => {
+  const many = Array.from({ length: 12 }, (_, i) => ({
+    question: `question ${i}`,
+    answer: `answer ${i}`,
+  }));
+  const out = formatHistory(many);
+  // The oldest must be gone or the prompt grows without bound all afternoon.
+  assert.doesNotMatch(out, /question 0\b/);
+  assert.match(out, /question 11/);
+  assert.ok(out.split('Q: ').length - 1 <= 4);
+});
+
+test('the most recent turn is last, so "it" refers to the nearest subject', () => {
+  const out = formatHistory([
+    { question: 'first', answer: 'a' },
+    { question: 'second', answer: 'b' },
+  ]);
+  assert.ok(out.indexOf('first') < out.indexOf('second'));
 });
 
 // ---- The answer ----
