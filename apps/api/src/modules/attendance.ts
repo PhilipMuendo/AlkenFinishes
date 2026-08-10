@@ -7,6 +7,7 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
+import { visibleAttendanceList } from '../services/payVisibility';
 import { deviceSyncLimiter } from '../middleware/rateLimit';
 import { computeCost, recordIssue } from '../services/attendanceIngest';
 import { encrypt } from '../services/crypto';
@@ -182,23 +183,25 @@ router.get(
       .parse(req.query);
     // Default window keeps the payload bounded as history grows.
     const effectiveFrom = from ?? (to ? undefined : new Date(Date.now() - 31 * 86400_000));
-    res.json(
-      await prisma.attendanceRecord.findMany({
-        where: {
-          projectId: req.params.projectId,
-          date: {
-            ...(effectiveFrom && { gte: effectiveFrom }),
-            ...(to && { lte: to }),
-          },
+    const records = await prisma.attendanceRecord.findMany({
+      where: {
+        projectId: req.params.projectId,
+        date: {
+          ...(effectiveFrom && { gte: effectiveFrom }),
+          ...(to && { lte: to }),
         },
-        include: {
-          worker: { select: { id: true, name: true, trade: true, hourlyRate: true } },
-          recordedBy: { select: { id: true, name: true } },
-        },
-        orderBy: [{ date: 'desc' }, { checkIn: 'asc' }],
-        take: 1000,
-      }),
-    );
+      },
+      include: {
+        worker: { select: { id: true, name: true, trade: true, hourlyRate: true } },
+        recordedBy: { select: { id: true, name: true } },
+      },
+      orderBy: [{ date: 'desc' }, { checkIn: 'asc' }],
+      take: 1000,
+    });
+    // A supervisor sees who was on site and for how long, not what it cost.
+    // `labourCost` divided by hours is the pay rate, so stripping the rate and
+    // leaving the cost would be a boundary in name only.
+    res.json(visibleAttendanceList(records, req.user!.role));
   }),
 );
 

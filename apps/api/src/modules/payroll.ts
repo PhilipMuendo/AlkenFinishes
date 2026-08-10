@@ -111,7 +111,7 @@ router.post(
     const config = await getPayrollConfig();
     const [totals, workers] = await Promise.all([
       grossByWorker(periodFrom, periodTo, projectId),
-      prisma.worker.findMany({ select: { id: true, name: true, trade: true } }),
+      prisma.worker.findMany({ select: { id: true, name: true, trade: true, hourlyRate: true } }),
     ]);
     const byId = new Map(workers.map((w) => [w.id, w]));
 
@@ -123,6 +123,11 @@ router.post(
         workerName: worker?.name ?? 'Unknown worker',
         trade: worker?.trade ?? '',
         hoursWorked: Number(t._sum.hoursWorked ?? 0),
+        // Hours on site but no rate set, so this run would pay them nothing.
+        // A supervisor can add a fundi but not price them, so the gap is
+        // ordinary and has to be visible before the run is finalised — this
+        // is somebody's wages, not a rounding difference.
+        rateMissing: Number(worker?.hourlyRate ?? 0) === 0,
         ...slip,
       };
     });

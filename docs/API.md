@@ -194,11 +194,13 @@ schema than the office gets (no status, biometric ID or date of birth).
 `DELETE` is admin-only and permanent, because attendance cascades from a worker
 and that is labour-cost history.
 
-Note that `hourlyRate` **is** in the supervisor's schema: they can see and set
-the rate for fundis on their own sites, on the reasoning that they agree those
-rates on site. That is the one place a supervisor touches a money figure, and
-it is a deliberate choice rather than an oversight — but it is the choice to
-revisit if day rates are meant to be set by the office alone.
+**Pay is the office's.** `hourlyRate` is not in the supervisor's schema and is
+stripped from every worker the API returns to one; `labourCost` is stripped
+from attendance records for the same reason, since cost over hours is the rate.
+A fundi a supervisor adds starts at a rate of zero, and the Workers screen
+shows **Set rate** against them until the office fills it in — their hours
+accrue no cost until it does. The rule is one module, `services/payVisibility.ts`,
+so it cannot hold on one route and not another.
 
 `GET/POST /tools`, `PATCH /tools/:id` (A), `POST /tools/:id/transfer` (A,
 multipart), `GET /tools/:id/transfers` (A). Supervisors see tools currently on

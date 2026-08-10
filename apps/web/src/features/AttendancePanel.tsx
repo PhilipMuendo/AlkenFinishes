@@ -186,7 +186,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
               <Th>In</Th>
               <Th>Out</Th>
               <Th className="text-right">Hours</Th>
-              <Th className="text-right">Labour cost</Th>
+              {isAdmin && <Th className="text-right">Labour cost</Th>}
               <Th>Method</Th>
             </tr>
           </thead>
@@ -223,9 +223,14 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     </span>
                   )}
                 </Td>
-                <Td className="text-right tabular-nums">
-                  {r.labourCost ? fmtMoney(Number(r.labourCost)) : '—'}
-                </Td>
+                {/* Cost divided by hours is the pay rate, which is the
+                    office's business — the server omits it for supervisors, so
+                    this column would be empty rather than merely hidden. */}
+                {isAdmin && (
+                  <Td className="text-right tabular-nums">
+                    {r.labourCost ? fmtMoney(Number(r.labourCost)) : '—'}
+                  </Td>
+                )}
                 <Td>
                   {r.method === 'FINGERPRINT' ? (
                     <Badge tone="green">

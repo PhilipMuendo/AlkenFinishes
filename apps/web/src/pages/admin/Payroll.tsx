@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HardHat, Lock, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, HardHat, Lock, Plus, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { PayrollPreview, PayrollRunDetail, PayrollRunSummary, Project } from '@/lib/types';
 import { fmtDate, fmtMoney, isoDate } from '@/lib/format';
@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { toast } from '@/components/ui/toast';
+import { Notice } from '@/components/ui/notice';
 
 /**
  * Payroll.
@@ -244,6 +245,25 @@ export function PayrollPage() {
                 </p>
               ) : (
                 <>
+                  {/* Somebody worked and would be paid nothing. Say so before
+                      the run is created, not after it is finalised. */}
+                  {preview.data.lines.some((l) => l.rateMissing && l.hoursWorked > 0) && (
+                    <Notice tone="warn" icon={AlertTriangle}>
+                      <span className="font-medium text-fg">
+                        No pay rate set for{' '}
+                        {preview.data.lines
+                          .filter((l) => l.rateMissing && l.hoursWorked > 0)
+                          .map((l) => l.workerName)
+                          .join(', ')}
+                      </span>
+                      <span className="mt-1 block text-fg-muted">
+                        Their hours are recorded but priced at zero, so this run would pay them
+                        nothing. Set the rate under Workers first — a supervisor can add a fundi
+                        but not price them.
+                      </span>
+                    </Notice>
+                  )}
+
                   <PayrollLines lines={preview.data.lines} />
                   <Totals totals={preview.data.totals} />
 

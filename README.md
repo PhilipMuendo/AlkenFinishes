@@ -6,7 +6,8 @@ a contract, a signed contract becomes a site, the site is run and costed, and
 what was built gets claimed for, invoiced, received and taxed.
 
 Two roles: **Superadmin** (the office — everything, including money) and **Site
-Supervisor** (mobile-first, restricted to assigned sites, no company money).
+Supervisor** (mobile-first, restricted to assigned sites, and shown no money at
+all — not company figures, and not what a fundi is paid).
 
 ## Stack
 

@@ -88,8 +88,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
             <div className="min-w-0">
               <p className="truncate font-semibold text-fg">{w.name}</p>
               <p className="truncate text-xs text-fg-muted">
-                {w.trade} · {w.phone || 'No phone'} ·{' '}
-                <span className="nums">KES {Number(w.hourlyRate).toLocaleString()}/hr</span>
+                {w.trade} · {w.phone || 'No phone'}
               </p>
             </div>
             <div className="flex shrink-0 gap-1.5">
@@ -123,7 +122,6 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
               name: fd.get('name'),
               phone: fd.get('phone') || null,
               trade: fd.get('trade'),
-              hourlyRate: Number(fd.get('hourlyRate')),
             });
           }}
           className="space-y-3"
@@ -137,9 +135,12 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
           <Field label="Trade">
             <Input name="trade" required placeholder="Painter, Tiler, Mason…" />
           </Field>
-          <Field label="Agreed hourly rate (KES)">
-            <Input name="hourlyRate" type="number" min="0" max="5000" step="0.01" required />
-          </Field>
+          {/* No pay rate. It is the office's to agree, it feeds labour cost and
+              budget health, and it is set from the Workers screen there. */}
+          <p className="text-xs text-fg-subtle">
+            The office sets this fundi&rsquo;s rate. Attendance recorded here will cost nothing
+            against the budget until they do.
+          </p>
           {create.isError && (
             <p className="text-sm text-danger-fg">
               {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add this fundi'}
@@ -164,7 +165,6 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
                   name: fd.get('name'),
                   phone: fd.get('phone') || null,
                   trade: fd.get('trade'),
-                  hourlyRate: Number(fd.get('hourlyRate')),
                 },
               });
             }}
@@ -178,17 +178,6 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
             </Field>
             <Field label="Trade">
               <Input name="trade" required defaultValue={editing.trade} />
-            </Field>
-            <Field label="Agreed hourly rate (KES)">
-              <Input
-                name="hourlyRate"
-                type="number"
-                min="0"
-                max="5000"
-                step="0.01"
-                required
-                defaultValue={editing.hourlyRate}
-              />
             </Field>
             {update.isError && (
               <p className="text-sm text-danger-fg">

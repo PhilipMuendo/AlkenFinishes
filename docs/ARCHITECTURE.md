@@ -46,6 +46,14 @@ Monorepo (npm workspaces) with two deployable services behind Nginx:
   rather than the route being duplicated: `/expenses/mine` strips the payables
   position and payment history, `command-centre` omits its financial sections,
   and workers use a narrower field schema for supervisors.
+- **Pay rates are the office's**, and the rule covers the derived figure too.
+  `services/payVisibility.ts` strips `hourlyRate` from workers and `labourCost`
+  from attendance records for anyone who is not the office — cost divided by
+  hours is the rate, so removing the input while leaving the cost on screen
+  would look like a boundary and not be one. A fundi added from a site screen
+  starts at zero and is flagged on the Workers screen until the office sets a
+  rate; a supervisor's guess reaching budget numbers would be worse than a
+  visible gap.
 - Attendance devices authenticate with a per-device API key (hashed at rest),
   entirely separate from user auth.
 

@@ -570,7 +570,8 @@ export interface Worker {
   name: string;
   phone: string | null;
   trade: string;
-  hourlyRate: string;
+  /** Office only — the server omits it for supervisors. */
+  hourlyRate?: string;
   status: 'ACTIVE' | 'INACTIVE';
   biometricId: string | null;
   assignments: { id: string; project: { id: string; name: string } }[];
@@ -584,8 +585,9 @@ export interface AttendanceRecord {
   deviceId: string | null;
   method: 'FINGERPRINT' | 'MANUAL_OVERRIDE';
   hoursWorked: string | null;
-  labourCost: string | null;
-  worker: { id: string; name: string; trade: string; hourlyRate: string };
+  /** Office only — the server omits it for supervisors. */
+  labourCost?: string | null;
+  worker: { id: string; name: string; trade: string; hourlyRate?: string };
   recordedBy: { id: string; name: string } | null;
 }
 
@@ -1219,7 +1221,8 @@ export interface PayrollTotals {
 /** POST /payroll/preview */
 export interface PayrollPreview {
   config: PayrollConfig;
-  lines: PayrollLine[];
+  /** Preview lines carry `rateMissing`; stored run lines do not. */
+  lines: (PayrollLine & { rateMissing?: boolean })[];
   totals: PayrollTotals;
 }
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Upload } from 'lucide-react';
+import { Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
@@ -48,6 +48,7 @@ export function WorkersPage() {
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
   const [assigning, setAssigning] = useState<Worker | null>(null);
   const [deleting, setDeleting] = useState<Worker | null>(null);
+  const [editing, setEditing] = useState<Worker | null>(null);
 
   const { data: workers } = useQuery({
     queryKey: ['workers'],
@@ -68,6 +69,19 @@ export function WorkersPage() {
       setOpen(false);
     },
     onError: (e) => toast.error(errText(e, 'The fundi was not added.')),
+  });
+
+  // The office is the only place a rate can be set, so the office needs a way
+  // to change one — a fundi added from a site screen arrives without it.
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api(`/workers/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => {
+      toast.success('Fundi updated.');
+      invalidate();
+      setEditing(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The changes were not saved.')),
   });
 
   const assign = useMutation({
@@ -169,7 +183,22 @@ export function WorkersPage() {
                   <p className="text-xs text-fg-subtle">{w.phone ?? '—'}</p>
                 </Td>
                 <Td>{w.trade}</Td>
-                <Td className="text-right tabular-nums">{fmtMoney(Number(w.hourlyRate))}/hr</Td>
+                {/* A fundi added from a site screen arrives with no rate — the
+                    supervisor cannot set one. Their hours accrue no cost until
+                    this is filled in, so it has to be visible rather than
+                    reading as a plausible zero. */}
+                <Td className="text-right tabular-nums">
+                  {Number(w.hourlyRate) > 0 ? (
+                    `${fmtMoney(Number(w.hourlyRate))}/hr`
+                  ) : (
+                    <button
+                      onClick={() => setEditing(w)}
+                      className="font-medium text-warn-fg hover:underline"
+                    >
+                      Set rate
+                    </button>
+                  )}
+                </Td>
                 <Td>
                   {w.biometricId ? (
                     <Badge tone="green">Enrolled</Badge>
@@ -196,6 +225,13 @@ export function WorkersPage() {
                         Assign to site
                       </Button>
                     )}
+                    <button
+                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                      aria-label={`Edit ${w.name}`}
+                      onClick={() => setEditing(w)}
+                    >
+                      <Pencil size={16} />
+                    </button>
                     <button
                       className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
                       aria-label={`Delete ${w.name}`}
@@ -251,6 +287,68 @@ export function WorkersPage() {
             Add worker
           </Button>
         </form>
+      </Dialog>
+
+      <Dialog
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing ? `Edit ${editing.name}` : ''}
+      >
+        {editing && (
+          <form
+            key={editing.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              update.mutate({
+                id: editing.id,
+                body: {
+                  name: fd.get('name'),
+                  phone: fd.get('phone') || null,
+                  trade: fd.get('trade'),
+                  hourlyRate: Number(fd.get('hourlyRate')),
+                  biometricId: fd.get('biometricId') || null,
+                },
+              });
+            }}
+            className="space-y-3"
+          >
+            <Field label="Full name">
+              <Input name="name" required defaultValue={editing.name} />
+            </Field>
+            <Field label="Phone">
+              <Input name="phone" type="tel" defaultValue={editing.phone ?? ''} />
+            </Field>
+            <Field label="Trade">
+              <Input name="trade" required defaultValue={editing.trade} />
+            </Field>
+            <Field
+              label="Hourly rate (KES)"
+              hint={
+                Number(editing.hourlyRate) > 0
+                  ? undefined
+                  : 'Not set — their hours cost nothing against the budget until it is'
+              }
+            >
+              <Input
+                name="hourlyRate"
+                type="number"
+                min="0"
+                max="5000"
+                step="0.01"
+                required
+                autoFocus
+                defaultValue={Number(editing.hourlyRate) > 0 ? editing.hourlyRate : ''}
+              />
+            </Field>
+            <Field label="Biometric ID (from fingerprint device)">
+              <Input name="biometricId" defaultValue={editing.biometricId ?? ''} />
+            </Field>
+            <Button type="submit" className="w-full" disabled={update.isPending}>
+              Save
+            </Button>
+          </form>
+        )}
       </Dialog>
 
       <Dialog

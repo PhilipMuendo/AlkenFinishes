@@ -6,6 +6,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { projectScope, requireSuperadmin } from '../middleware/rbac';
+import { visibleWorker, visibleWorkers } from '../services/payVisibility';
 import { audit } from '../middleware/audit';
 
 const router = Router();
@@ -35,11 +36,16 @@ const workerSchema = z.object({
 // fundis. Company-wide fields (status, biometric enrollment) stay
 // admin-only — status affects the whole roster, and fingerprint linking is
 // centralized through the Sync Issues flow to avoid conflicting IDs.
+//
+// The pay rate is not here. It is the office's decision, it feeds labour cost
+// and budget health directly, and a rate set from a site screen would reach
+// those numbers without anyone in the office having agreed it. A fundi a
+// supervisor adds starts at zero and the Workers screen flags them until the
+// office sets it — see services/payVisibility.ts.
 const supervisorWorkerSchema = z.object({
   name: z.string().min(1),
   phone: z.string().nullable().optional(),
   trade: z.string().min(1),
-  hourlyRate: hourlyRateField,
 });
 
 const include = {
@@ -87,7 +93,8 @@ router.get(
       Object.keys(projectFilter).length === 0
         ? {}
         : { assignments: { some: { endDate: null, project: projectFilter } } };
-    res.json(await prisma.worker.findMany({ where, include, orderBy: { name: 'asc' } }));
+    const workers = await prisma.worker.findMany({ where, include, orderBy: { name: 'asc' } });
+    res.json(visibleWorkers(workers, req.user!.role));
   }),
 );
 
@@ -99,7 +106,12 @@ router.post(
   asyncHandler(async (req, res) => {
     const isAdmin = req.user!.role === 'SUPERADMIN';
     const { projectId, ...body } = req.body ?? {};
-    const data = isAdmin ? workerSchema.parse(body) : supervisorWorkerSchema.parse(body);
+    // A supervisor sets no rate, so the fundi starts at zero and the office
+    // is prompted to set it. Both branches carry the field, so what reaches
+    // the database is one shape.
+    const data = isAdmin
+      ? workerSchema.parse(body)
+      : { ...supervisorWorkerSchema.parse(body), hourlyRate: 0 };
 
     if (!isAdmin) {
       if (typeof projectId !== 'string' || !projectId) {
@@ -109,14 +121,16 @@ router.post(
     }
 
     const worker = await prisma.$transaction(async (tx) => {
-      const created = await tx.worker.create({ data });
+      const created = await tx.worker.create({
+        data,
+      });
       if (projectId) {
         await tx.workerAssignment.create({ data: { workerId: created.id, projectId } });
       }
       return tx.worker.findUniqueOrThrow({ where: { id: created.id }, include });
     });
     audit(req, 'worker.create', 'Worker', worker.id, { name: worker.name, projectId });
-    res.status(201).json(worker);
+    res.status(201).json(visibleWorker(worker, req.user!.role));
   }),
 );
 
@@ -132,7 +146,7 @@ router.patch(
       include,
     });
     audit(req, 'worker.update', 'Worker', worker.id);
-    res.json(worker);
+    res.json(visibleWorker(worker, req.user!.role));
   }),
 );
 
