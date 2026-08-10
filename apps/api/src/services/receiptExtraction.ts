@@ -1,4 +1,5 @@
 import { kes, toCents } from './money';
+import { AiError, aiAvailable, aiProvider, generate } from './ai';
 
 /**
  * Reading a supplier receipt.
@@ -205,107 +206,19 @@ export function suggestFigures(
 
 // ---- The model call ----
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-
 /**
- * Which service reads the receipts.
- *
- * Pluggable on purpose. Reading a receipt is high volume and low risk — the
- * verification below catches a misread whichever model produced it — so this
- * is exactly the job to run on the cheapest model that does it well, and the
- * cheapest model changes. Swapping providers must not mean a code change, and
- * must not touch a line of the checking that makes the output safe.
+ * Transport, provider selection and quota handling live in services/ai.ts so
+ * every AI feature behaves the same when a free allowance runs out. These
+ * re-exports keep the receipt vocabulary at this boundary.
  */
-export type ReceiptProvider = 'gemini' | 'anthropic';
-
-export function receiptProvider(): ReceiptProvider | null {
-  const explicit = process.env.RECEIPT_PROVIDER?.toLowerCase();
-  if (explicit === 'gemini') return process.env.GEMINI_API_KEY ? 'gemini' : null;
-  if (explicit === 'anthropic') return process.env.ANTHROPIC_API_KEY ? 'anthropic' : null;
-  // No explicit choice: use whichever key is present, cheapest first.
-  if (process.env.GEMINI_API_KEY) return 'gemini';
-  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
-  return null;
-}
-
-/** Absent key means the feature is simply off; the form still works by hand. */
-export function receiptScanningAvailable(): boolean {
-  return receiptProvider() !== null;
-}
-
-/**
- * Why a scan failed, when the caller needs to do more than show the message.
- *
- * `QUOTA_DAILY` is the one that matters on a free key: there is no point
- * offering the button again until tomorrow, and no point the user trying.
- */
-export type ExtractionFailure =
-  | 'NOT_CONFIGURED'
-  | 'RATE_LIMIT'
-  | 'QUOTA_DAILY'
-  | 'AUTH'
-  | 'TOO_LARGE'
-  | 'TIMEOUT'
-  | 'UNREADABLE'
-  | 'UPSTREAM';
-
-export class ExtractionError extends Error {
-  constructor(
-    message: string,
-    readonly reason: ExtractionFailure = 'UPSTREAM',
-    /** Seconds to wait, when the service told us. */
-    readonly retryAfterSeconds?: number,
-  ) {
-    super(message);
-  }
-}
-
-/**
- * Read a Google quota rejection.
- *
- * A free key rejects for two very different reasons and the difference is the
- * whole message: a per-minute burst clears in under a minute, while the daily
- * cap means there is nothing more today. Telling someone to "try again
- * shortly" when their allowance is gone until midnight wastes their afternoon.
- */
-export function readGeminiQuota(body: unknown): {
-  reason: 'RATE_LIMIT' | 'QUOTA_DAILY';
-  retryAfterSeconds?: number;
-} {
-  const details =
-    (body as { error?: { details?: { '@type'?: string; [k: string]: unknown }[] } })?.error
-      ?.details ?? [];
-
-  let retryAfterSeconds: number | undefined;
-  let daily = false;
-
-  for (const d of details) {
-    const type = String(d['@type'] ?? '');
-    if (type.endsWith('RetryInfo')) {
-      const raw = String((d as { retryDelay?: unknown }).retryDelay ?? '');
-      const secs = parseFloat(raw.replace(/s$/, ''));
-      if (Number.isFinite(secs)) retryAfterSeconds = Math.ceil(secs);
-    }
-    if (type.endsWith('QuotaFailure')) {
-      const violations = ((d as { violations?: { quotaId?: string }[] }).violations ?? []) as {
-        quotaId?: string;
-      }[];
-      if (violations.some((v) => /perday/i.test(v.quotaId ?? ''))) daily = true;
-    }
-  }
-
-  // A retry measured in hours is a daily cap however it was labelled.
-  if (retryAfterSeconds != null && retryAfterSeconds > 3600) daily = true;
-
-  return daily ? { reason: 'QUOTA_DAILY' } : { reason: 'RATE_LIMIT', retryAfterSeconds };
-}
-
-const DEFAULT_MODEL: Record<ReceiptProvider, string> = {
-  gemini: 'gemini-2.5-flash',
-  anthropic: 'claude-sonnet-5',
-};
+export {
+  AiError as ExtractionError,
+  readGeminiQuota,
+  type AiFailure as ExtractionFailure,
+  type AiProvider as ReceiptProvider,
+} from './ai';
+export const receiptProvider = aiProvider;
+export const receiptScanningAvailable = aiAvailable;
 
 const SYSTEM_PROMPT = `You read supplier receipts and tax invoices for a Kenyan construction company and return only what is printed on them.
 
@@ -336,160 +249,6 @@ const USER_PROMPT = 'Read this receipt and return the JSON object.';
 export interface ScanOptions {
   model?: string;
   timeoutMs?: number;
-  provider?: ReceiptProvider;
-}
-
-/**
- * Base64 inflates a file by a third, and both APIs cap the request. Refusing
- * here gives the user something they can act on instead of a provider error
- * they cannot read.
- */
-const MAX_INLINE_BYTES = 6 * 1024 * 1024;
-
-async function post(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } catch (e) {
-    const timedOut = (e as Error).name === 'AbortError';
-    throw new ExtractionError(
-      timedOut
-        ? 'Reading the receipt took too long. Enter it by hand.'
-        : 'Could not reach the reading service. Enter it by hand.',
-      timedOut ? 'TIMEOUT' : 'UPSTREAM',
-    );
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Turn an upstream rejection into something the user can act on.
- *
- * The body is read for quota detail but never passed through: it can carry
- * project and account identifiers that are nobody's business on a site phone.
- */
-function failed(status: number, body?: unknown): never {
-  if (status === 401 || status === 403) {
-    throw new ExtractionError(
-      'The receipt-reading key was rejected. Check it in the server configuration.',
-      'AUTH',
-    );
-  }
-  if (status === 429) {
-    const { reason, retryAfterSeconds } = readGeminiQuota(body);
-    if (reason === 'QUOTA_DAILY') {
-      throw new ExtractionError(
-        "You have used up today's free receipt reading. It resets tomorrow — enter this one by hand.",
-        'QUOTA_DAILY',
-      );
-    }
-    throw new ExtractionError(
-      retryAfterSeconds
-        ? `Too many receipts at once. Try again in about ${retryAfterSeconds} second${retryAfterSeconds === 1 ? '' : 's'}, or enter this one by hand.`
-        : 'Too many receipts at once. Wait a moment and try again, or enter this one by hand.',
-      'RATE_LIMIT',
-      retryAfterSeconds,
-    );
-  }
-  throw new ExtractionError(
-    `The receipt could not be read (${status}). Enter it by hand.`,
-    'UPSTREAM',
-  );
-}
-
-async function callGemini(
-  image: Buffer,
-  mediaType: string,
-  model: string,
-  timeoutMs: number,
-): Promise<string> {
-  const key = process.env.GEMINI_API_KEY!;
-  const res = await post(
-    `${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              { inline_data: { mime_type: mediaType, data: image.toString('base64') } },
-              { text: USER_PROMPT },
-            ],
-          },
-        ],
-        generationConfig: {
-          // Ask for JSON directly rather than hoping for it. parseExtraction
-          // still tolerates a fence, because a refusal can arrive as prose.
-          responseMimeType: 'application/json',
-          temperature: 0,
-          maxOutputTokens: 1024,
-        },
-      }),
-    },
-    timeoutMs,
-  );
-  if (!res.ok) failed(res.status, await res.json().catch(() => undefined));
-
-  const body = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
-  return (body.candidates?.[0]?.content?.parts ?? [])
-    .map((part) => part.text ?? '')
-    .join('')
-    .trim();
-}
-
-async function callAnthropic(
-  image: Buffer,
-  mediaType: string,
-  model: string,
-  timeoutMs: number,
-): Promise<string> {
-  const key = process.env.ANTHROPIC_API_KEY!;
-  const isPdf = mediaType === 'application/pdf';
-  const res = await post(
-    ANTHROPIC_URL,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        temperature: 0,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: isPdf ? 'document' : 'image',
-                source: { type: 'base64', media_type: mediaType, data: image.toString('base64') },
-              },
-              { type: 'text', text: USER_PROMPT },
-            ],
-          },
-        ],
-      }),
-    },
-    timeoutMs,
-  );
-  if (!res.ok) failed(res.status, await res.json().catch(() => undefined));
-
-  const body = (await res.json()) as { content?: { type: string; text?: string }[] };
-  return (body.content ?? [])
-    .filter((c) => c.type === 'text')
-    .map((c) => c.text ?? '')
-    .join('')
-    .trim();
 }
 
 /**
@@ -506,22 +265,15 @@ export async function scanReceipt(
   mediaType: string,
   opts: ScanOptions = {},
 ): Promise<ExtractedReceipt> {
-  const provider = opts.provider ?? receiptProvider();
-  if (!provider) throw new ExtractionError('Receipt scanning is not configured', 'NOT_CONFIGURED');
-  if (image.byteLength > MAX_INLINE_BYTES) {
-    throw new ExtractionError(
-      'That file is too large to read. Photograph the receipt instead of attaching a scan.',
-      'TOO_LARGE',
-    );
-  }
-
-  const model = opts.model ?? process.env.RECEIPT_MODEL ?? DEFAULT_MODEL[provider];
-  const timeoutMs = opts.timeoutMs ?? 45_000;
-  const text =
-    provider === 'gemini'
-      ? await callGemini(image, mediaType, model, timeoutMs)
-      : await callAnthropic(image, mediaType, model, timeoutMs);
-
+  const text = await generate({
+    system: SYSTEM_PROMPT,
+    user: USER_PROMPT,
+    attachment: { data: image, mediaType },
+    json: true,
+    noun: 'receipt',
+    model: opts.model,
+    timeoutMs: opts.timeoutMs,
+  });
   return parseExtraction(text);
 }
 
@@ -537,14 +289,14 @@ export function parseExtraction(text: string): ExtractedReceipt {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start === -1 || end <= start) {
-    throw new ExtractionError('The receipt could not be read. Enter it by hand.', 'UNREADABLE');
+    throw new AiError('The receipt could not be read. Enter it by hand.', 'UNREADABLE');
   }
 
   let raw: Record<string, unknown>;
   try {
     raw = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
   } catch {
-    throw new ExtractionError('The receipt could not be read. Enter it by hand.', 'UNREADABLE');
+    throw new AiError('The receipt could not be read. Enter it by hand.', 'UNREADABLE');
   }
 
   const str = (v: unknown): string | null => {

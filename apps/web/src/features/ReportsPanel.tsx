@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Plus } from 'lucide-react';
+import { ClipboardList, Plus, Sparkles } from 'lucide-react';
 import { api, ApiRequestError } from '@/lib/api';
-import type { DailyReport } from '@/lib/types';
+import type { DailyReport, DailyReportDraft } from '@/lib/types';
 import { fmtDate, thumbUrl, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -32,6 +32,22 @@ const DIARY_FIELDS: [DiaryTextField, string][] = [
 export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canSubmit: boolean }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  // A draft written from the day's own records. It only ever prefills the
+  // fields below; what gets filed is whatever is showing when Submit is
+  // pressed.
+  const [draft, setDraft] = useState<DailyReportDraft | null>(null);
+  const [draftDate, setDraftDate] = useState(todayISO());
+  const [showFacts, setShowFacts] = useState(false);
+
+  const writeDraft = useMutation({
+    mutationFn: (date: string) =>
+      api<DailyReportDraft>(`/projects/${projectId}/daily-reports/draft`, { body: { date } }),
+    onSuccess: setDraft,
+  });
+  const draftFailure =
+    writeDraft.error instanceof ApiRequestError
+      ? ((writeDraft.error.details as { reason?: string } | undefined)?.reason ?? null)
+      : null;
 
   const { data: reports } = useQuery({
     queryKey: ['daily-reports', projectId],
@@ -111,9 +127,17 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
         ))}
       </div>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="Daily site report">
+      <Dialog
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setDraft(null);
+          writeDraft.reset();
+        }}
+        title="Daily site report"
+      >
         <form
-          key={String(open)}
+          key={`${String(open)}-${draft ? 'drafted' : 'blank'}`}
           onSubmit={(e) => {
             e.preventDefault();
             submit.mutate(new FormData(e.currentTarget));
@@ -121,19 +145,107 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
           className="space-y-3"
         >
           <Field label="Date">
-            <Input name="date" type="date" defaultValue={todayISO()} required />
+            <Input
+              name="date"
+              type="date"
+              value={draftDate}
+              onChange={(e) => setDraftDate(e.target.value)}
+              required
+            />
           </Field>
+
+          {/* Everything below the date is already known to the system on most
+              days. Offering to write it up is the difference between a diary
+              that gets filled in and one that does not. */}
+          <div className="rounded-lg border border-dashed border-hairline-strong p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-fg">Write it up for me</p>
+                <p className="text-xs text-fg-muted">
+                  From today&rsquo;s attendance, tasks, deliveries and snags. You edit it before it
+                  is filed.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={writeDraft.isPending || draftFailure === 'QUOTA_DAILY'}
+                onClick={() => writeDraft.mutate(draftDate)}
+              >
+                <Sparkles size={15} />
+                {writeDraft.isPending ? 'Writing…' : draft ? 'Rewrite' : 'Draft report'}
+              </Button>
+            </div>
+
+            {writeDraft.isError && (
+              <p
+                className={`mt-2 text-sm ${
+                  draftFailure === 'QUOTA_DAILY'
+                    ? 'text-amber-800 dark:text-amber-500'
+                    : 'text-red-600'
+                }`}
+              >
+                {writeDraft.error instanceof ApiRequestError
+                  ? writeDraft.error.message
+                  : 'Could not write a draft. Fill it in by hand.'}
+              </p>
+            )}
+
+            {draft && (
+              <div className="mt-2 border-t border-hairline pt-2">
+                <p className="text-xs text-fg-muted">
+                  Drafted below — <span className="font-medium text-fg">read it before filing</span>
+                  . It is a record of what you saw, so correct anything that is not right.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowFacts((v) => !v)}
+                  className="mt-1 text-xs font-medium text-brand-700 hover:underline"
+                >
+                  {showFacts ? 'Hide' : 'Show'} what it was based on
+                </button>
+                {showFacts && (
+                  <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-muted p-2 text-xs text-fg-muted">
+                    {draft.facts}
+                  </pre>
+                )}
+              </div>
+            )}
+          </div>
+
           <Field label="Work completed today">
-            <Textarea name="workCompleted" required placeholder="Finished first coat in living room…" />
+            <Textarea
+              name="workCompleted"
+              required
+              placeholder="Finished first coat in living room…"
+              defaultValue={draft?.draft.workCompleted ?? ''}
+            />
           </Field>
-          <Field label="Workers present">
-            <Input name="workersPresent" type="number" min="0" inputMode="numeric" required />
+          <Field label="Workers present" hint={draft ? 'Counted from attendance' : undefined}>
+            <Input
+              name="workersPresent"
+              type="number"
+              min="0"
+              inputMode="numeric"
+              required
+              defaultValue={draft ? String(draft.workersPresent) : ''}
+            />
           </Field>
           <Field label="Materials used (optional)">
-            <Textarea name="materialsUsed" placeholder="10 bags cement, 20L paint" />
+            <Textarea
+              name="materialsUsed"
+              placeholder="10 bags cement, 20L paint"
+              defaultValue={draft?.draft.materialsUsed ?? ''}
+            />
           </Field>
           <Field label="Challenges (optional)">
-            <Textarea name="challenges" placeholder="Rain delayed exterior work" />
+            <Textarea
+              name="challenges"
+              placeholder="Rain delayed exterior work"
+              defaultValue={draft?.draft.challenges ?? ''}
+            />
           </Field>
 
           <details className="rounded-lg border border-hairline p-3">
@@ -157,7 +269,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
                 <Textarea name="delays" rows={2} />
               </Field>
               <Field label="Safety notes">
-                <Textarea name="safetyNotes" rows={2} />
+                <Textarea name="safetyNotes" rows={2} defaultValue={draft?.draft.safetyNotes ?? ''} />
               </Field>
               <Field label="Equipment on site">
                 <Textarea name="equipmentOnSite" rows={2} placeholder="Mixer, scaffolding" />

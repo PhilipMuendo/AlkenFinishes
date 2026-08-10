@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../utils/http';
+import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, signFileUrl, upload, verifyUploads } from '../middleware/upload';
+import { aiAvailable, AiError } from '../services/ai';
+import { draftDailyReport, factsFor, gatherDay } from '../services/dailyReportDraft';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -26,6 +28,57 @@ const reportSchema = z.object({
   safetyNotes: z.string().optional(),
   equipmentOnSite: z.string().optional(),
 });
+
+/**
+ * Draft the diary from what the day already recorded.
+ *
+ * Available to supervisors, unlike the receipt reader: they are the ones who
+ * file these, and the whole point is to save them typing at six in the
+ * evening on a phone.
+ *
+ * Writes nothing. The counts come from the database and the prose from the
+ * model, and both are returned with the facts they were built from so the
+ * supervisor can check the draft rather than trust it. Registered before any
+ * /:id route so "draft" is never read as an id.
+ */
+router.post(
+  '/draft',
+  asyncHandler(async (req, res) => {
+    const { date } = z.object({ date: z.coerce.date() }).parse(req.body);
+    if (!aiAvailable()) {
+      throw ApiError.badRequest('Report drafting is not switched on for this server.');
+    }
+
+    const day = await gatherDay(req.params.projectId, date);
+    if (day.empty) {
+      // Nothing was recorded, so there is nothing to draft from. Saying so
+      // beats inventing a day's work out of an empty database.
+      throw ApiError.badRequest(
+        'Nothing was recorded on site that day — no attendance, tasks or deliveries. Write the report by hand.',
+      );
+    }
+
+    try {
+      const draft = await draftDailyReport(day);
+      audit(req, 'dailyReport.draft', 'DailyReport', 'draft', { date });
+      res.json({
+        draft,
+        // The counts are the database's, never the model's.
+        workersPresent: day.workersPresent,
+        facts: factsFor(day),
+        summary: day,
+      });
+    } catch (e) {
+      if (e instanceof AiError) {
+        throw ApiError.badRequest(e.message, {
+          reason: e.reason,
+          retryAfterSeconds: e.retryAfterSeconds ?? null,
+        });
+      }
+      throw ApiError.badRequest('The draft could not be written. Fill the report in by hand.');
+    }
+  }),
+);
 
 router.get(
   '/',

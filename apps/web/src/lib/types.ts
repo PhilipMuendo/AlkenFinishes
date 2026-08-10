@@ -1244,3 +1244,18 @@ export interface PayrollRunDetail extends Omit<PayrollRunSummary, 'workerCount'>
   /** The rates in force when the run was made, not today's. */
   config: PayrollConfig;
 }
+
+
+/** POST /projects/:id/daily-reports/draft — prose only; counts come from the data. */
+export interface DailyReportDraft {
+  draft: {
+    workCompleted: string;
+    materialsUsed: string | null;
+    challenges: string | null;
+    safetyNotes: string | null;
+  };
+  /** Counted from attendance, never drafted. */
+  workersPresent: number;
+  /** The facts the draft was built from, shown so it can be checked. */
+  facts: string;
+}
