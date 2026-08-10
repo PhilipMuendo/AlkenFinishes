@@ -193,16 +193,82 @@ transport, one shared daily allowance.
   `projectReceivables`, `gatherDay`). The model chooses from a menu and writes
   the sentence; it never sees the schema and cannot compose an aggregate. An
   answer therefore cannot disagree with the page. Each lookup carries a `scope`
-  (`office` / `site`) checked in `runLookup` against the asking user — a chat
-  box is a way around every permission boundary in the app unless retrieval
-  enforces the same ones the routes do. The catalogue a supervisor is shown
-  does not even name the money lookups.
+  (`office` / `site` / `shared`) checked in `runLookup` against the asking user
+  — a chat box is a way around every permission boundary in the app unless
+  retrieval enforces the same ones the routes do. The catalogue a supervisor is
+  shown does not even name the money lookups.
 - **`services/aiUsage.ts`** — all three features share one key and therefore
   one cap. The assistant is much the hungriest (a conversation is a dozen calls
   where a receipt is one), so it yields: it stops at a configurable reserve
   kept for receipts and reports and says why, rather than eating the allowance
   and leaving the receipt reader dead by mid-morning. The counter rolls on the
   provider's own midnight, not the office's.
+
+### Adding a feature means adding a lookup
+
+**If you add a screen, a table or a report, add the lookup that answers
+questions about it in the same change.** The assistant can only answer from
+`LOOKUPS` in `services/chatRetrieval.ts`. It has no fallback, no schema access
+and no ability to improvise: data that is not in the catalogue does not exist
+as far as a user asking a question is concerned, and the failure is silent and
+confusing — the assistant says the information "is not stated", which reads
+like a broken assistant rather than a missing lookup.
+
+This has already happened twice. The catalogue could report *how many* sites
+there were but could not name them, and knew nothing about workers at all,
+while both sat in the database the whole time.
+
+A lookup is a name, a scope, a description and a `run` that returns prose:
+
+```ts
+{
+  name: 'site_defects',
+  scope: 'site',                 // 'office' | 'site' | 'shared'
+  description: 'The snag list for a site: open defects, how serious…',
+  args: ['from', 'to'],          // optional; projectId is implicit for 'site'
+  run: async ({ projectId, user, args, allowedProjectIds }) => ({
+    facts: '…plain sentences the model will quote…',
+    source: { label: 'Kilimani — defects', href: '/admin/projects/x?tab=snags' },
+  }),
+}
+```
+
+The rules that matter, in the order they bite:
+
+1. **Call the service function the screen calls.** Never re-derive a total in a
+   lookup. If the screen uses `projectFinancials`, so does the lookup — that is
+   the whole reason an answer cannot contradict the page. If no such function
+   exists, extract one rather than writing the arithmetic twice.
+2. **Pick the scope honestly.** `office` is superadmin-only and is enforced in
+   `runLookup`. `site` requires a `projectId` and is checked against the sites
+   the user may see. `shared` is checked by nobody — the `run` **must** narrow
+   to `ctx.allowedProjectIds` itself (`withinScope`, `scopedProjectIds`), and
+   must not report anything the office keeps to itself.
+3. **Respect the pay boundary.** Rates and `labourCost` are the office's
+   (`services/payVisibility.ts`). Branch on `isOffice(user.role)` inside the
+   lookup; cost divided by hours is the rate, so the two travel together.
+4. **Write `facts` for a reader, not a parser.** The model quotes them
+   verbatim, so format money through `money()` and dates through `day()`, and
+   say "no defects have been raised" rather than returning an empty string —
+   the model cannot tell an empty result from a failed one.
+5. **Cap long lists with `listed()`.** It says what it left out instead of
+   truncating silently.
+6. **Write the description as the question it answers**, not as the table it
+   reads. The planner matches on it, and it is the only thing standing between
+   a good question and the wrong lookup.
+7. **Add the name to the coverage test** in `projectChat.test.ts`, which exists
+   to catch a subject quietly going missing again.
+
+Two things a lookup must never do: write anything, or accept a filter the model
+composed. The model chooses a name and a handful of scalar arguments —
+`parsePlan` drops everything that is not a string or a number, so a planner
+that tries to pass `{"$gt": …}` gets nothing.
+
+Cost is worth knowing when adding one: each question is **two** model calls
+(plan, then answer) regardless of how many lookups run, since lookups are
+database reads. Adding lookups makes the assistant more useful without making
+it more expensive per question — but every catalogue entry lengthens the
+planner prompt, so keep descriptions to one line.
 
 ## Attendance device integration
 

@@ -230,8 +230,15 @@ their own sites and is refused company money, exactly as on the screens. Writes
 nothing. Every answer returns the `facts` it was written from.
 
 `403`-equivalent refusals come back as `400` with `details.reason`:
-`QUOTA_DAILY` (nothing left today) or `RESERVED_FOR_WORK` (the assistant's
-share is spent; receipts and reports still work).
+`QUOTA_DAILY` (nothing left today), `RESERVED_FOR_WORK` (the assistant's share
+is spent; receipts and reports still work), or `MODEL_UNAVAILABLE` (the pinned
+model has been retired — set `RECEIPT_MODEL` and restart; see the README).
+
+`used` names the lookups that ran. If an answer says something "is not
+stated", the lookup that would have held it is missing from
+`services/chatRetrieval.ts` — adding a feature means adding its lookup in the
+same change. See docs/ARCHITECTURE.md, "Adding a feature means adding a
+lookup".
 
 ## Settings (A)
 `GET/PUT` pairs for `/settings/thresholds`, `/settings/labour-source`,

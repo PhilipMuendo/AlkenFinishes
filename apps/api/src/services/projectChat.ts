@@ -44,7 +44,7 @@ export interface ChatAnswer {
 }
 
 /** How many lookups one question may trigger. Each is a database read, not a model call. */
-const MAX_LOOKUPS = 3;
+const MAX_LOOKUPS = 4;
 
 const PLANNER_SYSTEM = `You route a question about a Kenyan construction company to the data that answers it.
 
@@ -56,7 +56,13 @@ Rules:
 - Pass projectId only from the site list given. Match on the site name in the question. If the question is about a site but names none, and there is exactly one site, use it; otherwise set decline to "which site?".
 - Dates are YYYY-MM-DD, months are YYYY-MM.
 - If nothing in the catalogue can answer the question, return {"lookups":[],"decline":"<short reason>"}.
-- The catalogue reflects what this user is allowed to see. If the question asks for something not in it, decline; do not substitute something else.`;
+- The catalogue reflects what this user is allowed to see. If the question asks for something not in it, decline; do not substitute something else.
+
+Choosing well:
+- A question asking WHICH, WHO, WHAT ARE or HOW MANY needs the lookup that LISTS that kind of thing. The site list below names the sites but carries nothing else about them — never answer from it alone.
+- A question about one site that does not say which, when the user is looking at a site, means that site.
+- When a question spans two subjects ("defects and safety on X"), pick a lookup for each rather than the closest single one.
+- Prefer the narrowest lookup that covers the question. Reach for a company-wide one only when the question is genuinely company-wide.`;
 
 const ANSWER_SYSTEM = `You answer questions about a Kenyan construction company, for the person running it.
 
@@ -64,7 +70,8 @@ You are given FACTS retrieved from the system. Rules:
 - Use ONLY the facts. Never estimate, extrapolate or add a figure that is not there.
 - Every number you state must appear in the facts, in the same form. Do not add figures together to make a new one; if the total is not in the facts, do not give a total.
 - If the facts do not answer the question, say plainly what is missing. Do not fill the gap.
-- Answer in two or three short sentences. Plain English, no preamble, no bullet lists unless you are naming more than three things.
+- Answer in two or three short sentences. Plain English, no preamble.
+- If the question asks WHICH or WHO, name them. A list question gets the list, one short line each, not a count — the names are in the facts, so use them.
 - Money is already formatted as "KES 1,234,000" in the facts. Repeat it exactly as given.
 - Do not describe the lookup process or mention "the facts", "the data" or "the system". Just answer.`;
 
@@ -73,12 +80,47 @@ interface Plan {
   decline: string | null;
 }
 
+/**
+ * The first complete JSON object in a reply.
+ *
+ * Taking everything between the first `{` and the last `}` looks equivalent
+ * and is not: a model that emits an object followed by anything else carrying
+ * a brace — a second object, a fenced explanation — produces a slice that is
+ * two objects long and fails to parse, losing an answer that was sitting right
+ * there in the first one. Braces are matched instead, ignoring those inside
+ * strings, so trailing commentary is simply left behind.
+ */
+export function firstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (inString) {
+      if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') inString = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
 /** The planner's reply is untrusted: unknown shapes are dropped, not coerced. */
 export function parsePlan(text: string): Plan {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start === -1 || end <= start) throw new Error('unparseable plan');
-  const raw = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+  const json = firstJsonObject(text);
+  if (!json) throw new Error('unparseable plan');
+  const raw = JSON.parse(json) as Record<string, unknown>;
 
   const decline = typeof raw.decline === 'string' && raw.decline.trim() ? raw.decline.trim() : null;
   const list = Array.isArray(raw.lookups) ? raw.lookups : [];
@@ -102,11 +144,10 @@ export function parsePlan(text: string): Plan {
 }
 
 export function parseAnswer(text: string): string {
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end > start) {
+  const json = firstJsonObject(text);
+  if (json) {
     try {
-      const raw = JSON.parse(text.slice(start, end + 1)) as { answer?: unknown };
+      const raw = JSON.parse(json) as { answer?: unknown };
       if (typeof raw.answer === 'string' && raw.answer.trim()) return raw.answer.trim();
     } catch {
       // Fall through: a plain-prose reply is fine here.
@@ -145,7 +186,7 @@ ${siteList}${context}
 
 Question: ${question}`,
     json: true,
-    maxTokens: 400,
+    maxTokens: 600,
     noun: 'answer',
   });
 
@@ -206,7 +247,7 @@ Question: ${question}`,
   const answerText = await generate({
     system: ANSWER_SYSTEM,
     user: `Facts:\n${facts}\n\nQuestion: ${question}`,
-    maxTokens: 500,
+    maxTokens: 800,
     noun: 'answer',
   });
 

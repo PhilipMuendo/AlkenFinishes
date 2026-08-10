@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseAnswer, parsePlan } from './projectChat';
-import { catalogueFor, lookupsFor, LOOKUPS } from './chatRetrieval';
+import {
+  catalogueFor,
+  lookupsFor,
+  LOOKUPS,
+  RetrievalDenied,
+  runLookup,
+} from './chatRetrieval';
 
 const office = { id: 'u1', role: 'SUPERADMIN' };
 const supervisor = { id: 'u2', role: 'SUPERVISOR' };
@@ -42,6 +48,107 @@ test('every site lookup asks for a projectId in the catalogue', () => {
   }
 });
 
+// ---- The catalogue covers the platform -----------------------------------
+
+test('lookup names are unique, or LOOKUP_BY_NAME silently drops one', () => {
+  const names = LOOKUPS.map((l) => l.name);
+  assert.equal(new Set(names).size, names.length);
+});
+
+test('every lookup describes the question it answers', () => {
+  for (const l of LOOKUPS) {
+    assert.ok(l.description.length > 30, `${l.name} has a thin description`);
+  }
+});
+
+/**
+ * The assistant could once say how many sites there were but not name them,
+ * and could not answer "how many workers do we have" at all — the data was in
+ * the system, just not reachable. These are the subjects it must be able to
+ * reach; the guard is against one quietly going missing again.
+ */
+test('the catalogue reaches every part of the platform', () => {
+  const names = new Set(LOOKUPS.map((l) => l.name));
+  for (const required of [
+    'sites_list',
+    'workforce',
+    'site_attendance',
+    'site_programme',
+    'site_defects',
+    'site_safety',
+    'site_materials',
+    'site_reports',
+    'site_documents',
+    'site_spend',
+    'site_invoices',
+    'clients',
+    'pipeline',
+    'contracts',
+    'team',
+    'equipment',
+    'upcoming',
+    'company_operations',
+  ]) {
+    assert.ok(names.has(required), `no lookup answers for ${required}`);
+  }
+});
+
+test('a supervisor can ask who is on their sites and which sites those are', () => {
+  const names = lookupsFor(supervisor).map((l) => l.name);
+  assert.ok(names.includes('sites_list'));
+  assert.ok(names.includes('workforce'));
+});
+
+test('a supervisor is not offered the commercial lookups', () => {
+  const names = lookupsFor(supervisor).map((l) => l.name);
+  for (const officeOnly of ['clients', 'pipeline', 'contracts', 'team', 'site_spend', 'site_invoices']) {
+    assert.ok(!names.includes(officeOnly), `${officeOnly} was offered to a supervisor`);
+  }
+});
+
+// ---- Permission is enforced at the lookup, not in the prompt --------------
+//
+// Each of these is refused before `run` is reached, so none of them touch the
+// database. That is the point: a planner talked into asking for something it
+// should not have does not get a query, it gets a refusal.
+
+test('an office lookup asked for by a supervisor is refused', async () => {
+  await assert.rejects(
+    () => runLookup(supervisor, 'who_we_owe', {}, new Set()),
+    RetrievalDenied,
+  );
+});
+
+test('a site lookup on a site the user cannot see is refused', async () => {
+  await assert.rejects(
+    () => runLookup(supervisor, 'site_status', { projectId: 'not-mine' }, new Set(['mine'])),
+    RetrievalDenied,
+  );
+});
+
+test('a site lookup with no site is refused rather than run across all of them', async () => {
+  await assert.rejects(
+    () => runLookup(supervisor, 'site_defects', {}, new Set(['mine'])),
+    RetrievalDenied,
+  );
+});
+
+test('an invented lookup name is refused', async () => {
+  await assert.rejects(
+    () => runLookup(office, 'drop_everything', {}, new Set()),
+    RetrievalDenied,
+  );
+});
+
+test('a projectId smuggled onto an office lookup is still checked', async () => {
+  // site_spend is office-scoped, so the scope test passes — but the site it
+  // names must still be one this user can see.
+  await assert.rejects(
+    () => runLookup(office, 'site_spend', { projectId: 'somewhere-else' }, new Set(['mine'])),
+    RetrievalDenied,
+  );
+});
+
 // ---- The planner's reply is untrusted ----
 
 test('a clean plan parses', () => {
@@ -56,10 +163,10 @@ test('a fenced plan still parses', () => {
   assert.equal(p.lookups[0].args.projectId, 'p1');
 });
 
-test('no more than three lookups run off one question', () => {
+test('a question cannot fan out into an unbounded number of reads', () => {
   const many = Array.from({ length: 9 }, () => ({ name: 'site_status', args: {} }));
   const p = parsePlan(JSON.stringify({ lookups: many }));
-  assert.equal(p.lookups.length, 3);
+  assert.ok(p.lookups.length <= 4, `${p.lookups.length} lookups`);
 });
 
 test('a nameless entry is dropped rather than run', () => {
@@ -89,6 +196,30 @@ test('an empty decline string counts as no decline', () => {
 
 test('a reply with no JSON is an error, not an empty plan that silently answers nothing', () => {
   assert.throws(() => parsePlan('I think you should look at the payables page.'));
+});
+
+// A real failure: the model answered with the plan and then a second object,
+// and taking first-brace-to-last-brace swallowed both and parsed neither, so a
+// perfectly good plan was thrown away.
+test('a plan followed by more output still parses', () => {
+  const p = parsePlan('{"lookups":[{"name":"sites_list","args":{}}],"decline":null}\n{"note":"hope that helps"}');
+  assert.equal(p.lookups.length, 1);
+  assert.equal(p.lookups[0].name, 'sites_list');
+});
+
+test('a plan followed by prose still parses', () => {
+  const p = parsePlan('{"lookups":[{"name":"workforce","args":{}}]}\n\nThis lists the fundis {and their trades}.');
+  assert.equal(p.lookups[0].name, 'workforce');
+});
+
+test('nested objects are not cut short by the first closing brace', () => {
+  const p = parsePlan('{"lookups":[{"name":"site_day","args":{"date":"2026-08-10"}}],"decline":null}');
+  assert.equal(p.lookups[0].args.date, '2026-08-10');
+});
+
+test('a brace inside a string does not end the object early', () => {
+  const p = parsePlan('{"decline":"which site? {unclear}","lookups":[]}');
+  assert.equal(p.decline, 'which site? {unclear}');
 });
 
 // ---- The answer ----
