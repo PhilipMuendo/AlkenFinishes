@@ -10,7 +10,12 @@ RUN cd apps/api && npx prisma generate && npm run build
 
 # ---- runtime ----
 FROM node:22-alpine
-RUN apk add --no-cache openssl
+# tzdata is what makes TZ mean anything. Alpine ships without it, so Node falls
+# back to UTC no matter what TZ is set to — and every server-side day boundary
+# (which day a diary draft gathers, when a bill turns overdue) is then three
+# hours out from the business it is reporting on. Setting TZ without this is
+# a silent no-op, which is the worst kind.
+RUN apk add --no-cache openssl tzdata
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
