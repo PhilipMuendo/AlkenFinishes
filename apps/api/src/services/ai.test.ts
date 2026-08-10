@@ -169,6 +169,33 @@ describe('quota rejections', () => {
     assert.deepEqual(r, { reason: 'RATE_LIMIT', retryAfterSeconds: 21 });
   });
 
+  /**
+   * The exact body a spent free-tier allowance returns, captured live.
+   *
+   * Note the retry delay: Google says "39 seconds" about an allowance that is
+   * gone until midnight. The quotaId is the only thing telling the truth, and
+   * a plausible-looking "a short delay means a burst" rule reading this as
+   * RATE_LIMIT would invite the user to retry in forty seconds all afternoon.
+   */
+  test('a spent day is read from the quota id, not from the retry delay', () => {
+    const r = readGeminiQuota({
+      error: {
+        code: 429,
+        message: 'Quota exceeded for metric: …free_tier_requests, limit: 20',
+        details: [
+          { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '39.4s' },
+          {
+            '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+            violations: [
+              { quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', quotaValue: '20' },
+            ],
+          },
+        ],
+      },
+    });
+    assert.equal(r.reason, 'QUOTA_DAILY');
+  });
+
   test('a daily cap is not worth retrying', () => {
     const r = readGeminiQuota({
       error: {

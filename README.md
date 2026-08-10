@@ -94,6 +94,21 @@ reserve kept for receipts and reports, and says so rather than failing
 silently. Size the reserve under **Settings → Assistant**, where today's usage
 is shown beside it.
 
+### Free-tier allowances are per model, and small
+
+Google's free tier meters each model separately, and the difference is
+enormous — `gemini-3.5-flash` allows **20 requests a day**, which at two model
+calls per question is ten questions for the whole company before the receipt
+reader stops working too. The default is therefore `gemini-3.5-flash-lite`: a
+far larger allowance, it reads a receipt photograph just as well, and it
+answers in under two seconds rather than twenty.
+
+If a feature reports that the allowance is spent much sooner than expected,
+check which model is configured before assuming the cap is the problem. Note
+that Google returns a misleadingly short "retry in 39s" alongside a daily
+rejection; the system reads the quota id instead, so it says *"resets
+tomorrow"* rather than inviting a pointless retry.
+
 Nothing the model produces is trusted. Extracted receipt figures are checked
 against arithmetic it cannot influence, the diary's counts come from the
 database rather than the model, and the assistant answers only from a fixed set

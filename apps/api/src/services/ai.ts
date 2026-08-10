@@ -66,9 +66,18 @@ export function aiAvailable(): boolean {
  * with 404, so it fails at the moment of use rather than at start-up. That is
  * what RECEIPT_MODEL is for — the fix is a line of configuration and a
  * restart, and `failed()` below says so when it happens.
+ *
+ * The lite model is the default rather than plain flash, and the reason is
+ * the free tier: flash allows 20 requests A DAY, which at two calls per
+ * question is ten questions for the whole company, shared with the receipt
+ * reader. Lite's allowance is far larger, it reads a receipt photograph just
+ * as well, and it is roughly twice as fast. None of these jobs reward a
+ * stronger model — every one of them is extraction or summary over facts
+ * that have already been assembled, and every caller checks the output.
+ * An office on a paid key can set RECEIPT_MODEL to something heavier.
  */
 const DEFAULT_MODEL: Record<AiProvider, string> = {
-  gemini: 'gemini-3.5-flash',
+  gemini: 'gemini-3.5-flash-lite',
   anthropic: 'claude-sonnet-5',
 };
 
@@ -137,6 +146,12 @@ export function readGeminiQuota(body: unknown): {
   // A retry measured in hours is a daily cap however it was labelled.
   if (retryAfterSeconds != null && retryAfterSeconds > 3600) daily = true;
 
+  // The quotaId is the only trustworthy signal, and specifically the retry
+  // delay is NOT one. Observed live: a genuinely exhausted daily allowance
+  // (GenerateRequestsPerDayPerProjectPerModel-FreeTier, limit 20) came back
+  // with "retry in 39s", which is nonsense — the allowance was gone for the
+  // day. Do not be tempted to read a short delay as a burst; it will tell
+  // someone to try again in forty seconds, forever.
   return daily ? { reason: 'QUOTA_DAILY' } : { reason: 'RATE_LIMIT', retryAfterSeconds };
 }
 
