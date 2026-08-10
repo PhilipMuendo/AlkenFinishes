@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus, Sparkles } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import type { DailyReport, DailyReportDraft } from '@/lib/types';
+import type { ChatStatus, DailyReport, DailyReportDraft } from '@/lib/types';
 import { fmtDate, thumbUrl, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -39,6 +39,17 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
   const [draft, setDraft] = useState<DailyReportDraft | null>(null);
   const [draftDate, setDraftDate] = useState(todayISO());
   const [showFacts, setShowFacts] = useState(false);
+
+  // Is a model configured on this server? One key powers all three AI
+  // features, so this endpoint answers for drafting as much as for the
+  // assistant. Without it the block below is absent rather than disabled — a
+  // control that cannot work is worse than no control, which is how the
+  // receipt scanner and the assistant already behave.
+  const { data: ai } = useQuery({
+    queryKey: ['chat', 'status'],
+    queryFn: () => api<ChatStatus>('/chat/status'),
+    staleTime: 60_000,
+  });
 
   const writeDraft = useMutation({
     mutationFn: (date: string) =>
@@ -160,6 +171,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
           {/* Everything below the date is already known to the system on most
               days. Offering to write it up is the difference between a diary
               that gets filled in and one that does not. */}
+          {ai?.available && (
           <div className="rounded-lg border border-dashed border-hairline-strong p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -215,6 +227,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
               </div>
             )}
           </div>
+          )}
 
           <Field label="Work completed today">
             <Textarea
