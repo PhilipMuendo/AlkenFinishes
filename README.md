@@ -70,14 +70,23 @@ npm run dev:web     # http://localhost:5173 (proxies /api)
 Entirely optional. Without a key they are absent from the UI and every form
 works by hand.
 
+The key goes in the `.env` beside `docker-compose.yml`, which is the file
+compose reads. `apps/api/.env` is the separate one used by `npm run dev:api`
+outside Docker; a key there has no effect on the containers.
+
 ```bash
-echo "GEMINI_API_KEY=AIza..." >> .env
-docker compose up -d api
+echo "GEMINI_API_KEY=..." >> .env
+docker compose up -d --force-recreate api   # restart alone keeps the old env
 ```
 
-Get the key from [aistudio.google.com](https://aistudio.google.com) — it starts
-with `AIza`. A Google OAuth access token (`AQ.…`) is a different credential and
-will not work.
+Get the key from [aistudio.google.com](https://aistudio.google.com). Newer keys
+start with `AQ.` and older ones with `AIza`; both work.
+
+If a feature answers *"the configured AI model is no longer available"*, Google
+has retired the pinned model. It stays in Google's own model listing after
+withdrawal, so this surfaces the first time somebody presses the button rather
+than at start-up. Set `RECEIPT_MODEL` to a current model and recreate the
+container — no code change, no redeploy.
 
 One key powers all three features, which therefore share one daily allowance.
 The assistant is much the hungriest of them, so it yields: it stops at a

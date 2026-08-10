@@ -25,13 +25,30 @@ const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
  */
 export type AiProvider = 'gemini' | 'anthropic';
 
+/**
+ * An unset docker-compose variable arrives as an empty string, not as absent,
+ * so `??` never falls through to a default and `""` wins. This file reads
+ * process.env directly rather than the parsed config — it is deliberately free
+ * of imports so it stays testable without a database — which means it has to
+ * do that normalisation itself. Getting this wrong sent every request to
+ * `/models/:generateContent` with no model in it, which Google answers 404.
+ */
+const blank = (v: string | undefined): string | undefined => {
+  const t = v?.trim();
+  return t ? t : undefined;
+};
+
 export function aiProvider(): AiProvider | null {
-  const explicit = process.env.RECEIPT_PROVIDER?.toLowerCase();
-  if (explicit === 'gemini') return process.env.GEMINI_API_KEY ? 'gemini' : null;
-  if (explicit === 'anthropic') return process.env.ANTHROPIC_API_KEY ? 'anthropic' : null;
+  const explicit = blank(process.env.RECEIPT_PROVIDER)?.toLowerCase();
+  // A key of spaces is a key nobody set. Treated as absent, the feature is
+  // simply not offered; treated as present, every button fails on use.
+  const gemini = blank(process.env.GEMINI_API_KEY);
+  const anthropic = blank(process.env.ANTHROPIC_API_KEY);
+  if (explicit === 'gemini') return gemini ? 'gemini' : null;
+  if (explicit === 'anthropic') return anthropic ? 'anthropic' : null;
   // No explicit choice: use whichever key is present, cheapest first.
-  if (process.env.GEMINI_API_KEY) return 'gemini';
-  if (process.env.ANTHROPIC_API_KEY) return 'anthropic';
+  if (gemini) return 'gemini';
+  if (anthropic) return 'anthropic';
   return null;
 }
 
@@ -40,8 +57,18 @@ export function aiAvailable(): boolean {
   return aiProvider() !== null;
 }
 
+/**
+ * Pinned, not aliased ("gemini-flash-latest"), so a model does not change
+ * underneath a receipt scanner without anyone deciding it should.
+ *
+ * The cost of pinning is that a retired model breaks every feature at once:
+ * Google keeps a withdrawn model in ListModels but answers `generateContent`
+ * with 404, so it fails at the moment of use rather than at start-up. That is
+ * what RECEIPT_MODEL is for — the fix is a line of configuration and a
+ * restart, and `failed()` below says so when it happens.
+ */
 const DEFAULT_MODEL: Record<AiProvider, string> = {
-  gemini: 'gemini-2.5-flash',
+  gemini: 'gemini-3.5-flash',
   anthropic: 'claude-sonnet-5',
 };
 
@@ -56,6 +83,7 @@ export type AiFailure =
   | 'RATE_LIMIT'
   | 'QUOTA_DAILY'
   | 'AUTH'
+  | 'MODEL_UNAVAILABLE'
   | 'TOO_LARGE'
   | 'TIMEOUT'
   | 'UNREADABLE'
@@ -138,6 +166,16 @@ function failed(status: number, body: unknown, noun: string): never {
   if (status === 401 || status === 403) {
     throw new AiError('The key was rejected. Check it in the server configuration.', 'AUTH');
   }
+  if (status === 404) {
+    // The model is gone, not the request. Google retires a model without
+    // removing it from ListModels, so this arrives the first time somebody
+    // presses the button and looks exactly like a broken feature. Nobody on
+    // site can act on it, so say who can and what they change.
+    throw new AiError(
+      'The configured AI model is no longer available. Set RECEIPT_MODEL to a current model and restart the server.',
+      'MODEL_UNAVAILABLE',
+    );
+  }
   if (status === 429) {
     const { reason, retryAfterSeconds } = readGeminiQuota(body);
     if (reason === 'QUOTA_DAILY') {
@@ -183,6 +221,13 @@ export interface GenerateOptions {
  */
 const MAX_INLINE_BYTES = 6 * 1024 * 1024;
 
+/**
+ * Tokens allowed for reasoning, on top of whatever the caller asked for.
+ * See the note in callGemini: without it a caller's answer budget is silently
+ * shared with the model's thinking.
+ */
+const THINKING_HEADROOM = 512;
+
 /** Ask the configured model for text. Returns exactly what it said. */
 export async function generate(opts: GenerateOptions): Promise<string> {
   const provider = aiProvider();
@@ -194,7 +239,7 @@ export async function generate(opts: GenerateOptions): Promise<string> {
     );
   }
 
-  const model = opts.model ?? process.env.RECEIPT_MODEL ?? DEFAULT_MODEL[provider];
+  const model = blank(opts.model) ?? blank(process.env.RECEIPT_MODEL) ?? DEFAULT_MODEL[provider];
   const timeoutMs = opts.timeoutMs ?? 45_000;
   const noun = opts.noun ?? 'one';
 
@@ -231,7 +276,15 @@ async function callGemini(
         generationConfig: {
           ...(opts.json ? { responseMimeType: 'application/json' } : {}),
           temperature: 0,
-          maxOutputTokens: opts.maxTokens ?? 1024,
+          maxOutputTokens: (opts.maxTokens ?? 1024) + THINKING_HEADROOM,
+          // Current Gemini models reason before answering and charge that
+          // reasoning to the same budget as the answer. Left alone, a caller
+          // asking for 400 tokens can spend all 400 thinking and return an
+          // empty string. Reasoning is capped low — reading a receipt and
+          // summarising a day's records are not problems that reward it —
+          // and given its own headroom so the caller's number keeps meaning
+          // what it says: room for the answer.
+          thinkingConfig: { thinkingLevel: 'low' },
         },
       }),
     },
@@ -240,12 +293,26 @@ async function callGemini(
   if (!res.ok) failed(res.status, await res.json().catch(() => undefined), noun);
 
   const body = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
   };
-  return (body.candidates?.[0]?.content?.parts ?? [])
+  const candidate = body.candidates?.[0];
+  const text = (candidate?.content?.parts ?? [])
     .map((part) => part.text ?? '')
     .join('')
     .trim();
+
+  // An empty reply is never usable, and every caller reports it as its own
+  // kind of failure — "the receipt could not be read" for a truncation that
+  // had nothing to do with the receipt. Name the real reason here instead.
+  if (!text) {
+    throw new AiError(
+      candidate?.finishReason === 'MAX_TOKENS'
+        ? `That answer was too long to finish. Try a shorter question, or write the ${noun} by hand.`
+        : `Nothing came back. Write the ${noun} by hand.`,
+      candidate?.finishReason === 'MAX_TOKENS' ? 'TOO_LARGE' : 'UPSTREAM',
+    );
+  }
+  return text;
 }
 
 async function callAnthropic(

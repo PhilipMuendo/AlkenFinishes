@@ -247,6 +247,7 @@ export type ScanFailure =
   | 'RATE_LIMIT'
   | 'QUOTA_DAILY'
   | 'AUTH'
+  | 'MODEL_UNAVAILABLE'
   | 'TOO_LARGE'
   | 'TIMEOUT'
   | 'UNREADABLE'
