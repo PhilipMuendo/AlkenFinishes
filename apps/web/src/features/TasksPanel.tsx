@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Camera, Plus } from 'lucide-react';
 import { api, errText } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { thumbUrl } from '@/lib/format';
 import type { Task, TaskStatus, TasksResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,12 @@ const STATUSES: TaskStatus[] = ['NOT_STARTED', 'IN_PROGRESS', 'BLOCKED', 'DONE']
 
 export function TasksPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // Weight is the task's share of the contract value, priced from the
+  // schedule — the office's figure, same as a pay rate or a budget line.
+  // The server now ignores it from a non-office request regardless; this
+  // just keeps the field from being offered in the first place.
+  const isAdmin = user?.role === 'SUPERADMIN';
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
 
@@ -189,19 +196,21 @@ export function TasksPanel({ projectId }: { projectId: string }) {
           <Field label="Task name">
             <Input name="name" required placeholder="First coat" />
           </Field>
-          <Field
-            label="Size (optional)"
-            hint="What this task is worth from the priced schedule. Any consistent unit works — only the ratios matter. Leave blank to count it the same as every other task."
-          >
-            <Input
-              name="weight"
-              type="number"
-              min="0"
-              step="any"
-              inputMode="decimal"
-              placeholder="e.g. 250000"
-            />
-          </Field>
+          {isAdmin && (
+            <Field
+              label="Size (optional)"
+              hint="What this task is worth from the priced schedule. Any consistent unit works — only the ratios matter. Leave blank to count it the same as every other task."
+            >
+              <Input
+                name="weight"
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                placeholder="e.g. 250000"
+              />
+            </Field>
+          )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Add task
           </Button>
@@ -251,19 +260,21 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 defaultValue={editing.completionPct}
               />
             </Field>
-            <Field
-              label="Size"
-              hint="What this task is worth relative to the others — its amount from the priced schedule is the usual choice. 1 means it has not been sized."
-            >
-              <Input
-                name="weight"
-                type="number"
-                min="0"
-                step="any"
-                inputMode="decimal"
-                defaultValue={editing.weight}
-              />
-            </Field>
+            {isAdmin && (
+              <Field
+                label="Size"
+                hint="What this task is worth relative to the others — its amount from the priced schedule is the usual choice. 1 means it has not been sized."
+              >
+                <Input
+                  name="weight"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  defaultValue={editing.weight}
+                />
+              </Field>
+            )}
             <Field label="Notes">
               <Textarea name="notes" defaultValue={editing.notes ?? ''} />
             </Field>

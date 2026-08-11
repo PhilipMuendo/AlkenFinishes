@@ -67,10 +67,22 @@ router.get(
   }),
 );
 
+// Weight is the task's share of the contract value — the same class of
+// figure as a pay rate or a budget line, which are office-only everywhere
+// else in this app. Task creation/edits happen from site, so a supervisor's
+// request simply never gets to set it; the default of 1 applies instead.
+function stripWeightUnlessOffice<T extends { weight?: number }>(
+  req: { user?: { role: string } },
+  data: T,
+): T {
+  if (req.user?.role !== 'SUPERADMIN') delete data.weight;
+  return data;
+}
+
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const data = taskSchema.parse(req.body);
+    const data = stripWeightUnlessOffice(req, taskSchema.parse(req.body));
     const task = await prisma.task.create({
       data: { ...data, projectId: req.params.projectId },
     });
@@ -83,7 +95,7 @@ router.post(
 router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
-    const data = taskSchema.partial().parse(req.body);
+    const data = stripWeightUnlessOffice(req, taskSchema.partial().parse(req.body));
     const existing = await prisma.task.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
     if (data.status === 'DONE' && data.completionPct === undefined) data.completionPct = 100;

@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 import type { AttendanceOverrideRequest, AttendanceRecord, Project, Worker } from '@/lib/types';
 import { fmtDate, fmtMoney, fmtTime, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
@@ -177,7 +178,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           No attendance records yet.
           <span>Connect a fingerprint device or request a manual entry for device failures.</span>
         </Empty>
-      ) : (
+      ) : isAdmin ? (
         <Table>
           <thead>
             <tr>
@@ -186,7 +187,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
               <Th>In</Th>
               <Th>Out</Th>
               <Th className="text-right">Hours</Th>
-              {isAdmin && <Th className="text-right">Labour cost</Th>}
+              <Th className="text-right">Labour cost</Th>
               <Th>Method</Th>
             </tr>
           </thead>
@@ -202,7 +203,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                 <Td className="tabular-nums">
                   {r.checkOut ? (
                     fmtTime(r.checkOut)
-                  ) : isAdmin ? (
+                  ) : (
                     <Button
                       size="sm"
                       variant="secondary"
@@ -211,8 +212,6 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     >
                       Check out
                     </Button>
-                  ) : (
-                    <span className="text-fg-subtle">Open</span>
                   )}
                 </Td>
                 <Td className="text-right tabular-nums">
@@ -223,14 +222,9 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     </span>
                   )}
                 </Td>
-                {/* Cost divided by hours is the pay rate, which is the
-                    office's business — the server omits it for supervisors, so
-                    this column would be empty rather than merely hidden. */}
-                {isAdmin && (
-                  <Td className="text-right tabular-nums">
-                    {r.labourCost ? fmtMoney(Number(r.labourCost)) : '—'}
-                  </Td>
-                )}
+                <Td className="text-right tabular-nums">
+                  {r.labourCost ? fmtMoney(Number(r.labourCost)) : '—'}
+                </Td>
                 <Td>
                   {r.method === 'FINGERPRINT' ? (
                     <Badge tone="green">
@@ -246,6 +240,46 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
             ))}
           </tbody>
         </Table>
+      ) : (
+        // A supervisor never sees labour cost — that's the pay rate, the
+        // office's figure — and never checks anyone out, so the dense
+        // multi-column table built for that has nothing left it needs.
+        // Cards match every other screen a supervisor actually works from.
+        <div className="space-y-2">
+          {records?.map((r) => (
+            <Card key={r.id} className="flex items-center justify-between gap-3 p-3.5">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-fg">{r.worker.name}</p>
+                <p className="truncate text-xs text-fg-muted">
+                  {r.worker.trade} · {fmtDate(r.date)}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-sm tabular-nums text-fg">
+                  {fmtTime(r.checkIn)} – {r.checkOut ? fmtTime(r.checkOut) : <span className="text-fg-subtle">open</span>}
+                </p>
+                <div className="mt-1 flex items-center justify-end gap-1.5">
+                  <span className="text-xs tabular-nums text-fg-subtle">
+                    {r.hoursWorked ?? '—'}
+                    {r.hoursWorked != null && Number(r.hoursWorked) > 8 && (
+                      <span className="text-warn-fg"> ({(Number(r.hoursWorked) - 8).toFixed(1)}h OT)</span>
+                    )}
+                    {r.hoursWorked != null && 'h'}
+                  </span>
+                  {r.method === 'FINGERPRINT' ? (
+                    <Badge tone="green">
+                      <Fingerprint size={12} />
+                    </Badge>
+                  ) : (
+                    <Badge tone="yellow">
+                      <PenLine size={12} />
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
 
       <Dialog

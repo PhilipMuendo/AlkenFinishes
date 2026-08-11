@@ -163,7 +163,17 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
               name="date"
               type="date"
               value={draftDate}
-              onChange={(e) => setDraftDate(e.target.value)}
+              onChange={(e) => {
+                setDraftDate(e.target.value);
+                // A draft is a record of what happened on the date it was
+                // written for. Changing the date without clearing it would
+                // leave yesterday's facts sitting under today's date, filed
+                // as if they were the same day.
+                if (draft) {
+                  setDraft(null);
+                  writeDraft.reset();
+                }
+              }}
               required
             />
           </Field>

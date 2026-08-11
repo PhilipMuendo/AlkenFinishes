@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertOctagon, Camera, CheckCircle2, Plus, RotateCcw } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { SnagItem, SnagSeverity, SnagStatus } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,13 @@ function PhotoPinPicker({
 
 export function SnagsPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // Verifying (or rejecting) a fix is the office's check on the person who
+  // just did the work — showing the button to the same supervisor who
+  // resolved it would let them sign off their own fix, which is exactly what
+  // this step exists to prevent. The server enforces this too; hiding it
+  // here is so a supervisor never sees a control that can only ever 403.
+  const isAdmin = user?.role === 'SUPERADMIN';
   const [statusFilter, setStatusFilter] = useState<SnagStatus | ''>('');
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<SnagItem | null>(null);
@@ -315,7 +323,7 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
                   <CheckCircle2 size={16} /> Mark resolved
                 </Button>
               )}
-              {viewing.status === 'RESOLVED' && (
+              {viewing.status === 'RESOLVED' && isAdmin && (
                 <>
                   <Button disabled={verify.isPending} onClick={() => verify.mutate(viewing.id)}>
                     Confirm fix
@@ -324,6 +332,9 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
                     <RotateCcw size={16} /> Not fixed — reopen
                   </Button>
                 </>
+              )}
+              {viewing.status === 'RESOLVED' && !isAdmin && (
+                <p className="text-sm text-fg-muted">Marked resolved — waiting on the office to confirm the fix.</p>
               )}
             </div>
           </div>

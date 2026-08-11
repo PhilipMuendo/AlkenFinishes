@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess } from '../middleware/rbac';
+import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 
@@ -216,6 +216,7 @@ router.post(
 /** The office accepts the fix. Stamps the open attempt as accepted. */
 router.post(
   '/:id/verify',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const existing = await prisma.snagItem.findUnique({
       where: { id: req.params.id },
@@ -253,6 +254,7 @@ router.post(
  */
 router.post(
   '/:id/reject',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const { reason } = z.object({ reason: z.string().min(1) }).parse(req.body);
     const existing = await prisma.snagItem.findUnique({

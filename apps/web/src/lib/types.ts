@@ -584,6 +584,7 @@ export interface Tool {
   currentProject: { id: string; name: string } | null;
   status: ToolStatus;
   conditionNotes: string | null;
+  nextServiceDate: string | null;
   createdAt: string;
 }
 
