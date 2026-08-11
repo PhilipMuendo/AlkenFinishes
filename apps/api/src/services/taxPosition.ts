@@ -88,9 +88,13 @@ export async function taxPosition(period: TaxPeriod): Promise<TaxPosition> {
       select: { vatAmount: true },
     }),
     // Input VAT: what suppliers charged us. Only bills naming a supplier are
-    // purchases in this sense; petty cash carries no VAT record.
+    // purchases in this sense; petty cash carries no VAT record. APPROVED
+    // only, matching services/finance.ts's "actual spend" rule — a PENDING
+    // claim has not been accepted as a cost yet and a REJECTED one never was,
+    // so counting either here would overstate this month's VAT position
+    // before anyone had looked at the claim.
     prisma.expense.findMany({
-      where: { supplierId: { not: null }, expenseDate: { gte: from, lte: to } },
+      where: { supplierId: { not: null }, status: 'APPROVED', expenseDate: { gte: from, lte: to } },
       select: { vatAmount: true, taxInvoice: true },
     }),
     prisma.supplierPayment.findMany({

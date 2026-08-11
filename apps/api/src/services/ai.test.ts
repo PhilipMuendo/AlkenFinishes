@@ -1,6 +1,6 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { AiError, generate, readGeminiQuota } from './ai';
+import { AiError, generate, readGeminiQuota, _forgetDeadKeysForTests } from './ai';
 
 /**
  * The transport, tested at its edges rather than its middle.
@@ -35,9 +35,12 @@ const ok = (text: string, finishReason = 'STOP') => ({
 describe('gemini transport', () => {
   beforeEach(() => {
     process.env.GEMINI_API_KEY = KEY;
+    delete process.env.GEMINI_API_KEYS;
     delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEYS;
     delete process.env.RECEIPT_PROVIDER;
     delete process.env.RECEIPT_MODEL;
+    _forgetDeadKeysForTests();
   });
   afterEach(() => {
     globalThis.fetch = realFetch;
@@ -150,6 +153,124 @@ describe('gemini transport', () => {
     const e = await generate({ system: 's', user: 'u' }).catch((err: unknown) => err);
     assert.ok(e instanceof AiError);
     assert.equal(e.reason, 'NOT_CONFIGURED');
+  });
+});
+
+describe('key and provider fallback', () => {
+  beforeEach(() => {
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.GEMINI_API_KEYS;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEYS;
+    delete process.env.RECEIPT_PROVIDER;
+    delete process.env.RECEIPT_MODEL;
+    _forgetDeadKeysForTests();
+  });
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  const quotaDailyBody = {
+    status: 429,
+    body: {
+      error: {
+        details: [
+          {
+            '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+            violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }],
+          },
+        ],
+      },
+    },
+  };
+
+  /** Replies in order, one per call, so a fallback can be told apart from a retry of the same key. */
+  function stubFetchSequence(replies: { status?: number; body: unknown }[]) {
+    const calls: { url: string; key: string | null }[] = [];
+    let i = 0;
+    globalThis.fetch = (async (url: string, init: RequestInit & { headers: Record<string, string> }) => {
+      const reply = replies[Math.min(i, replies.length - 1)]!;
+      calls.push({ url: String(url), key: init.headers['x-goog-api-key'] ?? init.headers['x-api-key'] ?? null });
+      i++;
+      return {
+        ok: (reply.status ?? 200) < 400,
+        status: reply.status ?? 200,
+        json: async () => reply.body,
+      } as Response;
+    }) as unknown as typeof fetch;
+    return calls;
+  }
+
+  test('a second gemini key is tried once the first is out for the day', async () => {
+    process.env.GEMINI_API_KEYS = 'key-a,key-b';
+    const calls = stubFetchSequence([quotaDailyBody, { body: ok('from key-b') }]);
+    const text = await generate({ system: 's', user: 'u' });
+    assert.equal(text, 'from key-b');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0]!.key, 'key-a');
+    assert.equal(calls[1]!.key, 'key-b');
+  });
+
+  test('a key already known dead today is not retried', async () => {
+    process.env.GEMINI_API_KEYS = 'key-a,key-b';
+    stubFetchSequence([quotaDailyBody, { body: ok('from key-b') }]);
+    await generate({ system: 's', user: 'u' }); // exhausts key-a, records it dead
+
+    const calls = stubFetchSequence([{ body: ok('again from key-b') }]);
+    const text = await generate({ system: 's', user: 'u' });
+    assert.equal(text, 'again from key-b');
+    // Only one call: key-a was skipped rather than asked and rejected again.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.key, 'key-b');
+  });
+
+  test('exhausting every gemini key falls through to anthropic', async () => {
+    process.env.GEMINI_API_KEY = 'g-key';
+    process.env.ANTHROPIC_API_KEY = 'a-key';
+    const calls = stubFetchSequence([
+      quotaDailyBody,
+      { body: { content: [{ type: 'text', text: 'from anthropic' }] } },
+    ]);
+    const text = await generate({ system: 's', user: 'u' });
+    assert.equal(text, 'from anthropic');
+    assert.equal(calls[0]!.key, 'g-key');
+    assert.equal(calls[1]!.key, 'a-key');
+  });
+
+  test('a retired model is not retried on the next key — every key would fail the same way', async () => {
+    process.env.GEMINI_API_KEYS = 'key-a,key-b';
+    const calls = stubFetchSequence([
+      { status: 404, body: { error: { code: 404 } } },
+      { body: ok('should never be reached') },
+    ]);
+    const e = await generate({ system: 's', user: 'u' }).catch((err: unknown) => err);
+    assert.ok(e instanceof AiError);
+    assert.equal(e.reason, 'MODEL_UNAVAILABLE');
+    assert.equal(calls.length, 1);
+  });
+
+  test('when every key is exhausted, the error names the exhaustion, not "not configured"', async () => {
+    process.env.GEMINI_API_KEYS = 'key-a,key-b';
+    stubFetchSequence([quotaDailyBody, quotaDailyBody]);
+    const e = await generate({ system: 's', user: 'u' }).catch((err: unknown) => err);
+    assert.ok(e instanceof AiError);
+    assert.equal(e.reason, 'QUOTA_DAILY');
+  });
+
+  test('GEMINI_API_KEYS takes priority over the singular GEMINI_API_KEY', async () => {
+    process.env.GEMINI_API_KEY = 'singular';
+    process.env.GEMINI_API_KEYS = 'plural-a';
+    const calls = stubFetchSequence([{ body: ok('x') }]);
+    await generate({ system: 's', user: 'u' });
+    assert.equal(calls[0]!.key, 'plural-a');
+  });
+
+  test('blank entries from a trailing comma are dropped, not sent as an empty key', async () => {
+    process.env.GEMINI_API_KEYS = 'key-a, ,key-b,';
+    const calls = stubFetchSequence([quotaDailyBody, { body: ok('x') }]);
+    await generate({ system: 's', user: 'u' });
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1]!.key, 'key-b');
   });
 });
 

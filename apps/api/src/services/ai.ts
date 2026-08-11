@@ -38,23 +38,86 @@ const blank = (v: string | undefined): string | undefined => {
   return t ? t : undefined;
 };
 
+const ENV_KEY: Record<AiProvider, { single: string; many: string }> = {
+  gemini: { single: 'GEMINI_API_KEY', many: 'GEMINI_API_KEYS' },
+  anthropic: { single: 'ANTHROPIC_API_KEY', many: 'ANTHROPIC_API_KEYS' },
+};
+
+/**
+ * Every key configured for a provider, in the order they should be tried.
+ *
+ * `GEMINI_API_KEYS` (comma-separated) is for someone paying with more than
+ * one free allowance — several Google accounts, say — and takes priority
+ * over the singular `GEMINI_API_KEY` if both are set. A key of nothing but
+ * spaces, or an empty slot from a trailing comma, counts as no key: treated
+ * as absent, the feature quietly has one fewer fallback; treated as present,
+ * that slot fails on every use.
+ */
+function apiKeys(provider: AiProvider): string[] {
+  const { single, many } = ENV_KEY[provider];
+  const list = blank(process.env[many]);
+  if (list) return list.split(',').map(blank).filter((k): k is string => !!k);
+  const one = blank(process.env[single]);
+  return one ? [one] : [];
+}
+
 export function aiProvider(): AiProvider | null {
   const explicit = blank(process.env.RECEIPT_PROVIDER)?.toLowerCase();
-  // A key of spaces is a key nobody set. Treated as absent, the feature is
-  // simply not offered; treated as present, every button fails on use.
-  const gemini = blank(process.env.GEMINI_API_KEY);
-  const anthropic = blank(process.env.ANTHROPIC_API_KEY);
-  if (explicit === 'gemini') return gemini ? 'gemini' : null;
-  if (explicit === 'anthropic') return anthropic ? 'anthropic' : null;
-  // No explicit choice: use whichever key is present, cheapest first.
-  if (gemini) return 'gemini';
-  if (anthropic) return 'anthropic';
+  if (explicit === 'gemini') return apiKeys('gemini').length ? 'gemini' : null;
+  if (explicit === 'anthropic') return apiKeys('anthropic').length ? 'anthropic' : null;
+  // No explicit choice: use whichever has a key, cheapest first.
+  if (apiKeys('gemini').length) return 'gemini';
+  if (apiKeys('anthropic').length) return 'anthropic';
   return null;
+}
+
+/**
+ * Every provider worth trying, in order — the preferred one (explicit or
+ * cheapest-first) followed by whatever else has a key. This is the fallback
+ * chain: providerOrder() first, then every key within each provider.
+ */
+function providerOrder(): AiProvider[] {
+  const first = aiProvider();
+  if (!first) return [];
+  const rest: AiProvider[] = (['gemini', 'anthropic'] as const).filter(
+    (p) => p !== first && apiKeys(p).length > 0,
+  );
+  return [first, ...rest];
 }
 
 /** No key means every AI feature is simply absent and the forms work by hand. */
 export function aiAvailable(): boolean {
   return aiProvider() !== null;
+}
+
+/**
+ * Keys known to be no good for the rest of today, or ever (a rejected key
+ * does not un-reject itself; that clears on restart, same as a model change).
+ * In memory only — this is a cache to skip a call already known to fail, not
+ * an accounting record, so losing it on restart costs nothing but one retry.
+ */
+const deadKeys = new Map<string, { reason: 'QUOTA_DAILY' | 'AUTH'; day?: string }>();
+
+const utcDay = (d = new Date()) => d.toISOString().slice(0, 10);
+
+function isDead(provider: AiProvider, key: string): boolean {
+  const entry = deadKeys.get(`${provider}:${key}`);
+  if (!entry) return false;
+  return entry.reason === 'AUTH' || entry.day === utcDay();
+}
+
+function markDead(provider: AiProvider, key: string, reason: 'QUOTA_DAILY' | 'AUTH'): void {
+  deadKeys.set(`${provider}:${key}`, { reason, day: utcDay() });
+}
+
+/**
+ * Test-only: forget every key marked dead. Without this, two tests that both
+ * use the literal string "test-key" would have the second inherit the first's
+ * rejection — a state leak that exists only because tests reuse a fixed key,
+ * never in production where a real key does not un-reject itself.
+ */
+export function _forgetDeadKeysForTests(): void {
+  deadKeys.clear();
 }
 
 /**
@@ -243,10 +306,18 @@ const MAX_INLINE_BYTES = 6 * 1024 * 1024;
  */
 const THINKING_HEADROOM = 512;
 
-/** Ask the configured model for text. Returns exactly what it said. */
+/**
+ * Ask the configured model for text. Returns exactly what it said.
+ *
+ * Tries every key of the preferred provider, then every key of any other
+ * configured provider, moving on whenever the failure is specific to the key
+ * in hand — quota gone, rate-limited, or rejected — and stopping the moment
+ * it is not: a retired model or a file that is too large fails identically on
+ * the next key, so trying it would only cost time and confuse the error.
+ */
 export async function generate(opts: GenerateOptions): Promise<string> {
-  const provider = aiProvider();
-  if (!provider) throw new AiError('This feature is not configured', 'NOT_CONFIGURED');
+  const providers = providerOrder();
+  if (providers.length === 0) throw new AiError('This feature is not configured', 'NOT_CONFIGURED');
   if (opts.attachment && opts.attachment.data.byteLength > MAX_INLINE_BYTES) {
     throw new AiError(
       'That file is too large. Photograph it instead of attaching a scan.',
@@ -254,18 +325,36 @@ export async function generate(opts: GenerateOptions): Promise<string> {
     );
   }
 
-  const model = blank(opts.model) ?? blank(process.env.RECEIPT_MODEL) ?? DEFAULT_MODEL[provider];
   const timeoutMs = opts.timeoutMs ?? 45_000;
   const noun = opts.noun ?? 'one';
+  let lastFailure: AiError | undefined;
 
-  return provider === 'gemini'
-    ? callGemini(opts, model, timeoutMs, noun)
-    : callAnthropic(opts, model, timeoutMs, noun);
+  for (const provider of providers) {
+    const model = blank(opts.model) ?? blank(process.env.RECEIPT_MODEL) ?? DEFAULT_MODEL[provider];
+    for (const key of apiKeys(provider)) {
+      if (isDead(provider, key)) continue;
+      try {
+        return await (provider === 'gemini'
+          ? callGemini(opts, model, key, timeoutMs, noun)
+          : callAnthropic(opts, model, key, timeoutMs, noun));
+      } catch (e) {
+        if (!(e instanceof AiError) || !(e.reason === 'QUOTA_DAILY' || e.reason === 'RATE_LIMIT' || e.reason === 'AUTH')) {
+          throw e;
+        }
+        if (e.reason === 'QUOTA_DAILY' || e.reason === 'AUTH') markDead(provider, key, e.reason);
+        lastFailure = e;
+      }
+    }
+  }
+
+  // Every key of every configured provider failed for a key-specific reason.
+  throw lastFailure ?? new AiError('This feature is not configured', 'NOT_CONFIGURED');
 }
 
 async function callGemini(
   opts: GenerateOptions,
   model: string,
+  apiKey: string,
   timeoutMs: number,
   noun: string,
 ): Promise<string> {
@@ -284,7 +373,7 @@ async function callGemini(
     `${GEMINI_URL}/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY! },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: opts.system }] },
         contents: [{ role: 'user', parts }],
@@ -333,6 +422,7 @@ async function callGemini(
 async function callAnthropic(
   opts: GenerateOptions,
   model: string,
+  apiKey: string,
   timeoutMs: number,
   noun: string,
 ): Promise<string> {
@@ -355,7 +445,7 @@ async function callAnthropic(
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY!,
+        'x-api-key': apiKey,
         'anthropic-version': ANTHROPIC_VERSION,
       },
       body: JSON.stringify({

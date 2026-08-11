@@ -94,6 +94,17 @@ reserve kept for receipts and reports, and says so rather than failing
 silently. Size the reserve under **Settings → Assistant**, where today's usage
 is shown beside it.
 
+Have more than one key — a second Gemini project, or both Gemini and
+Anthropic? List several in `GEMINI_API_KEYS` / `ANTHROPIC_API_KEYS`
+(comma-separated) in `.env`, and the app moves to the next one on its own the
+moment a key's daily allowance is spent, is rate-limited, or is rejected —
+nothing to configure beyond listing the keys. It does **not** move on for a
+retired model or an oversized file, since every key would fail that the same
+way. Raise **Settings → Assistant**'s daily-calls budget to match: the 200/day
+default assumes one key's worth of headroom, so adding a second key without
+raising it just means the app's own counter stops the day early even though
+real capacity remains.
+
 ### Free-tier allowances are per model, and small
 
 Google's free tier meters each model separately, and the difference is
