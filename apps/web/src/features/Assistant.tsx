@@ -32,6 +32,19 @@ const SUGGESTIONS_SITE = [
   'What materials are we waiting on?',
 ];
 
+const ATTENTION_QUESTION = 'What needs my attention?';
+/** localStorage key holding the YYYY-MM-DD the digest last auto-ran. */
+const AUTO_ATTENTION_KEY = 'assistant.autoAttention.lastRun';
+/**
+ * Auto-asks `ATTENTION_QUESTION` once per office user per day, the moment the
+ * panel is opened, so the digest the Overview page shows also greets whoever
+ * opens the assistant instead of waiting to be asked. This costs the same two
+ * model calls as asking it by hand, against the shared daily AI quota
+ * (services/aiUsage.ts on the server) — flip to false to turn it off without
+ * touching the gating logic below.
+ */
+const AUTO_ASK_ATTENTION_ON_OPEN = true;
+
 interface Turn {
   question: string;
   answer?: ChatAnswer;
@@ -162,6 +175,24 @@ export function Assistant({ office }: { office: boolean }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [open, close]);
+
+  // Fires on the transition to open, not on every render while open — a
+  // supervisor never sees this (company_operations is office-only, and asking
+  // it on their behalf would just be a refusal), and it only ever fires once
+  // per calendar day regardless of how many times the panel is reopened.
+  useEffect(() => {
+    if (!AUTO_ASK_ATTENTION_ON_OPEN || !open || !office) return;
+    if (!status?.available || status.canAsk !== true) return;
+    if (turns.length > 0 || ask.isPending) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem(AUTO_ATTENTION_KEY) === todayStr) return;
+    localStorage.setItem(AUTO_ATTENTION_KEY, todayStr);
+
+    setTurns((t) => [...t, { question: ATTENTION_QUESTION }]);
+    ask.mutate(ATTENTION_QUESTION);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // No key configured: the assistant simply does not exist.
   if (!status?.available) return null;

@@ -238,7 +238,14 @@ The rules that matter, in the order they bite:
 1. **Call the service function the screen calls.** Never re-derive a total in a
    lookup. If the screen uses `projectFinancials`, so does the lookup — that is
    the whole reason an answer cannot contradict the page. If no such function
-   exists, extract one rather than writing the arithmetic twice.
+   exists, extract one rather than writing the arithmetic twice. This is not
+   hypothetical: `company_operations` once hand-rolled its own narrower version
+   of "what needs attention" instead of calling the same digest the `/admin`
+   Overview page uses, and the two quietly drifted apart — the assistant could
+   say a site's defects were open while staying silent about that same site
+   being over budget, because it was never told to look. Fixed by extracting
+   `attentionDigest()` in `services/attention.ts` and having both the
+   `/analytics/attention` route and the lookup call it.
 2. **Pick the scope honestly.** `office` is superadmin-only and is enforced in
    `runLookup`. `site` requires a `projectId` and is checked against the sites
    the user may see. `shared` is checked by nobody — the `run` **must** narrow

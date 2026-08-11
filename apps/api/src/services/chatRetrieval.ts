@@ -14,6 +14,7 @@ import { isOffice } from './payVisibility';
 import { contractPosition, leadPipeline } from './pipeline';
 import { projectFinancials } from './finance';
 import { derivedEvents } from './calendarFeeds';
+import { attentionDigest, FINISHING_SOON_DAYS } from './attention';
 
 /**
  * What the assistant is allowed to look up, and how.
@@ -1263,46 +1264,52 @@ export const LOOKUPS: Lookup[] = [
     name: 'company_operations',
     scope: 'office',
     description:
-      'What needs attention across every site right now: open defects, safety incidents, expenses awaiting approval, material requests waiting on a decision, and which sites have not filed a report recently.',
+      'What needs attention across every site right now: sites over budget, payments and invoices overdue, sites with no supervisor assigned, sites gone quiet or finishing soon, approvals waiting on a decision, open defects and recent safety incidents. The same list the Overview page shows.',
     run: async () => {
       const weekAgo = new Date(today().getTime() - 7 * DAY_MS);
 
-      const [openSnags, incidents, pendingExpenses, pendingRequests, projects, reportedSince] =
-        await Promise.all([
-          prisma.snagItem.groupBy({
-            by: ['severity'],
-            where: { status: { in: ['OPEN', 'IN_PROGRESS', 'REJECTED'] } },
-            _count: true,
-          }),
-          prisma.safetyIncident.count({ where: { occurredAt: { gte: weekAgo } } }),
-          prisma.expense.findMany({ where: { status: 'PENDING' }, select: { amount: true } }),
-          prisma.materialRequest.count({ where: { status: 'PENDING' } }),
-          prisma.project.findMany({
-            where: { status: 'ACTIVE' },
-            select: { id: true, name: true },
-          }),
-          prisma.dailyReport.findMany({
-            where: { date: { gte: weekAgo } },
-            select: { projectId: true },
-            distinct: ['projectId'],
-          }),
-        ]);
+      // Open defects and recent safety incidents are not part of the Overview
+      // digest, so they are gathered separately and appended to it — the rest
+      // of this answer comes from the SAME function that page calls, so the
+      // two can never disagree about what's over budget or overdue.
+      const [openSnags, incidents, digest] = await Promise.all([
+        prisma.snagItem.groupBy({
+          by: ['severity'],
+          where: { status: { in: ['OPEN', 'IN_PROGRESS', 'REJECTED'] } },
+          _count: true,
+        }),
+        prisma.safetyIncident.count({ where: { occurredAt: { gte: weekAgo } } }),
+        attentionDigest(),
+      ]);
 
-      const reported = new Set(reportedSince.map((r) => r.projectId));
-      const silent = projects.filter((p) => !reported.has(p.id));
       const totalOpen = openSnags.reduce((n, s) => n + s._count, 0);
+      const g = digest.groups;
 
       return {
         facts: [
           `Open defects across all sites: ${totalOpen}${totalOpen ? ` (${openSnags.map((s) => `${s._count} ${titleCase(s.severity)}`).join(', ')})` : ''}.`,
           `Safety incidents in the last 7 days: ${incidents}.`,
-          pendingExpenses.length
-            ? `${plural(pendingExpenses.length, 'expense')} awaiting approval, worth ${money(pendingExpenses.reduce((n, e) => n + Number(e.amount), 0))}.`
-            : 'No expenses are awaiting approval.',
-          `${plural(pendingRequests, 'material request')} waiting on a decision.`,
-          silent.length
-            ? `Active sites with no daily report in the last 7 days: ${silent.map((p) => p.name).join(', ')}.`
-            : 'Every active site has filed a report in the last 7 days.',
+          g.overBudget.length
+            ? `Over budget: ${g.overBudget.map((p) => `${p.name} (${p.consumedPct}% spent)`).join(', ')}.`
+            : 'No site is over budget.',
+          g.paymentOverdue.length
+            ? `${plural(g.paymentOverdue.length, 'site')} with the client balance overdue, ${money(g.paymentOverdue.reduce((s, p) => s + p.pendingBalance, 0))} total. Longest overdue: ${g.paymentOverdue[0].name} (${plural(g.paymentOverdue[0].daysOverdue, 'day')}).`
+            : 'No site has its client balance overdue.',
+          g.invoiceOverdue.length
+            ? `${plural(g.invoiceOverdue.length, 'invoice')} overdue, ${money(g.invoiceOverdue.reduce((s, i) => s + i.balance, 0))} total.`
+            : 'No invoices are overdue.',
+          g.unassigned.length
+            ? `Active sites with no supervisor assigned: ${g.unassigned.map((p) => p.name).join(', ')}.`
+            : 'Every active site has a supervisor assigned.',
+          g.wentQuiet.length
+            ? `Sites with no recent report: ${g.wentQuiet.map((p) => p.name).join(', ')}.`
+            : 'Every active site has reported recently.',
+          g.finishingSoon.length
+            ? `Finishing within ${FINISHING_SOON_DAYS} days: ${g.finishingSoon.map((p) => `${p.name} (${plural(p.daysLeft, 'day')})`).join(', ')}.`
+            : 'Nothing is due to finish in the next two weeks.',
+          g.pendingApprovals.length
+            ? `Awaiting a decision: ${g.pendingApprovals.map((p) => `${p.name} (${p.total})`).join(', ')}.`
+            : 'Nothing is awaiting approval.',
         ].join('\n'),
         source: { label: 'Overview', href: '/admin' },
       };

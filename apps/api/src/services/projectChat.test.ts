@@ -41,6 +41,17 @@ test('the catalogue a supervisor sees does not even name the money lookups', () 
   assert.doesNotMatch(cat, /who_we_owe|tax_position|site_money/);
 });
 
+// A regression guard: company_operations used to know only about defects,
+// safety and pending approvals. It now reuses the same digest the Overview
+// page shows (services/attention.ts), so it must describe those subjects too
+// or the planner will never route "is anything over budget?" to it.
+test('company_operations describes the same subjects the Overview page flags', () => {
+  const cat = catalogueFor(office);
+  assert.match(cat, /over budget/i);
+  assert.match(cat, /overdue/i);
+  assert.match(cat, /supervisor/i);
+});
+
 test('every site lookup asks for a projectId in the catalogue', () => {
   const cat = catalogueFor(office);
   for (const l of LOOKUPS.filter((x) => x.scope === 'site')) {
