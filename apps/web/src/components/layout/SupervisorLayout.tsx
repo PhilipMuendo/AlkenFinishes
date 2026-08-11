@@ -38,7 +38,12 @@ export function SupervisorLayout() {
           </button>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-2xl flex-1 p-4 lg:max-w-5xl lg:p-6">
+      {/* max-w-7xl, not 5xl: CommandCentrePanel's card grid switches to four
+          columns at the xl viewport breakpoint regardless of container width,
+          so a narrower cap here left each card too tight for its own title
+          ("Progress against programme" truncating mid-word). Matches
+          AdminLayout's width so the same grid behaves the same in both. */}
+      <main className="mx-auto w-full max-w-2xl flex-1 p-4 lg:max-w-7xl lg:p-6">
         <Outlet />
       </main>
       {/* A bottom bar costs ~56px of a phone screen permanently, so it has to
