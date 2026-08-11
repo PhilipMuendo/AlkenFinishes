@@ -188,6 +188,19 @@ plaintext `apiKey` once, unused by Suprema), `PATCH /devices/:id`,
 `POST /workers/import` (A), `POST /workers/:id/assign`,
 `POST /workers/:id/unassign`, `GET /workers/:id/history` (A).
 
+**Paying casual/contracted staff — all admin-only.** `GET /workers/payables`
+(company-wide: who is owed what, cash paid, tax withheld), `GET
+/workers/:id/payment-suggestion` (balance owed from attendance, the
+configured withholding rate applied to it, and payment history), `POST
+/workers/:id/payments` (multipart, `proof` file optional — `amount`, `method`,
+`paymentDate`, `whtAmount`, `whtCertNo?`, `referenceNo?`, `notes?`,
+`allowOverpayment?`), `DELETE /workers/:id/payments/:paymentId` (refused once
+`whtRemittedAt` is set). Mirrors the supplier payables endpoints in
+`services/payables.ts`/`modules/suppliers.ts` exactly; see
+`services/workerPay.ts`. This is for a worker paid for hours worked, not run
+through Payroll — the two are alternative tax treatments of the same income
+and must never both apply to one person.
+
 Supervisors may add and manage fundis on their own sites only — enforced inside
 the handlers (`assertOwnProject` / `assertOwnWorker`) with a narrower field
 schema than the office gets (no status, biometric ID or date of birth).
@@ -250,8 +263,8 @@ lookup".
 ## Settings (A)
 `GET/PUT` pairs for `/settings/thresholds`, `/settings/labour-source`,
 `/settings/company` (+ `POST /settings/company/logo`), `/settings/invoicing`,
-`/settings/payroll`, `/settings/purchase-tax`, `/settings/pipeline`,
-`/settings/ai`. Plus `GET /settings/finance`,
+`/settings/payroll`, `/settings/purchase-tax`, `/settings/staff-tax`,
+`/settings/pipeline`, `/settings/ai`. Plus `GET /settings/finance`,
 `GET /settings/quotation-defaults`, `GET /settings/audit-log?page=`.
 
 `GET /settings/ai` returns the daily budget, today's usage split by feature,

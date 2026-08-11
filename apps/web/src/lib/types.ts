@@ -213,6 +213,9 @@ export interface TaxPosition {
   withholding: {
     withheldFromSuppliers: number;
     notYetRemitted: number;
+    /** Withheld from casual/contracted staff (not on Payroll) and owed to KRA. */
+    withheldFromStaff: number;
+    staffNotYetRemitted: number;
     withheldByClients: number;
     certificatesOutstanding: number;
     certificatesOutstandingCount: number;
@@ -239,6 +242,12 @@ export interface PurchaseTaxConfig {
   withholdingAgent: boolean;
   /** Whether the server has receipt reading configured. Not a user setting. */
   receiptScanning?: boolean;
+}
+
+/** GET/PUT /settings/staff-tax. Its own rate — not shared with purchase tax. */
+export interface StaffTaxConfig {
+  withholdingAgent: boolean;
+  defaultWhtRatePct: number;
 }
 
 /** Why a scan failed, when the form needs to do more than show the message. */
@@ -279,6 +288,57 @@ export interface ScannedReceipt {
   supplier: { id: string; name: string } | null;
   /** A name was read but is not on the supplier list. */
   supplierUnmatched: boolean;
+}
+
+/** What is owed to one worker, from attendance. Derived, never stored. */
+export interface WorkerPosition {
+  accrued: number;
+  cashPaid: number;
+  taxWithheld: number;
+  paid: number;
+  outstanding: number;
+  overpaid: number;
+  paidPct: number;
+  settled: boolean;
+}
+
+export interface WorkerPayment {
+  id: string;
+  /** Cash the worker actually received. */
+  amount: number;
+  method: PaymentMethodValue;
+  paymentDate: string;
+  referenceNo: string | null;
+  notes: string | null;
+  proofUrl: string | null;
+  /** Tax deducted from this payment and owed to KRA instead of the worker. */
+  whtAmount: number;
+  whtCertNo: string | null;
+  whtRemittedAt: string | null;
+  paidBy: { id: string; name: string };
+  createdAt: string;
+}
+
+/** GET /workers/:id/payment-suggestion */
+export interface WorkerPaymentSuggestion {
+  position: WorkerPosition;
+  tax: StaffTaxConfig;
+  suggested: { amount: number; whtAmount: number };
+  payments: WorkerPayment[];
+}
+
+/** GET /workers/payables */
+export interface WorkerPayablesReport {
+  summary: {
+    accrued: number;
+    paid: number;
+    cashPaid: number;
+    taxWithheld: number;
+    outstanding: number;
+    overpaid: number;
+    workerCount: number;
+  };
+  workers: (WorkerPosition & { worker: { id: string; name: string; trade: string } })[];
 }
 
 /** GET /projects/:id/expenses/:expenseId/payment-suggestion */

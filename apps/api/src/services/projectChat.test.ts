@@ -17,6 +17,7 @@ const supervisor = { id: 'u2', role: 'SUPERVISOR' };
 test('a supervisor is never offered a company-money lookup', () => {
   const names = lookupsFor(supervisor).map((l) => l.name);
   assert.ok(!names.includes('who_we_owe'));
+  assert.ok(!names.includes('owed_to_staff'));
   assert.ok(!names.includes('who_owes_us'));
   assert.ok(!names.includes('tax_position'));
   assert.ok(!names.includes('company_overview'));
@@ -38,7 +39,7 @@ test('the catalogue a supervisor sees does not even name the money lookups', () 
   // for. The permission check is separate and enforced regardless, but there is
   // no reason to advertise.
   const cat = catalogueFor(supervisor);
-  assert.doesNotMatch(cat, /who_we_owe|tax_position|site_money/);
+  assert.doesNotMatch(cat, /who_we_owe|owed_to_staff|tax_position|site_money/);
 });
 
 // A regression guard: company_operations used to know only about defects,
@@ -99,6 +100,7 @@ test('the catalogue reaches every part of the platform', () => {
     'equipment',
     'upcoming',
     'company_operations',
+    'owed_to_staff',
   ]) {
     assert.ok(names.has(required), `no lookup answers for ${required}`);
   }

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Pencil, Plus, Trash2, Upload } from 'lucide-react';
+import { Banknote, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { HardHat } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from '@/components/ui/toast';
+import { WorkerPaymentDialog } from '@/features/WorkerPaymentDialog';
 
 const IMPORT_TEMPLATE_CSV =
   'Name,Phone,Trade,Hourly Rate,Biometric ID\nJohn Mwangi,0712345678,Painter,300,\nPeter Otieno,0723456789,Tiler,350,\n';
@@ -49,6 +50,7 @@ export function WorkersPage() {
   const [assigning, setAssigning] = useState<Worker | null>(null);
   const [deleting, setDeleting] = useState<Worker | null>(null);
   const [editing, setEditing] = useState<Worker | null>(null);
+  const [paying, setPaying] = useState<Worker | null>(null);
 
   const { data: workers } = useQuery({
     queryKey: ['workers'],
@@ -225,6 +227,14 @@ export function WorkersPage() {
                         Assign to site
                       </Button>
                     )}
+                    <button
+                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                      aria-label={`Pay ${w.name}`}
+                      title="Pay this worker"
+                      onClick={() => setPaying(w)}
+                    >
+                      <Banknote size={16} />
+                    </button>
                     <button
                       className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
                       aria-label={`Edit ${w.name}`}
@@ -453,6 +463,10 @@ export function WorkersPage() {
             Assign
           </Button>
         </form>
+      </Dialog>
+
+      <Dialog open={!!paying} onClose={() => setPaying(null)} title={paying ? `Pay ${paying.name}` : ''}>
+        {paying && <WorkerPaymentDialog worker={paying} onDone={() => setPaying(null)} />}
       </Dialog>
 
       <Dialog

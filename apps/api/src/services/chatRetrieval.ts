@@ -15,6 +15,7 @@ import { contractPosition, leadPipeline } from './pipeline';
 import { projectFinancials } from './finance';
 import { derivedEvents } from './calendarFeeds';
 import { attentionDigest, FINISHING_SOON_DAYS } from './attention';
+import { accruedByWorker, workerPosition, workerPayablesSummary } from './workerPay';
 
 /**
  * What the assistant is allowed to look up, and how.
@@ -376,6 +377,44 @@ export const LOOKUPS: Lookup[] = [
   },
 
   {
+    name: 'owed_to_staff',
+    scope: 'office',
+    description:
+      'What casual/contracted staff (fundis paid for hours worked, not on formal Payroll) are owed from attendance, what has been paid, and tax withheld from them. Biggest balance first.',
+    run: async () => {
+      const workers = await prisma.worker.findMany({ select: { id: true, name: true, trade: true } });
+      const [accrued, payments] = await Promise.all([
+        accruedByWorker(),
+        prisma.workerPayment.findMany({ select: { workerId: true, amount: true, whtAmount: true } }),
+      ]);
+      const paymentsByWorker = new Map<string, { amount: number; whtAmount: number }[]>();
+      for (const p of payments) {
+        const list = paymentsByWorker.get(p.workerId) ?? [];
+        list.push({ amount: Number(p.amount), whtAmount: Number(p.whtAmount) });
+        paymentsByWorker.set(p.workerId, list);
+      }
+      const positions = workers
+        .map((w) => ({ worker: w, ...workerPosition(accrued.get(w.id) ?? 0, paymentsByWorker.get(w.id) ?? []) }))
+        .filter((p) => p.outstanding > 0)
+        .sort((a, b) => b.outstanding - a.outstanding);
+      const summary = workerPayablesSummary(positions);
+
+      return {
+        facts:
+          positions.length === 0
+            ? 'Nothing is currently owed to any worker.'
+            : [
+                `Total owed to staff: ${money(summary.outstanding)} across ${positions.length} workers. Tax withheld from staff and held for KRA: ${money(summary.taxWithheld)}.`,
+                ...positions
+                  .slice(0, 10)
+                  .map((p) => `${p.worker.name} (${p.worker.trade}): ${money(p.outstanding)} owed.`),
+              ].join('\n'),
+        source: { label: 'Staff payables', href: '/admin/workers' },
+      };
+    },
+  },
+
+  {
     name: 'who_owes_us',
     scope: 'office',
     description: 'Which client invoices are unpaid or overdue, and by how much.',
@@ -441,7 +480,7 @@ export const LOOKUPS: Lookup[] = [
     name: 'tax_position',
     scope: 'office',
     description:
-      'VAT and withholding for a month: VAT charged out, VAT reclaimable, tax held for KRA, tax clients withheld from us. Takes a month as YYYY-MM, defaulting to this month.',
+      'VAT and withholding for a month: VAT charged out, VAT reclaimable, tax withheld from suppliers and from staff and held for KRA, tax clients withheld from us. Takes a month as YYYY-MM, defaulting to this month.',
     args: ['month'],
     run: async ({ args }) => {
       let period = monthPeriod();
@@ -461,6 +500,7 @@ export const LOOKUPS: Lookup[] = [
             : '',
           `Net VAT ${pos.vat.netVatPayable >= 0 ? 'payable to KRA' : 'credit carried forward'}: ${money(Math.abs(pos.vat.netVatPayable))}.`,
           `Withheld from suppliers and not yet remitted: ${money(pos.withholding.notYetRemitted)}.`,
+          `Withheld from staff and not yet remitted: ${money(pos.withholding.staffNotYetRemitted)}.`,
           `Withheld by clients on our behalf: ${money(pos.withholding.withheldByClients)}, of which ${money(pos.withholding.certificatesOutstanding)} has no certificate yet.`,
         ]
           .filter(Boolean)

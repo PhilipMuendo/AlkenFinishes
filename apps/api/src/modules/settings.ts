@@ -9,6 +9,7 @@ import { audit } from '../middleware/audit';
 import { getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPurchaseTaxConfig } from '../services/payables';
+import { getStaffTaxConfig } from '../services/workerPay';
 import { getPayrollConfig } from '../services/payroll';
 import { receiptScanningAvailable } from '../services/receiptExtraction';
 import { aiAvailable, aiProvider } from '../services/ai';
@@ -291,6 +292,38 @@ router.put(
       update: { value },
     });
     audit(req, 'settings.purchaseTax', 'Setting', 'purchaseTax', value);
+    res.json(value);
+  }),
+);
+
+// ---- Tax on what we pay casual/contracted staff ----
+//
+// Deliberately its own rate, not shared with purchase-tax: a supplier's
+// withholding rate and a worker's are not the same fact about the company,
+// and conflating them would move one when somebody only meant to change the
+// other. Off (rate zero) until switched on deliberately, same as suppliers.
+const staffTaxSchema = z.object({
+  withholdingAgent: z.coerce.boolean(),
+  defaultWhtRatePct: z.coerce.number().min(0).max(100),
+});
+
+router.get(
+  '/staff-tax',
+  asyncHandler(async (_req, res) => {
+    res.json(await getStaffTaxConfig());
+  }),
+);
+
+router.put(
+  '/staff-tax',
+  asyncHandler(async (req, res) => {
+    const value = staffTaxSchema.parse(req.body);
+    await prisma.setting.upsert({
+      where: { key: 'staffTax' },
+      create: { key: 'staffTax', value },
+      update: { value },
+    });
+    audit(req, 'settings.staffTax', 'Setting', 'staffTax', value);
     res.json(value);
   }),
 );

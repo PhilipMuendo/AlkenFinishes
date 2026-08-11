@@ -257,6 +257,7 @@ model User {
   variationsApproved      Variation[]                 @relation("VariationApprovedBy")
   supplierPayments        SupplierPayment[]           @relation("SupplierPaymentPaidBy")
   payrollRuns             PayrollRun[]                @relation("PayrollRunCreatedBy")
+  workerPayments          WorkerPayment[]             @relation("WorkerPaymentPaidBy")
 }
 
 model RefreshToken {
@@ -791,6 +792,38 @@ model Worker {
   syncIssues       AttendanceSyncIssue[]
   overrideRequests AttendanceOverrideRequest[]
   payrollLines     PayrollLine[]
+  payments         WorkerPayment[]
+}
+
+// A cash payment to a worker who is not run through formal Payroll — a
+// casual or contracted fundi paid for hours worked (services/attendanceIngest.ts
+// accrues the cost per AttendanceRecord) rather than employed on PAYE terms.
+// Mirrors SupplierPayment: `amount` is what the worker actually received,
+// `whtAmount` is tax deducted from them and owed to KRA instead — together
+// they settle what attendance says they are owed, the same way a supplier
+// bill is settled by cash plus whatever was withheld from it.
+model WorkerPayment {
+  id       String @id @default(cuid())
+  workerId String
+  worker   Worker @relation(fields: [workerId], references: [id], onDelete: Restrict)
+
+  amount      Decimal       @db.Decimal(14, 2)
+  method      PaymentMethod
+  paymentDate DateTime
+  referenceNo String?
+  notes       String?
+  proofUrl    String?
+
+  whtAmount     Decimal   @default(0) @db.Decimal(14, 2)
+  whtCertNo     String?
+  whtRemittedAt DateTime?
+
+  paidById  String
+  paidBy    User     @relation("WorkerPaymentPaidBy", fields: [paidById], references: [id])
+  createdAt DateTime @default(now())
+
+  @@index([workerId])
+  @@index([paymentDate])
 }
 
 model WorkerAssignment {

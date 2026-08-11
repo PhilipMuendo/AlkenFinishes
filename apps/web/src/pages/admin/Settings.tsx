@@ -13,6 +13,7 @@ import type {
   PayeBand,
   PayrollConfig,
   PurchaseTaxConfig,
+  StaffTaxConfig,
   Worker,
 } from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
@@ -322,6 +323,7 @@ export function SettingsPage() {
           </Card>
 
           <PurchaseTaxCard />
+          <StaffTaxCard />
           <PayrollCard />
         </>
       )}
@@ -1070,6 +1072,101 @@ function PurchaseTaxCard() {
                 the figure before it is saved, and it can be overridden.
               </p>
             </div>
+          )}
+
+          {save.isError && (
+            <p className="text-sm text-danger-fg">
+              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" disabled={save.isPending}>
+            Save tax settings
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Tax on what we pay casual/contracted staff.
+ *
+ * Its own rate, not shared with purchase tax: a supplier's withholding rate
+ * and a worker's are not the same fact about the company. For staff run
+ * through formal Payroll (see below), this does not apply — PAYE and
+ * withholding are alternative treatments of the same income, never both.
+ */
+function StaffTaxCard() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['settings', 'staff-tax'],
+    queryFn: () => api<StaffTaxConfig>('/settings/staff-tax'),
+  });
+  const [agent, setAgent] = useState<boolean | null>(null);
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api('/settings/staff-tax', { method: 'PUT', body }),
+    onSuccess: () => {
+      toast.success('Staff tax settings saved.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'staff-tax'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
+  });
+
+  if (!data) return null;
+  const isAgent = agent ?? data.withholdingAgent;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Tax on staff payments</CardTitle>
+        <p className="text-xs text-fg-muted">
+          For fundis paid for hours worked rather than employed on PAYE terms — the Workers screen
+          suggests this rate when you record a payment, and it can be overridden.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={String(data.withholdingAgent) + data.defaultWhtRatePct}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              withholdingAgent: isAgent,
+              // A rate behind a switched-off flag is how it gets applied by
+              // surprise later, so it is zeroed rather than kept stale.
+              defaultWhtRatePct: isAgent ? Number(fd.get('defaultWhtRatePct')) : 0,
+            });
+          }}
+          className="space-y-3"
+        >
+          <label className="flex items-start gap-2.5 rounded-lg border border-hairline p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={isAgent}
+              onChange={(e) => setAgent(e.target.checked)}
+              className="mt-0.5 size-4"
+            />
+            <span>
+              <span className="font-medium text-fg">We withhold tax from staff payments</span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Leave this off unless you actually withhold. When off, no tax is ever suggested
+                for deduction from a worker payment.
+              </span>
+            </span>
+          </label>
+
+          {isAgent && (
+            <Field label="Default withholding tax %">
+              <Input
+                name="defaultWhtRatePct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                defaultValue={data.defaultWhtRatePct}
+              />
+            </Field>
           )}
 
           {save.isError && (

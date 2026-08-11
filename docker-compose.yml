@@ -54,7 +54,9 @@ services:
       # building to be read, so it is opt-in by configuration.
       # Whichever key is set is used, Gemini first because it is cheaper.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_API_KEYS: ${GEMINI_API_KEYS:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_API_KEYS: ${ANTHROPIC_API_KEYS:-}
       RECEIPT_PROVIDER: ${RECEIPT_PROVIDER:-}
       RECEIPT_MODEL: ${RECEIPT_MODEL:-}
     volumes:

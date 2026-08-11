@@ -8,6 +8,17 @@ import { requireAuth } from '../middleware/auth';
 import { projectScope, requireSuperadmin } from '../middleware/rbac';
 import { visibleWorker, visibleWorkers } from '../services/payVisibility';
 import { audit } from '../middleware/audit';
+import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  accruedByWorker,
+  assertWorkerPaymentAllowed,
+  getStaffTaxConfig,
+  withholdingOn,
+  WorkerPayError,
+  workerPayablesSummary,
+  workerPosition,
+  type WorkerPaymentRecord,
+} from '../services/workerPay';
 
 const router = Router();
 router.use(requireAuth);
@@ -408,6 +419,207 @@ router.get(
         orderBy: { startDate: 'desc' },
       }),
     );
+  }),
+);
+
+// ---- Paying casual/contracted staff, and what is withheld from them ------
+//
+// Superadmin-only throughout, matching suppliers.ts and payments.ts: what a
+// worker is owed and what tax was withheld is company financial data a site
+// supervisor must never see.
+
+/** An untouched form field arrives as "", which is absent, not a value. */
+const blank = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
+const optionalText = z.preprocess(blank, z.string().trim().optional());
+const formBool = z.preprocess(
+  (v) => (typeof v === 'string' ? ['true', 'on', '1', 'yes'].includes(v.toLowerCase()) : v),
+  z.boolean(),
+);
+
+const workerPaymentSchema = z.object({
+  amount: z.coerce.number().nonnegative('A payment cannot be negative'),
+  method: z.enum(['CASH', 'BANK_TRANSFER', 'MPESA', 'CHEQUE', 'OTHER']),
+  paymentDate: z.coerce.date(),
+  referenceNo: optionalText,
+  notes: optionalText,
+  // Tax deducted from this payment and owed to KRA rather than the worker.
+  whtAmount: z.preprocess(blank, z.coerce.number().nonnegative().optional()),
+  whtCertNo: optionalText,
+  // Only set when the record genuinely calls for more than is outstanding.
+  allowOverpayment: z.preprocess((v) => blank(v) ?? false, formBool),
+});
+
+type WorkerPaymentRow = {
+  amount: unknown;
+  whtAmount: unknown;
+  proofUrl?: string | null;
+  [k: string]: unknown;
+};
+
+const serializeWorkerPayment = (p: WorkerPaymentRow) => ({
+  ...p,
+  amount: Number(p.amount),
+  whtAmount: Number(p.whtAmount),
+  proofUrl: signFileUrl(p.proofUrl ?? null),
+});
+
+/**
+ * The company-wide position: what every worker is owed, cash paid, tax
+ * withheld. Registered before /:id so "payables" is never read as a worker id.
+ */
+router.get(
+  '/payables',
+  requireSuperadmin,
+  asyncHandler(async (_req, res) => {
+    const workers = await prisma.worker.findMany({
+      select: { id: true, name: true, trade: true },
+    });
+    const [accrued, payments] = await Promise.all([
+      accruedByWorker(),
+      prisma.workerPayment.findMany({ select: { workerId: true, amount: true, whtAmount: true } }),
+    ]);
+    const paymentsByWorker = new Map<string, WorkerPaymentRecord[]>();
+    for (const p of payments) {
+      const list = paymentsByWorker.get(p.workerId) ?? [];
+      list.push({ amount: Number(p.amount), whtAmount: Number(p.whtAmount) });
+      paymentsByWorker.set(p.workerId, list);
+    }
+
+    const positions = workers.map((w) => ({
+      worker: w,
+      ...workerPosition(accrued.get(w.id) ?? 0, paymentsByWorker.get(w.id) ?? []),
+    }));
+    // Most owed first: that is the one that matters if cash is short this week.
+    positions.sort((a, b) => b.outstanding - a.outstanding);
+
+    res.json({
+      summary: workerPayablesSummary(positions),
+      workers: positions,
+    });
+  }),
+);
+
+router.get(
+  '/:id/payment-suggestion',
+  requireSuperadmin,
+  asyncHandler(async (req, res) => {
+    const worker = await prisma.worker.findUnique({ where: { id: req.params.id } });
+    if (!worker) throw ApiError.notFound('Worker not found');
+
+    const [accrued, payments, tax] = await Promise.all([
+      accruedByWorker([worker.id]),
+      prisma.workerPayment.findMany({
+        where: { workerId: worker.id },
+        orderBy: { paymentDate: 'desc' },
+        include: { paidBy: { select: { id: true, name: true } } },
+      }),
+      getStaffTaxConfig(),
+    ]);
+    const paymentRecords: WorkerPaymentRecord[] = payments.map((p) => ({
+      amount: Number(p.amount),
+      whtAmount: Number(p.whtAmount),
+    }));
+    const position = workerPosition(accrued.get(worker.id) ?? 0, paymentRecords);
+    const suggestedWht = tax.withholdingAgent
+      ? withholdingOn(position.outstanding, tax.defaultWhtRatePct)
+      : 0;
+
+    res.json({
+      position,
+      tax,
+      suggested: {
+        whtAmount: suggestedWht,
+        amount: Math.max(0, Math.round((position.outstanding - suggestedWht) * 100) / 100),
+      },
+      payments: payments.map(serializeWorkerPayment),
+    });
+  }),
+);
+
+router.post(
+  '/:id/payments',
+  requireSuperadmin,
+  upload.single('proof'),
+  asyncHandler(async (req, res) => {
+    const data = workerPaymentSchema.parse(req.body);
+    await verifyUpload(req.file);
+
+    const worker = await prisma.worker.findUnique({ where: { id: req.params.id } });
+    if (!worker) throw ApiError.notFound('Worker not found');
+
+    const [accrued, existing] = await Promise.all([
+      accruedByWorker([worker.id]),
+      prisma.workerPayment.findMany({
+        where: { workerId: worker.id },
+        select: { amount: true, whtAmount: true },
+      }),
+    ]);
+    const payment: WorkerPaymentRecord = { amount: data.amount, whtAmount: data.whtAmount ?? 0 };
+    try {
+      assertWorkerPaymentAllowed(
+        accrued.get(worker.id) ?? 0,
+        existing.map((p) => ({ amount: Number(p.amount), whtAmount: Number(p.whtAmount) })),
+        payment,
+        { allowOverpayment: data.allowOverpayment },
+      );
+    } catch (e) {
+      if (e instanceof WorkerPayError) throw ApiError.badRequest(e.message);
+      throw e;
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.workerPayment.create({
+        data: {
+          workerId: worker.id,
+          amount: data.amount,
+          method: data.method,
+          paymentDate: data.paymentDate,
+          referenceNo: data.referenceNo,
+          notes: data.notes,
+          whtAmount: payment.whtAmount,
+          whtCertNo: data.whtCertNo,
+          proofUrl: req.file ? fileUrl(req.file.filename) : undefined,
+          paidById: req.user!.id,
+        },
+        include: { paidBy: { select: { id: true, name: true } } },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: req.user!.id,
+          action: 'workerPayment.create',
+          entity: 'WorkerPayment',
+          entityId: row.id,
+          meta: { workerId: worker.id, amount: data.amount, whtAmount: payment.whtAmount },
+          ip: req.ip,
+        },
+      });
+      return row;
+    });
+
+    res.status(201).json(serializeWorkerPayment(created));
+  }),
+);
+
+router.delete(
+  '/:id/payments/:paymentId',
+  requireSuperadmin,
+  asyncHandler(async (req, res) => {
+    const payment = await prisma.workerPayment.findUnique({ where: { id: req.params.paymentId } });
+    if (!payment || payment.workerId !== req.params.id) throw ApiError.notFound();
+    // Withheld tax already remitted to KRA cannot be unwound by deleting the
+    // row it was recorded on — the money is gone and the certificate issued.
+    if (payment.whtRemittedAt) {
+      throw ApiError.conflict(
+        'The tax withheld on this payment has already been remitted to KRA. Record a correcting entry instead of deleting it.',
+      );
+    }
+    await prisma.workerPayment.delete({ where: { id: payment.id } });
+    removeUploadedFile(payment.proofUrl);
+    audit(req, 'workerPayment.delete', 'WorkerPayment', payment.id, {
+      workerId: payment.workerId,
+      amount: Number(payment.amount),
+    });
+    res.json({ ok: true });
   }),
 );
 
