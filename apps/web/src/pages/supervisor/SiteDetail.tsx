@@ -5,6 +5,7 @@ import {
   AlertOctagon,
   Boxes,
   CalendarRange,
+  Camera,
   ChevronLeft,
   ClipboardList,
   Fingerprint,
@@ -29,6 +30,7 @@ import { ToolsReadOnlyPanel } from '@/features/ToolsReadOnlyPanel';
 import { WorkersPanel } from '@/features/WorkersPanel';
 import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
+import { PhotosPanel } from '@/features/PhotosPanel';
 import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 
 /**
@@ -62,6 +64,7 @@ const ACTIONS = [
     chip: 'bg-sky-50 text-sky-600',
   },
   { id: 'tools', label: 'Tools', hint: 'Equipment on site', icon: Wrench, chip: 'bg-teal-50 text-teal-600' },
+  { id: 'photos', label: 'Photos', hint: 'Site photo gallery', icon: Camera, chip: 'bg-pink-50 text-pink-600' },
   {
     id: 'snags',
     label: 'Snag list',
@@ -173,6 +176,7 @@ export function SiteDetailPage() {
       {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
       {view === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit />}
       {view === 'tools' && <ToolsReadOnlyPanel />}
+      {view === 'photos' && <PhotosPanel projectId={projectId} />}
       {view === 'snags' && <SnagsPanel projectId={projectId} />}
       {view === 'safety' && <SafetyPanel projectId={projectId} />}
     </div>

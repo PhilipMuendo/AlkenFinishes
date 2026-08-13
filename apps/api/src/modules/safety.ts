@@ -59,6 +59,12 @@ router.delete(
   asyncHandler(async (req, res) => {
     const existing = await prisma.safetyIncident.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
+    // A safety record is evidence, not a note — anyone who could see it should
+    // not be able to erase someone else's. The office can clear any entry;
+    // the person who logged it can retract their own.
+    if (req.user!.role !== 'SUPERADMIN' && existing.reportedById !== req.user!.id) {
+      throw ApiError.forbidden();
+    }
     removeUploadedFile(existing.photoUrl);
     await prisma.safetyIncident.delete({ where: { id: existing.id } });
     audit(req, 'safetyIncident.delete', 'SafetyIncident', existing.id);

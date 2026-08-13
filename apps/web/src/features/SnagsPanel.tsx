@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertOctagon, Camera, CheckCircle2, Plus, RotateCcw } from 'lucide-react';
+import { AlertOctagon, Camera, CheckCircle2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { SnagItem, SnagSeverity, SnagStatus } from '@/lib/types';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
@@ -91,6 +92,7 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
   const [resolving, setResolving] = useState<SnagItem | null>(null);
   const [pickedFile, setPickedFile] = useState<File | null>(null);
   const [pin, setPin] = useState<{ x: number; y: number } | null>(null);
+  const [deleting, setDeleting] = useState<SnagItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: snags } = useQuery({
@@ -142,6 +144,17 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
       setViewing(null);
     },
     onError: (e) => toast.error(errText(e, 'The defect was not reopened.')),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/projects/${projectId}/snags/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Defect deleted.');
+      invalidate();
+      setViewing(null);
+      setDeleting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The defect was not deleted.')),
   });
 
   const startInProgress = (id: string) => {
@@ -336,6 +349,18 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
               {viewing.status === 'RESOLVED' && !isAdmin && (
                 <p className="text-sm text-fg-muted">Marked resolved — waiting on the office to confirm the fix.</p>
               )}
+              {viewing.status !== 'VERIFIED' && (isAdmin || viewing.reportedBy.id === user?.id) && (
+                <button
+                  aria-label="Delete defect"
+                  onClick={() => {
+                    remove.reset();
+                    setDeleting(viewing);
+                  }}
+                  className="ml-auto rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
+                >
+                  <Trash2 size={16} />
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -369,6 +394,16 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
           </Button>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete "${deleting.title}"?` : ''}
+        description="This removes the defect and its photos entirely. It cannot be undone."
+        pending={remove.isPending}
+        error={remove.error instanceof ApiRequestError ? remove.error.message : null}
+        onConfirm={() => remove.mutate(deleting!.id)}
+      />
     </div>
   );
 }

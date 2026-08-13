@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Plus, Target } from 'lucide-react';
+import { ChevronRight, Plus, Target, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Client, Lead, LeadStage } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
 import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
@@ -45,6 +46,7 @@ export function LeadsPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [losing, setLosing] = useState<Lead | null>(null);
+  const [deleting, setDeleting] = useState<Lead | null>(null);
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ['leads'],
@@ -85,6 +87,16 @@ export function LeadsPage() {
       setLosing(null);
     },
     onError: (e) => toast.error(errText(e, 'The lead was not moved.')),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/leads/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Lead deleted.');
+      invalidate();
+      setDeleting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The lead was not deleted.')),
   });
 
   const byStage = useMemo(() => {
@@ -183,6 +195,10 @@ export function LeadsPage() {
                           ? setLosing(lead)
                           : move.mutate({ id: lead.id, stage: to })
                       }
+                      onDelete={() => {
+                        remove.reset();
+                        setDeleting(lead);
+                      }}
                       busy={move.isPending}
                     />
                   ))}
@@ -224,6 +240,10 @@ export function LeadsPage() {
                         settled
                         onEdit={() => setEditing(lead)}
                         onAdvance={(to) => move.mutate({ id: lead.id, stage: to })}
+                        onDelete={() => {
+                          remove.reset();
+                          setDeleting(lead);
+                        }}
                         busy={move.isPending}
                       />
                     ))}
@@ -364,6 +384,16 @@ export function LeadsPage() {
           </Button>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete "${deleting.title}"?` : ''}
+        description="This removes the lead from the pipeline. It cannot be undone."
+        pending={remove.isPending}
+        error={remove.error instanceof ApiRequestError ? remove.error.message : null}
+        onConfirm={() => remove.mutate(deleting!.id)}
+      />
     </div>
   );
 }
@@ -373,12 +403,14 @@ function LeadCard({
   settled,
   onEdit,
   onAdvance,
+  onDelete,
   busy,
 }: {
   lead: Lead;
   settled?: boolean;
   onEdit: () => void;
   onAdvance: (to: LeadStage) => void;
+  onDelete: () => void;
   busy: boolean;
 }) {
   const idx = OPEN_STAGES.findIndex((s) => s.id === lead.stage);
@@ -428,6 +460,26 @@ function LeadCard({
           <Button size="sm" variant="outline" disabled={busy} onClick={() => onAdvance('LOST')}>
             Lost
           </Button>
+          {lead.quotations.length === 0 && (
+            <button
+              aria-label="Delete lead"
+              onClick={onDelete}
+              className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
+            >
+              <Trash2 size={15} />
+            </button>
+          )}
+        </div>
+      )}
+      {settled && lead.quotations.length === 0 && (
+        <div className="mt-2.5">
+          <button
+            aria-label="Delete lead"
+            onClick={onDelete}
+            className="flex items-center gap-1 text-xs text-fg-subtle transition-colors hover:text-danger-fg"
+          >
+            <Trash2 size={13} /> Delete
+          </button>
         </div>
       )}
     </article>

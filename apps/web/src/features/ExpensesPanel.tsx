@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Plus, Receipt, ScanLine, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus, Receipt, ScanLine, Trash2, Wallet } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type {
@@ -21,6 +21,7 @@ import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { Notice } from '@/components/ui/notice';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { toast } from '@/components/ui/toast';
 
 const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
@@ -47,6 +48,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [rejecting, setRejecting] = useState<Expense | null>(null);
   const [paying, setPaying] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState<Expense | null>(null);
 
   // The supplier list and tax defaults are office-only, and are what turn a
   // plain expense into a bill with a balance.
@@ -111,6 +113,16 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
       setRejecting(null);
     },
     onError: (e) => toast.error(errText(e, 'The expense was not rejected.')),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/projects/${projectId}/expenses/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Expense deleted.');
+      invalidate();
+      setDeleting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The expense was not deleted.')),
   });
 
   // Supervisors can log a purchase (money leaves their hand on site and needs
@@ -298,6 +310,16 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                         <Button size="sm" variant="outline" onClick={() => setRejecting(e)}>
                           Reject
                         </Button>
+                        <button
+                          aria-label="Delete expense"
+                          onClick={() => {
+                            remove.reset();
+                            setDeleting(e);
+                          }}
+                          className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       </>
                     )}
                     {/* Paying a supplier does not wait on approval: the money
@@ -319,6 +341,16 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
           </tbody>
         </Table>
       )}
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete this expense?` : ''}
+        description={deleting ? `${deleting.description} — this cannot be undone.` : undefined}
+        pending={remove.isPending}
+        error={remove.error instanceof ApiRequestError ? remove.error.message : null}
+        onConfirm={() => remove.mutate(deleting!.id)}
+      />
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
         <ExpenseForm

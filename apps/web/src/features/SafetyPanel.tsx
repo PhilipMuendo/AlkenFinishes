@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { HardHat, Plus } from 'lucide-react';
+import { HardHat, Plus, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { SafetyIncident, SafetyIncidentSeverity } from '@/lib/types';
 import { fmtDate, nowLocalDateTime } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
@@ -25,21 +27,36 @@ const SEVERITY_TONE: Record<SafetyIncidentSeverity, 'slate' | 'yellow' | 'red'> 
 
 export function SafetyPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'SUPERADMIN';
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<SafetyIncident | null>(null);
 
   const { data: incidents } = useQuery({
     queryKey: ['safety-incidents', projectId],
     queryFn: () => api<SafetyIncident[]>(`/projects/${projectId}/safety-incidents`),
   });
 
+  const invalidate = () => void qc.invalidateQueries({ queryKey: ['safety-incidents', projectId] });
+
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/safety-incidents`, { formData }),
     onSuccess: () => {
       toast.success('Incident recorded.');
-      void qc.invalidateQueries({ queryKey: ['safety-incidents', projectId] });
+      invalidate();
       setOpen(false);
     },
     onError: (e) => toast.error(errText(e, 'The incident was not recorded.')),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/projects/${projectId}/safety-incidents/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Incident deleted.');
+      invalidate();
+      setDeleting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The incident was not deleted.')),
   });
 
   return (
@@ -75,9 +92,21 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
                   <p className="mt-1 text-xs text-fg-muted">Action taken: {i.actionTaken}</p>
                 )}
               </div>
-              <Badge tone={SEVERITY_TONE[i.severity]} className="shrink-0">
-                {SEVERITY_LABEL[i.severity]}
-              </Badge>
+              <div className="flex shrink-0 items-start gap-1.5">
+                <Badge tone={SEVERITY_TONE[i.severity]}>{SEVERITY_LABEL[i.severity]}</Badge>
+                {(isAdmin || i.reportedBy.id === user?.id) && (
+                  <button
+                    aria-label="Delete incident"
+                    onClick={() => {
+                      remove.reset();
+                      setDeleting(i);
+                    }}
+                    className="rounded-lg p-1 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             </div>
             {i.photoUrl && (
               <a href={i.photoUrl} target="_blank" rel="noreferrer" className="mt-2 block">
@@ -126,6 +155,16 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
           </Button>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title="Delete this incident?"
+        description="This removes the record entirely. It cannot be undone."
+        pending={remove.isPending}
+        error={remove.error instanceof ApiRequestError ? remove.error.message : null}
+        onConfirm={() => remove.mutate(deleting!.id)}
+      />
     </div>
   );
 }

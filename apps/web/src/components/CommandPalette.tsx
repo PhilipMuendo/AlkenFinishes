@@ -8,12 +8,25 @@ import {
   FileSignature,
   FileText,
   HardHat,
+  Receipt,
   Search,
+  Target,
   Truck,
+  Wrench,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Client, Contract, Project, Quotation, Supplier, Worker } from '@/lib/types';
+import type {
+  Client,
+  Contract,
+  InvoiceRegisterRow,
+  Lead,
+  Project,
+  Quotation,
+  Supplier,
+  Tool,
+  Worker,
+} from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -102,6 +115,21 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     queryFn: () => api<Supplier[]>('/suppliers'),
     ...opts,
   });
+  const { data: leads } = useQuery({
+    queryKey: ['leads'],
+    queryFn: () => api<Lead[]>('/leads'),
+    ...opts,
+  });
+  const { data: invoices } = useQuery({
+    queryKey: ['invoices', 'register'],
+    queryFn: () => api<InvoiceRegisterRow[]>('/invoices'),
+    ...opts,
+  });
+  const { data: tools } = useQuery({
+    queryKey: ['tools'],
+    queryFn: () => api<Tool[]>('/tools'),
+    ...opts,
+  });
 
   const hits = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -155,6 +183,32 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         icon: Truck,
         to: '/admin/suppliers',
       })),
+      ...(leads ?? [])
+        .filter((l) => l.stage !== 'WON' && l.stage !== 'LOST')
+        .map((l) => ({
+          id: `le-${l.id}`,
+          label: l.title,
+          detail: l.client.name,
+          group: 'Leads',
+          icon: Target,
+          to: '/admin/leads',
+        })),
+      ...(invoices ?? []).map((i) => ({
+        id: `in-${i.id}`,
+        label: i.invoiceNo ?? 'Draft invoice',
+        detail: [i.clientName, i.project.name].filter(Boolean).join(' · '),
+        group: 'Invoices',
+        icon: Receipt,
+        to: `/admin/projects/${i.project.id}?tab=financials`,
+      })),
+      ...(tools ?? []).map((t) => ({
+        id: `to-${t.id}`,
+        label: t.name,
+        detail: [t.category, t.currentProject?.name ?? 'Central store'].filter(Boolean).join(' · '),
+        group: 'Equipment',
+        icon: Wrench,
+        to: '/admin/tools',
+      })),
       ...PAGES,
     ];
 
@@ -171,7 +225,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       seen[h.group] = (seen[h.group] ?? 0) + 1;
       return seen[h.group] <= MAX_PER_GROUP;
     });
-  }, [q, projects, clients, contracts, quotations, workers, suppliers]);
+  }, [q, projects, clients, contracts, quotations, workers, suppliers, leads, invoices, tools]);
 
   useEffect(() => setCursor(0), [q]);
 
@@ -231,7 +285,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search sites, contracts, clients, workers…"
+            placeholder="Search sites, leads, invoices, contracts, clients, workers, equipment…"
             className="w-full bg-transparent py-3.5 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm"
           />
           <kbd className="hidden shrink-0 rounded border border-hairline-strong px-1.5 py-0.5 text-[10px] font-medium text-fg-subtle sm:block">

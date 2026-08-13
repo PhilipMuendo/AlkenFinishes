@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Camera, Plus } from 'lucide-react';
-import { api, errText } from '@/lib/api';
+import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { thumbUrl } from '@/lib/format';
 import type { Task, TaskStatus, TasksResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -26,6 +27,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const isAdmin = user?.role === 'SUPERADMIN';
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [deleting, setDeleting] = useState<Task | null>(null);
 
   const { data } = useQuery({
     queryKey: ['tasks', projectId],
@@ -73,6 +75,17 @@ export function TasksPanel({ projectId }: { projectId: string }) {
       invalidate();
     },
     onError: (e) => toast.error(errText(e, 'The photo was not attached.')),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api(`/projects/${projectId}/tasks/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Task deleted.');
+      invalidate();
+      setEditing(null);
+      setDeleting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The task was not deleted.')),
   });
 
   const phases = [...new Set((tasks ?? []).map((t) => t.phase))];
@@ -303,12 +316,37 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 ))}
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={update.isPending}>
-              Save changes
-            </Button>
+            <div className="flex gap-2">
+              {isAdmin && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    remove.reset();
+                    setDeleting(editing);
+                  }}
+                >
+                  Delete
+                </Button>
+              )}
+              <Button type="submit" className="flex-1" disabled={update.isPending}>
+                Save changes
+              </Button>
+            </div>
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete "${deleting.name}"?` : ''}
+        description="This removes the task and its photos from the programme. It cannot be undone."
+        pending={remove.isPending}
+        error={remove.error instanceof ApiRequestError ? remove.error.message : null}
+        onConfirm={() => remove.mutate(deleting!.id)}
+      />
     </div>
   );
 }

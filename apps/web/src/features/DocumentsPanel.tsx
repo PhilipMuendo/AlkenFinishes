@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, Upload } from 'lucide-react';
+import { FileText, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { ProjectDocument } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
@@ -17,6 +18,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
+  const [deleting, setDeleting] = useState<ProjectDocument | null>(null);
 
   const { data: docs } = useQuery({
     queryKey: ['documents', projectId, filter],
@@ -34,6 +36,16 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
       setOpen(false);
     },
     onError: (e) => toast.error(errText(e, 'The document was not uploaded.')),
+  });
+
+  const deleteDoc = useMutation({
+    mutationFn: (id: string) => api(`/projects/${projectId}/documents/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      toast.success('Document deleted.');
+      void qc.invalidateQueries({ queryKey: ['documents', projectId] });
+      setDeleting(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The document was not deleted.')),
   });
 
   return (
@@ -68,6 +80,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
               <Th>Uploaded by</Th>
               <Th>Date</Th>
               <Th>Size</Th>
+              <Th />
             </tr>
           </thead>
           <tbody>
@@ -89,11 +102,37 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
                 <Td>{d.uploadedBy.name}</Td>
                 <Td className="whitespace-nowrap">{fmtDate(d.createdAt)}</Td>
                 <Td className="tabular-nums">{(d.sizeBytes / 1024).toFixed(0)} KB</Td>
+                <Td>
+                  {!d.systemGenerated && (
+                    <button
+                      aria-label={`Delete ${d.name}`}
+                      onClick={() => {
+                        deleteDoc.reset();
+                        setDeleting(d);
+                      }}
+                      className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
+                </Td>
               </tr>
             ))}
           </tbody>
         </Table>
       )}
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete "${deleting.name}"?` : ''}
+        description="This removes the file. It cannot be undone."
+        pending={deleteDoc.isPending}
+        error={
+          deleteDoc.error instanceof ApiRequestError ? deleteDoc.error.message : null
+        }
+        onConfirm={() => deleteDoc.mutate(deleting!.id)}
+      />
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Upload document">
         <form

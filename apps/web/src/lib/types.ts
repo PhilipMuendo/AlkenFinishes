@@ -699,6 +699,8 @@ export interface ProjectDocument {
   sizeBytes: number;
   uploadedBy: { id: string; name: string };
   createdAt: string;
+  /** Rendered by the system (an invoice/receipt PDF) rather than uploaded — cannot be deleted from here. */
+  systemGenerated: boolean;
 }
 
 export interface DailyReport {

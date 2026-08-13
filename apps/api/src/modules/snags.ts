@@ -330,6 +330,16 @@ router.delete(
       include: { attempts: { select: { photoUrl: true } } },
     });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
+    // The office can clear any entry; the person who raised it can retract
+    // their own — same rule as a safety record. VERIFIED is the office's own
+    // sign-off, already accepted, so deleting it here would erase a decision
+    // rather than a mistake; reopen it first if it turns out not to be fixed.
+    if (req.user!.role !== 'SUPERADMIN' && existing.reportedById !== req.user!.id) {
+      throw ApiError.forbidden();
+    }
+    if (existing.status === 'VERIFIED') {
+      throw ApiError.conflict('This defect has already been signed off. Reopen it first if it needs deleting.');
+    }
     removeUploadedFile(existing.photoUrl);
     removeUploadedFile(existing.resolvedPhotoUrl);
     // Attempt rows cascade, but their photos are files on disk and would be
