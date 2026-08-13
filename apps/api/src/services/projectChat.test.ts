@@ -101,6 +101,11 @@ test('the catalogue reaches every part of the platform', () => {
     'upcoming',
     'company_operations',
     'owed_to_staff',
+    'supplier_detail',
+    'worker_detail',
+    'recent_activity',
+    'site_ranking',
+    'reporting_compliance',
   ]) {
     assert.ok(names.has(required), `no lookup answers for ${required}`);
   }
@@ -114,7 +119,18 @@ test('a supervisor can ask who is on their sites and which sites those are', () 
 
 test('a supervisor is not offered the commercial lookups', () => {
   const names = lookupsFor(supervisor).map((l) => l.name);
-  for (const officeOnly of ['clients', 'pipeline', 'contracts', 'team', 'site_spend', 'site_invoices']) {
+  for (const officeOnly of [
+    'clients',
+    'pipeline',
+    'contracts',
+    'team',
+    'site_spend',
+    'site_invoices',
+    'supplier_detail',
+    'worker_detail',
+    'recent_activity',
+    'reporting_compliance',
+  ]) {
     assert.ok(!names.includes(officeOnly), `${officeOnly} was offered to a supervisor`);
   }
 });

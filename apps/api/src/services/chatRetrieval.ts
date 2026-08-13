@@ -4,6 +4,7 @@ import { kes, sumCents, toCents } from './money';
 import { companyReceivables, projectReceivables } from './invoicing';
 import {
   payablesSummary,
+  paymentSettles,
   supplierPositions,
   type PayableCost,
   type PayablePayment,
@@ -15,7 +16,12 @@ import { contractPosition, leadPipeline } from './pipeline';
 import { projectFinancials } from './finance';
 import { derivedEvents } from './calendarFeeds';
 import { attentionDigest, FINISHING_SOON_DAYS } from './attention';
-import { accruedByWorker, workerPosition, workerPayablesSummary } from './workerPay';
+import {
+  accruedByWorker,
+  workerPosition,
+  workerPayablesSummary,
+  type WorkerPaymentRecord,
+} from './workerPay';
 
 /**
  * What the assistant is allowed to look up, and how.
@@ -1463,6 +1469,265 @@ export const LOOKUPS: Lookup[] = [
                 ...listed(all.map((e) => e.line), 30),
               ].join('\n'),
         source: { label: 'Calendar', href: office ? '/admin/calendar' : '/supervisor/calendar' },
+      };
+    },
+  },
+
+  // ---- Drilling into one supplier, one worker, or recent changes -----------
+
+  {
+    name: 'supplier_detail',
+    scope: 'office',
+    description:
+      'One supplier by name: every bill raised against them, what has been paid on each, and what remains outstanding. Use for a question naming a specific supplier rather than the whole payables list.',
+    args: ['name'],
+    run: async ({ args }) => {
+      const needle = (args.name ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which supplier do you mean?');
+      const matches = await prisma.supplier.findMany({
+        where: { name: { contains: needle, mode: 'insensitive' } },
+        select: { id: true, name: true, phone: true, active: true },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No supplier on file matches "${needle}".` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one supplier matches "${needle}": ${matches.map((m) => m.name).join(', ')}. Ask about one by its full name.`,
+        };
+      }
+      const supplier = matches[0];
+      const { costs, paymentsByCost } = await loadLedger({ supplierId: supplier.id });
+      const [position] = supplierPositions(costs, paymentsByCost);
+      const bills = await prisma.expense.findMany({
+        where: { supplierId: supplier.id },
+        select: {
+          description: true,
+          amount: true,
+          expenseDate: true,
+          dueDate: true,
+          supplierInvoiceNo: true,
+          project: { select: { name: true } },
+          payments: { select: { amount: true, whtAmount: true, whtVatAmount: true } },
+        },
+        orderBy: { expenseDate: 'desc' },
+        take: 25,
+      });
+
+      return {
+        facts: [
+          `${supplier.name}${supplier.active ? '' : ' (retired)'}${supplier.phone ? `, ${supplier.phone}` : ''}.`,
+          position
+            ? `Owed ${money(position.outstanding)} across ${plural(position.openBills, 'open bill')}${position.overdue > 0 ? `, ${money(position.overdue)} overdue by up to ${position.oldestOverdueDays} days` : ', none overdue'}.`
+            : 'No bills have ever been raised against this supplier.',
+          ...listed(
+            bills.map((b) => {
+              const paid = b.payments.reduce(
+                (n, p) =>
+                  n +
+                  paymentSettles({
+                    amount: Number(p.amount),
+                    whtAmount: Number(p.whtAmount),
+                    whtVatAmount: Number(p.whtVatAmount),
+                  }),
+                0,
+              );
+              const outstanding = Math.max(0, Number(b.amount) - paid);
+              return `${money(Number(b.amount))} — ${b.description} (${b.project.name})${b.supplierInvoiceNo ? `, invoice ${b.supplierInvoiceNo}` : ''}, ${day(b.expenseDate)}: ${outstanding > 0 ? `${money(outstanding)} outstanding` : 'settled'}.`;
+            }),
+            10,
+          ),
+        ].join('\n'),
+        source: { label: `${supplier.name} — payables`, href: '/admin/suppliers' },
+      };
+    },
+  },
+
+  {
+    name: 'worker_detail',
+    scope: 'office',
+    description:
+      'One worker by name: their trade, current site assignment, what they are owed from attendance, and their recent payment history. Use for a question naming a specific worker rather than the whole staff list.',
+    args: ['name'],
+    run: async ({ args }) => {
+      const needle = (args.name ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which worker do you mean?');
+      const matches = await prisma.worker.findMany({
+        where: { name: { contains: needle, mode: 'insensitive' } },
+        select: {
+          id: true,
+          name: true,
+          trade: true,
+          status: true,
+          assignments: { where: { endDate: null }, select: { project: { select: { name: true } } } },
+        },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No worker on file matches "${needle}".` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one worker matches "${needle}": ${matches.map((m) => m.name).join(', ')}. Ask about one by their full name.`,
+        };
+      }
+      const worker = matches[0];
+      const [accrued, payments] = await Promise.all([
+        accruedByWorker([worker.id]),
+        prisma.workerPayment.findMany({
+          where: { workerId: worker.id },
+          select: { amount: true, whtAmount: true, method: true, paymentDate: true },
+          orderBy: { paymentDate: 'desc' },
+          take: 10,
+        }),
+      ]);
+      const paymentRecords: WorkerPaymentRecord[] = payments.map((p) => ({
+        amount: Number(p.amount),
+        whtAmount: Number(p.whtAmount),
+      }));
+      const position = workerPosition(accrued.get(worker.id) ?? 0, paymentRecords);
+
+      return {
+        facts: [
+          `${worker.name} — ${worker.trade}, ${worker.status === 'ACTIVE' ? 'active' : 'inactive'}.`,
+          worker.assignments.length
+            ? `Assigned to: ${worker.assignments.map((a) => a.project.name).join(', ')}.`
+            : 'Not currently assigned to a site.',
+          `Owed ${money(position.outstanding)} from attendance; ${money(position.cashPaid)} paid in cash and ${money(position.taxWithheld)} withheld for tax so far.`,
+          payments.length
+            ? `Recent payments: ${payments.map((p) => `${money(Number(p.amount))} by ${titleCase(p.method)} on ${day(p.paymentDate)}`).join('; ')}.`
+            : 'No payment has ever been recorded for this worker.',
+        ].join('\n'),
+        source: { label: `${worker.name} — worker`, href: '/admin/workers' },
+      };
+    },
+  },
+
+  {
+    name: 'recent_activity',
+    scope: 'office',
+    description:
+      'What has changed in the system recently — a running log of who created, approved, rejected or edited what. Use for "what changed", "what happened this week", or auditing a specific kind of action.',
+    args: ['days'],
+    run: async ({ args }) => {
+      const days = Math.min(Math.max(parseInt(args.days ?? '7', 10) || 7, 1), 30);
+      const since = new Date(today().getTime() - days * DAY_MS);
+      const entries = await prisma.auditLog.findMany({
+        where: { createdAt: { gte: since } },
+        select: { action: true, entity: true, createdAt: true, user: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 60,
+      });
+      const byAction = tally(entries, (e) => e.action);
+      return {
+        facts:
+          entries.length === 0
+            ? `Nothing was recorded in the system in the last ${plural(days, 'day')}.`
+            : [
+                `${plural(entries.length, 'action')} recorded in the last ${plural(days, 'day')}.`,
+                `Most common: ${byAction.slice(0, 8).map(([a, n]) => `${a} (${n})`).join(', ')}.`,
+                ...listed(
+                  entries.map(
+                    (e) =>
+                      `${day(e.createdAt)} — ${e.user?.name ?? 'system'}: ${e.action} (${e.entity}).`,
+                  ),
+                  25,
+                ),
+              ].join('\n'),
+        source: { label: 'Audit log', href: '/admin/settings?tab=audit' },
+      };
+    },
+  },
+
+  {
+    name: 'site_ranking',
+    scope: 'shared',
+    description:
+      'Ranks sites against each other by one measure — open defects, budget consumed, or overdue client balance. Use for "which site has the most/worst X" rather than a single-site question.',
+    args: ['metric'],
+    run: async (ctx) => {
+      const office = isOffice(ctx.user.role);
+      const metric = (ctx.args.metric ?? 'defects').toLowerCase();
+      const scope = withinScope(ctx);
+
+      if (metric === 'budget' || metric === 'overdue') {
+        if (!office) throw new RetrievalDenied('That ranking is office-only.');
+      }
+
+      if (metric === 'budget') {
+        const projects = await prisma.project.findMany({ where: scope, select: { id: true, name: true } });
+        const rows = (
+          await Promise.all(
+            projects.map(async (p) => ({ name: p.name, fin: await projectFinancials(p.id) })),
+          )
+        )
+          .filter((r) => r.fin.overallConsumedPct != null)
+          .sort((a, b) => (b.fin.overallConsumedPct ?? 0) - (a.fin.overallConsumedPct ?? 0));
+        return {
+          facts: rows.length
+            ? `Sites by budget consumed, highest first:\n${listed(rows.map((r) => `${r.name}: ${r.fin.overallConsumedPct}% (${r.fin.overallHealth.toLowerCase()}).`), 20).join('\n')}`
+            : 'No site has a budget set yet.',
+          source: { label: 'Budgets', href: '/admin' },
+        };
+      }
+
+      if (metric === 'overdue') {
+        const digest = await attentionDigest();
+        return {
+          facts: digest.groups.paymentOverdue.length
+            ? `Sites by days overdue, worst first:\n${digest.groups.paymentOverdue
+                .sort((a, b) => b.daysOverdue - a.daysOverdue)
+                .map((p) => `${p.name}: ${money(p.pendingBalance)}, ${plural(p.daysOverdue, 'day')} overdue.`)
+                .join('\n')}`
+            : 'No site has an overdue client balance.',
+          source: { label: 'Overview', href: '/admin' },
+        };
+      }
+
+      // Default: open defects.
+      const grouped = (
+        await prisma.snagItem.groupBy({
+          by: ['projectId'],
+          where: { status: { in: ['OPEN', 'IN_PROGRESS', 'REJECTED'] }, project: scope },
+          _count: true,
+        })
+      ).sort((a, b) => b._count - a._count);
+      const names = new Map(
+        (
+          await prisma.project.findMany({
+            where: { id: { in: grouped.map((g) => g.projectId) } },
+            select: { id: true, name: true },
+          })
+        ).map((p) => [p.id, p.name]),
+      );
+      return {
+        facts: grouped.length
+          ? `Sites by open defects, most first:\n${grouped.map((g) => `${names.get(g.projectId) ?? 'Unknown'}: ${g._count}.`).join('\n')}`
+          : 'No site has an open defect right now.',
+        source: { label: 'Defects', href: office ? '/admin' : '/supervisor' },
+      };
+    },
+  },
+
+  {
+    name: 'reporting_compliance',
+    scope: 'office',
+    description:
+      'Which sites have gone quiet — no daily report filed recently — across the whole portfolio. Use for "who is behind on reports" or "which sites have not reported".',
+    run: async () => {
+      const digest = await attentionDigest();
+      return {
+        facts: digest.groups.wentQuiet.length
+          ? [
+              `${plural(digest.groups.wentQuiet.length, 'active site has', 'active sites have')} gone quiet:`,
+              ...digest.groups.wentQuiet.map(
+                (p) =>
+                  `${p.name}: ${p.lastReportAt ? `last reported ${day(p.lastReportAt)}, ${plural(p.daysSince ?? 0, 'day')} ago` : 'has never filed a report'}.`,
+              ),
+            ].join('\n')
+          : 'Every active site has reported recently.',
+        source: { label: 'Overview', href: '/admin' },
       };
     },
   },
