@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Plus } from 'lucide-react';
+import { ClipboardList, Pencil, Plus } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { MaterialRequest, MaterialRequestStatus } from '@/lib/types';
+import type { MaterialRequest, MaterialRequestStatus, StockItem } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input, Textarea } from '@/components/ui/input';
+import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
+
+const NEW_ITEM = '__new__';
 
 const STATUS_TONE: Record<MaterialRequestStatus, 'yellow' | 'blue' | 'green' | 'red'> = {
   PENDING: 'yellow',
@@ -32,10 +34,31 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   const isAdmin = user?.role === 'SUPERADMIN';
   const [open, setOpen] = useState(false);
   const [rejecting, setRejecting] = useState<MaterialRequest | null>(null);
+  const [editing, setEditing] = useState<MaterialRequest | null>(null);
+
+  // Shared by the create and edit forms: pick an existing StockItem by id,
+  // or NEW_ITEM to name (and unit) one that doesn't exist yet.
+  const [pickItem, setPickItem] = useState(NEW_ITEM);
+  const [customName, setCustomName] = useState('');
+  const [customUnit, setCustomUnit] = useState('');
+  const resolveMaterial = () => {
+    const picked = pickItem !== NEW_ITEM ? stockItems?.find((i) => i.id === pickItem) : undefined;
+    return { itemName: picked?.name ?? customName, unit: picked?.unit ?? customUnit };
+  };
 
   const { data: requests } = useQuery({
     queryKey: ['material-requests', projectId],
     queryFn: () => api<MaterialRequest[]>(`/projects/${projectId}/material-requests`),
+  });
+
+  // Shares its cache with StockPanel's own fetch (same key), so mounting
+  // both costs one request, not two. Existing names are offered as a
+  // dropdown so a request lands on the exact same StockItem row when it's
+  // fulfilled, instead of spawning a near-duplicate from a typo or a
+  // different casing.
+  const { data: stockItems } = useQuery({
+    queryKey: ['stock', projectId],
+    queryFn: () => api<StockItem[]>(`/projects/${projectId}/stock`),
   });
 
   const invalidate = () => {
@@ -92,6 +115,17 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
     onError: (e) => toast.error(errText(e, 'The request was not withdrawn.')),
   });
 
+  const edit = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api(`/projects/${projectId}/material-requests/${id}`, { method: 'PATCH', body }),
+    onSuccess: () => {
+      toast.success('Request updated.');
+      invalidate();
+      setEditing(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The request was not updated.')),
+  });
+
   const open_ = requests?.filter((r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED') ?? [];
   const settled = requests?.filter((r) => r.status === 'FULFILLED' || r.status === 'REJECTED') ?? [];
 
@@ -99,7 +133,15 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-fg">Material requests</h3>
-        <Button size="sm" onClick={() => setOpen(true)}>
+        <Button
+          size="sm"
+          onClick={() => {
+            setPickItem(NEW_ITEM);
+            setCustomName('');
+            setCustomUnit('');
+            setOpen(true);
+          }}
+        >
           <Plus size={14} /> Request material
         </Button>
       </div>
@@ -132,6 +174,21 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
                 </Badge>
               </div>
               <div className="mt-2 flex gap-1.5">
+                {isAdmin && (r.status === 'PENDING' || r.status === 'APPROVED') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const match = stockItems?.find((i) => i.name === r.itemName);
+                      setPickItem(match?.id ?? NEW_ITEM);
+                      setCustomName(r.itemName);
+                      setCustomUnit(r.unit);
+                      setEditing(r);
+                    }}
+                  >
+                    <Pencil size={14} /> Edit
+                  </Button>
+                )}
                 {isAdmin && r.status === 'PENDING' && (
                   <>
                     <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate(r.id)}>
@@ -189,10 +246,11 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           onSubmit={(e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
+            const { itemName, unit } = resolveMaterial();
             create.mutate({
-              itemName: fd.get('itemName'),
+              itemName,
               quantity: Number(fd.get('quantity')),
-              unit: fd.get('unit'),
+              unit,
               neededBy: fd.get('neededBy') || undefined,
               notes: fd.get('notes') || undefined,
             });
@@ -200,14 +258,40 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           className="space-y-3"
         >
           <Field label="Material">
-            <Input name="itemName" required placeholder="Cement 50kg" />
+            <Select value={pickItem} onChange={(e) => setPickItem(e.target.value)}>
+              <option value={NEW_ITEM}>+ Add new material</option>
+              {stockItems?.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </Select>
           </Field>
+          {pickItem === NEW_ITEM && (
+            <Field label="New material name">
+              <Input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                required
+                placeholder="Cement 50kg"
+              />
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Quantity">
               <Input name="quantity" type="number" min="0.01" step="0.01" required />
             </Field>
             <Field label="Unit">
-              <Input name="unit" required placeholder="bags" />
+              {pickItem === NEW_ITEM ? (
+                <Input
+                  value={customUnit}
+                  onChange={(e) => setCustomUnit(e.target.value)}
+                  required
+                  placeholder="bags"
+                />
+              ) : (
+                <Input value={stockItems?.find((i) => i.id === pickItem)?.unit ?? ''} disabled />
+              )}
             </Field>
           </div>
           <Field label="Needed by (optional)">
@@ -223,6 +307,75 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Send request
+          </Button>
+        </form>
+      </Dialog>
+
+      <Dialog open={!!editing} onClose={() => setEditing(null)} title="Edit request">
+        <form
+          key={editing?.id ?? 'none'}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const { itemName, unit } = resolveMaterial();
+            edit.mutate({
+              id: editing!.id,
+              body: { itemName, quantity: Number(fd.get('quantity')), unit },
+            });
+          }}
+          className="space-y-3"
+        >
+          <Field label="Material">
+            <Select value={pickItem} onChange={(e) => setPickItem(e.target.value)}>
+              <option value={NEW_ITEM}>+ Add new material</option>
+              {stockItems?.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {pickItem === NEW_ITEM && (
+            <Field label="New material name">
+              <Input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                required
+                placeholder="Cement 50kg"
+              />
+            </Field>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Quantity">
+              <Input
+                name="quantity"
+                type="number"
+                min="0.01"
+                step="0.01"
+                required
+                defaultValue={editing?.quantity}
+              />
+            </Field>
+            <Field label="Unit">
+              {pickItem === NEW_ITEM ? (
+                <Input
+                  value={customUnit}
+                  onChange={(e) => setCustomUnit(e.target.value)}
+                  required
+                  placeholder="bags"
+                />
+              ) : (
+                <Input value={stockItems?.find((i) => i.id === pickItem)?.unit ?? ''} disabled />
+              )}
+            </Field>
+          </div>
+          {edit.isError && (
+            <p className="text-sm text-danger-fg">
+              {edit.error instanceof ApiRequestError ? edit.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" className="w-full" disabled={edit.isPending}>
+            Save changes
           </Button>
         </form>
       </Dialog>

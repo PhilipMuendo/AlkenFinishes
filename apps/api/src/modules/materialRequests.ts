@@ -66,6 +66,34 @@ router.post(
   }),
 );
 
+/**
+ * The office can correct what was actually asked for — a supervisor may
+ * name a material slightly differently than the catalog, or the quantity
+ * needs adjusting before fulfilment. Editing is only meaningful before the
+ * request is settled, since FULFILLED already moved stock against it.
+ */
+const editSchema = requestSchema.partial();
+
+router.patch(
+  '/:id',
+  requireSuperadmin,
+  asyncHandler(async (req, res) => {
+    const data = editSchema.parse(req.body);
+    const existing = await prisma.materialRequest.findUnique({ where: { id: req.params.id } });
+    if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
+    if (existing.status === 'FULFILLED' || existing.status === 'REJECTED') {
+      throw ApiError.conflict(`This request has already been ${existing.status.toLowerCase()}`);
+    }
+    const request = await prisma.materialRequest.update({
+      where: { id: existing.id },
+      data,
+      include,
+    });
+    audit(req, 'materialRequest.edit', 'MaterialRequest', request.id, data);
+    res.json(serialize(request));
+  }),
+);
+
 router.post(
   '/:id/approve',
   requireSuperadmin,
