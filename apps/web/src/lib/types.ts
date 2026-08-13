@@ -1327,6 +1327,20 @@ export interface DailyReportDraft {
   facts: string;
 }
 
+/** POST /projects/:id/weekly-reports/draft — summarised from the week's own daily reports. */
+export interface WeeklyReportDraft {
+  draft: {
+    summary: string;
+    milestones: string | null;
+    issues: string | null;
+    nextWeekPlan: string | null;
+  };
+  /** How many of the week's 7 days had a diary entry filed. */
+  daysReported: number;
+  /** The facts (the week's daily reports) the draft was built from, shown so it can be checked. */
+  facts: string;
+}
+
 /** GET /chat/status — whether the assistant exists and can answer right now. */
 export interface ChatStatus {
   available: boolean;

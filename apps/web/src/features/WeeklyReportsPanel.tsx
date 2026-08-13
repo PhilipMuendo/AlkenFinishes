@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarRange, Plus } from 'lucide-react';
+import { CalendarRange, Plus, Sparkles } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import type { WeeklyReport } from '@/lib/types';
+import type { ChatStatus, WeeklyReport, WeeklyReportDraft } from '@/lib/types';
 import { fmtDate, isoDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,6 +35,27 @@ export function WeeklyReportsPanel({
 }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  // Prefills the form below; what gets filed is whatever is showing when
+  // Submit is pressed.
+  const [draft, setDraft] = useState<WeeklyReportDraft | null>(null);
+  const [weekEnding, setWeekEnding] = useState(thisWeekEnding());
+  const [showFacts, setShowFacts] = useState(false);
+
+  const { data: ai } = useQuery({
+    queryKey: ['chat', 'status'],
+    queryFn: () => api<ChatStatus>('/chat/status'),
+    staleTime: 60_000,
+  });
+
+  const writeDraft = useMutation({
+    mutationFn: (weekEnding: string) =>
+      api<WeeklyReportDraft>(`/projects/${projectId}/weekly-reports/draft`, { body: { weekEnding } }),
+    onSuccess: setDraft,
+  });
+  const draftFailure =
+    writeDraft.error instanceof ApiRequestError
+      ? ((writeDraft.error.details as { reason?: string } | undefined)?.reason ?? null)
+      : null;
 
   const { data: reports } = useQuery({
     queryKey: ['weekly-reports', projectId],
@@ -109,9 +130,17 @@ export function WeeklyReportsPanel({
         ))}
       </div>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="Weekly site report">
+      <Dialog
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setDraft(null);
+          writeDraft.reset();
+        }}
+        title="Weekly site report"
+      >
         <form
-          key={String(open)}
+          key={`${String(open)}-${draft ? 'drafted' : 'blank'}`}
           onSubmit={(e) => {
             e.preventDefault();
             submit.mutate(new FormData(e.currentTarget));
@@ -119,23 +148,112 @@ export function WeeklyReportsPanel({
           className="space-y-3"
         >
           <Field label="Week ending">
-            <Input name="weekEnding" type="date" defaultValue={thisWeekEnding()} required />
+            <Input
+              name="weekEnding"
+              type="date"
+              value={weekEnding}
+              onChange={(e) => {
+                setWeekEnding(e.target.value);
+                // A draft summarises the week it was written for; changing
+                // the week without clearing it would leave last week's
+                // summary sitting under this week's date.
+                if (draft) {
+                  setDraft(null);
+                  writeDraft.reset();
+                }
+              }}
+              required
+            />
           </Field>
+
+          {/* Drafts from the week's own daily reports — the point is to save
+              re-typing seven diary entries into one summary by hand. */}
+          {ai?.available && (
+            <div className="rounded-lg border border-dashed border-hairline-strong p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-fg">Write it up for me</p>
+                  <p className="text-xs text-fg-muted">
+                    From this week&rsquo;s daily reports. You edit it before it is filed.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={writeDraft.isPending || draftFailure === 'QUOTA_DAILY'}
+                  onClick={() => writeDraft.mutate(weekEnding)}
+                >
+                  <Sparkles size={15} />
+                  {writeDraft.isPending ? 'Writing…' : draft ? 'Rewrite' : 'Draft summary'}
+                </Button>
+              </div>
+
+              {writeDraft.isError && (
+                <p
+                  className={`mt-2 text-sm ${
+                    draftFailure === 'QUOTA_DAILY' ? 'text-warn-fg' : 'text-danger-fg'
+                  }`}
+                >
+                  {writeDraft.error instanceof ApiRequestError
+                    ? writeDraft.error.message
+                    : 'Could not write a draft. Fill it in by hand.'}
+                </p>
+              )}
+
+              {draft && (
+                <div className="mt-2 border-t border-hairline pt-2">
+                  <p className="text-xs text-fg-muted">
+                    Drafted from {draft.daysReported} of 7 daily reports —{' '}
+                    <span className="font-medium text-fg">read it before filing</span>. Correct
+                    anything that is not right.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowFacts((v) => !v)}
+                    className="mt-1 text-xs font-medium text-brand-700 hover:underline"
+                  >
+                    {showFacts ? 'Hide' : 'Show'} what it was based on
+                  </button>
+                  {showFacts && (
+                    <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-md bg-surface-muted p-2 text-xs text-fg-muted">
+                      {draft.facts}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <Field label="Summary of the week">
             <Textarea
               name="summary"
               required
               placeholder="Overall, the block A interior finishing progressed well…"
+              defaultValue={draft?.draft.summary ?? ''}
             />
           </Field>
           <Field label="Milestones reached (optional)">
-            <Textarea name="milestones" placeholder="Completed tiling on ground floor" />
+            <Textarea
+              name="milestones"
+              placeholder="Completed tiling on ground floor"
+              defaultValue={draft?.draft.milestones ?? ''}
+            />
           </Field>
           <Field label="Issues & blockers (optional)">
-            <Textarea name="issues" placeholder="Awaiting paint delivery; short by 2 masons" />
+            <Textarea
+              name="issues"
+              placeholder="Awaiting paint delivery; short by 2 masons"
+              defaultValue={draft?.draft.issues ?? ''}
+            />
           </Field>
           <Field label="Plan for next week (optional)">
-            <Textarea name="nextWeekPlan" placeholder="Start ceiling works, finish exterior plaster" />
+            <Textarea
+              name="nextWeekPlan"
+              placeholder="Start ceiling works, finish exterior plaster"
+              defaultValue={draft?.draft.nextWeekPlan ?? ''}
+            />
           </Field>
           <Field label="Photos (up to 6)">
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />

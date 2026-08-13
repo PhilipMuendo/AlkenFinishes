@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { asyncHandler } from '../utils/http';
+import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, signFileUrl, upload, verifyUploads } from '../middleware/upload';
+import { aiAvailable, AiError } from '../services/ai';
+import { draftWeeklyReport, factsFor, gatherWeek } from '../services/weeklyReportDraft';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -17,6 +19,48 @@ const reportSchema = z.object({
   issues: z.string().optional(),
   nextWeekPlan: z.string().optional(),
 });
+
+/**
+ * Draft the weekly summary from the week's own daily reports.
+ *
+ * Writes nothing. Registered before any /:id route — this router has none
+ * today, but the guard matches dailyReports.ts so "draft" can never be read
+ * as a route param if one is added later.
+ */
+router.post(
+  '/draft',
+  asyncHandler(async (req, res) => {
+    const { weekEnding } = z.object({ weekEnding: z.coerce.date() }).parse(req.body);
+    if (!aiAvailable()) {
+      throw ApiError.badRequest('Report drafting is not switched on for this server.');
+    }
+
+    const week = await gatherWeek(req.params.projectId, weekEnding);
+    if (week.empty) {
+      throw ApiError.badRequest(
+        'No daily reports were filed this week — there is nothing to summarise. Write the weekly report by hand.',
+      );
+    }
+
+    try {
+      const draft = await draftWeeklyReport(week);
+      audit(req, 'weeklyReport.draft', 'WeeklyReport', 'draft', { weekEnding });
+      res.json({
+        draft,
+        daysReported: week.daysReported,
+        facts: factsFor(week),
+      });
+    } catch (e) {
+      if (e instanceof AiError) {
+        throw ApiError.badRequest(e.message, {
+          reason: e.reason,
+          retryAfterSeconds: e.retryAfterSeconds ?? null,
+        });
+      }
+      throw ApiError.badRequest('The draft could not be written. Fill the report in by hand.');
+    }
+  }),
+);
 
 router.get(
   '/',
