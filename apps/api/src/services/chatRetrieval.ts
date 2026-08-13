@@ -13,7 +13,7 @@ import { monthPeriod, taxPosition } from './taxPosition';
 import { gatherDay, factsFor } from './dailyReportDraft';
 import { isOffice } from './payVisibility';
 import { contractPosition, leadPipeline } from './pipeline';
-import { projectFinancials } from './finance';
+import { projectFinancials, getFinanceSettings, monthlyTotals, toSeries } from './finance';
 import { derivedEvents } from './calendarFeeds';
 import { attentionDigest, FINISHING_SOON_DAYS } from './attention';
 import {
@@ -291,28 +291,25 @@ export const LOOKUPS: Lookup[] = [
       // Office scope skips the site check in runLookup, so guard here rather
       // than letting an undefined id reach Prisma as an opaque failure.
       if (!projectId) throw new RetrievalDenied('Which site do you mean?');
-      const project = await prisma.project.findUniqueOrThrow({
-        where: { id: projectId },
-        select: { name: true, contractValue: true },
-      });
-      const [budget, expenses, receivables] = await Promise.all([
-        prisma.budgetLine.findMany({ where: { projectId }, select: { allocated: true } }),
-        prisma.expense.findMany({
-          where: { projectId, status: 'APPROVED' },
-          select: { amount: true },
+      const [project, fin, receivables] = await Promise.all([
+        prisma.project.findUniqueOrThrow({
+          where: { id: projectId },
+          select: { name: true, contractValue: true },
         }),
+        // Same function site_spend and the Financials tab use — summing
+        // approved expenses directly here (as this lookup used to) double
+        // counted labour whenever it is also accrued from attendance.
+        projectFinancials(projectId),
         projectReceivables(projectId),
       ]);
-      const allocated = kes(sumCents(budget.map((b) => toCents(b.allocated))));
-      const spent = kes(sumCents(expenses.map((e) => toCents(e.amount))));
 
       return {
         facts: [
           `Site: ${project.name}.`,
           `Contract value: ${money(Number(project.contractValue))}.`,
-          allocated > 0
-            ? `Budget: ${money(allocated)} allocated, ${money(spent)} spent in approved expenses (${Math.round((spent / allocated) * 100)}%).`
-            : `No budget has been set. Approved expenses so far: ${money(spent)}.`,
+          fin.totalBudget > 0
+            ? `Budget: ${money(fin.totalBudget)} allocated, ${money(fin.totalActual)} actual spend${fin.overallConsumedPct != null ? ` (${fin.overallConsumedPct}%)` : ''}.`
+            : `No budget has been set. Actual spend so far: ${money(fin.totalActual)}.`,
           `Invoiced and outstanding from the client: ${money(receivables.arOutstanding)}, of which ${money(receivables.arOverdue)} is overdue.`,
           `Retention held: ${money(receivables.retentionHeld)}.`,
         ].join('\n'),
@@ -1728,6 +1725,92 @@ export const LOOKUPS: Lookup[] = [
             ].join('\n')
           : 'Every active site has reported recently.',
         source: { label: 'Overview', href: '/admin' },
+      };
+    },
+  },
+
+  {
+    name: 'spend_trend',
+    scope: 'office',
+    description:
+      'How spend has moved month by month, by category (materials, labour, transport, other) — for one site if projectId is given, company-wide otherwise. Use for "is spend going up", "trend", or a month-by-month breakdown.',
+    args: ['projectId'],
+    run: async ({ args }) => {
+      const settings = await getFinanceSettings();
+      const projectId = args.projectId;
+      const rows = toSeries(await monthlyTotals(settings.labourCostSource, projectId ? [projectId] : undefined));
+      const label = projectId
+        ? (await prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { name: true } })).name
+        : 'the whole company';
+      if (rows.length === 0) {
+        return {
+          facts: `No spend has been recorded yet for ${label}.`,
+          source: { label: 'Spend trend', href: projectId ? `/admin/projects/${projectId}` : '/admin' },
+        };
+      }
+      const recent = rows.slice(-6);
+      const trendNote =
+        recent.length >= 2
+          ? recent[recent.length - 1].total > recent[recent.length - 2].total
+            ? 'Spend rose last month compared to the month before.'
+            : recent[recent.length - 1].total < recent[recent.length - 2].total
+              ? 'Spend fell last month compared to the month before.'
+              : 'Spend held flat last month compared to the month before.'
+          : '';
+      return {
+        facts: [
+          `Monthly spend for ${label} (last ${plural(recent.length, 'month')}):`,
+          ...recent.map(
+            (r) =>
+              `${r.month}: ${money(r.total)} total (Materials ${money(r.MATERIALS)}, Labour ${money(r.LABOUR)}, Transport ${money(r.TRANSPORT)}, Other ${money(r.OTHER)}).`,
+          ),
+          `Cumulative to date: ${money(rows[rows.length - 1].cumulative)}.`,
+          trendNote,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        source: { label: 'Spend trend', href: projectId ? `/admin/projects/${projectId}?tab=financials` : '/admin' },
+      };
+    },
+  },
+
+  {
+    name: 'budget_impact',
+    scope: 'office',
+    description:
+      'What is still PENDING against one site — expenses awaiting approval and material requests awaiting a decision or delivery — set against what budget remains, so the effect of approving everything in the queue can be seen before it happens. Needs projectId.',
+    args: ['projectId'],
+    run: async ({ args }) => {
+      const projectId = args.projectId;
+      if (!projectId) throw new RetrievalDenied('Which site do you mean?');
+      const [project, fin, pendingExpenses, openRequests] = await Promise.all([
+        prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { name: true } }),
+        projectFinancials(projectId),
+        prisma.expense.findMany({
+          where: { projectId, status: 'PENDING' },
+          select: { amount: true },
+        }),
+        prisma.materialRequest.findMany({
+          where: { projectId, status: { in: ['PENDING', 'APPROVED'] } },
+          select: { quantity: true, unit: true, itemName: true },
+        }),
+      ]);
+      const pendingTotal = pendingExpenses.reduce((n, e) => n + Number(e.amount), 0);
+      const projectedActual = fin.totalActual + pendingTotal;
+      const projectedRemaining = fin.totalBudget - projectedActual;
+      const projectedPct = fin.totalBudget > 0 ? Math.round((projectedActual / fin.totalBudget) * 100) : null;
+
+      return {
+        facts: [
+          `${project.name}: budget ${money(fin.totalBudget)}, actual so far ${money(fin.totalActual)}, remaining ${money(fin.totalRemaining)}${fin.overallConsumedPct != null ? ` (${fin.overallConsumedPct}% consumed)` : ''}.`,
+          pendingExpenses.length
+            ? `${plural(pendingExpenses.length, 'expense')} awaiting approval, worth ${money(pendingTotal)}. If all were approved: actual would become ${money(projectedActual)}, remaining ${money(projectedRemaining)}${projectedPct != null ? ` (${projectedPct}% consumed)` : ''}.`
+            : 'No expenses are awaiting approval on this site.',
+          openRequests.length
+            ? `Material requests still open (not yet reflected in spend): ${openRequests.map((r) => `${Number(r.quantity)} ${r.unit} ${r.itemName}`).join(', ')}.`
+            : 'No material requests are outstanding on this site.',
+        ].join('\n'),
+        source: { label: `${project.name} — budget impact`, href: `/admin/projects/${projectId}?tab=financials` },
       };
     },
   },

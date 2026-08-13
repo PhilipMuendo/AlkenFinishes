@@ -1,80 +1,22 @@
 import { Router } from 'express';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
-import { env } from '../config/env';
 import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
-import { projectFinancials, getFinanceSettings, health, buildCategories } from '../services/finance';
+import {
+  projectFinancials,
+  getFinanceSettings,
+  health,
+  buildCategories,
+  monthlyTotals,
+  toSeries,
+} from '../services/finance';
 import { companyReceivables } from '../services/invoicing';
 import { leadPipeline } from '../services/pipeline';
 import { attentionDigest } from '../services/attention';
 
 const router = Router();
 router.use(requireAuth);
-
-interface MonthRow {
-  month: string;
-  category: string;
-  total: number;
-}
-
-/**
- * Monthly totals aggregated in SQL (timezone-aware), never by loading rows
- * into the app. Cost is O(distinct months × categories) regardless of volume.
- */
-async function monthlyTotals(
-  labourCostSource: 'ATTENDANCE' | 'EXPENSES' | 'BOTH',
-  projectIds?: string[],
-): Promise<MonthRow[]> {
-  if (projectIds && projectIds.length === 0) return [];
-  // The trend must use the same labour definition as the actuals.
-  const expenseCat =
-    labourCostSource === 'ATTENDANCE' ? Prisma.sql`AND e.category != 'LABOUR'` : Prisma.empty;
-  const scopeExpense = projectIds
-    ? Prisma.sql`WHERE e."projectId" IN (${Prisma.join(projectIds)}) ${expenseCat}`
-    : Prisma.sql`WHERE true ${expenseCat}`;
-  const scopeAtt = projectIds
-    ? Prisma.sql`WHERE a."labourCost" IS NOT NULL AND a."projectId" IN (${Prisma.join(projectIds)})`
-    : Prisma.sql`WHERE a."labourCost" IS NOT NULL`;
-  const attendanceArm =
-    labourCostSource === 'EXPENSES'
-      ? Prisma.empty
-      : Prisma.sql`
-      UNION ALL
-      SELECT to_char(a.date, 'YYYY-MM') AS month, 'LABOUR' AS category, SUM(a."labourCost") AS total
-      FROM "AttendanceRecord" a ${scopeAtt}
-      GROUP BY 1, 2`;
-  const rows = await prisma.$queryRaw<{ month: string; category: string; total: number }[]>`
-    SELECT month, category, SUM(total)::float8 AS total FROM (
-      SELECT to_char((e."expenseDate" AT TIME ZONE 'UTC') AT TIME ZONE ${env.APP_TIMEZONE}, 'YYYY-MM') AS month,
-             e.category::text AS category, SUM(e.amount) AS total
-      FROM "Expense" e ${scopeExpense}
-      GROUP BY 1, 2
-      ${attendanceArm}
-    ) t GROUP BY month, category ORDER BY month`;
-  return rows;
-}
-
-function toSeries(rows: MonthRow[]) {
-  const byMonth = new Map<
-    string,
-    { month: string; MATERIALS: number; LABOUR: number; TRANSPORT: number; OTHER: number; total: number }
-  >();
-  for (const r of rows) {
-    if (!byMonth.has(r.month)) {
-      byMonth.set(r.month, { month: r.month, MATERIALS: 0, LABOUR: 0, TRANSPORT: 0, OTHER: 0, total: 0 });
-    }
-    const row = byMonth.get(r.month)!;
-    const cat = r.category as 'MATERIALS' | 'LABOUR' | 'TRANSPORT' | 'OTHER';
-    row[cat] += r.total;
-    row.total += r.total;
-  }
-  let cum = 0;
-  return [...byMonth.values()]
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .map((row) => ({ ...row, cumulative: (cum += row.total) }));
-}
 
 /**
  * One project's financial position.

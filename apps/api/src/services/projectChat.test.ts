@@ -106,6 +106,8 @@ test('the catalogue reaches every part of the platform', () => {
     'recent_activity',
     'site_ranking',
     'reporting_compliance',
+    'spend_trend',
+    'budget_impact',
   ]) {
     assert.ok(names.has(required), `no lookup answers for ${required}`);
   }
@@ -130,6 +132,8 @@ test('a supervisor is not offered the commercial lookups', () => {
     'worker_detail',
     'recent_activity',
     'reporting_compliance',
+    'spend_trend',
+    'budget_impact',
   ]) {
     assert.ok(!names.includes(officeOnly), `${officeOnly} was offered to a supervisor`);
   }
