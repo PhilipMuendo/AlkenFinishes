@@ -159,11 +159,18 @@ router.post(
     const receivedQty = quantity ?? Number(existing.quantity);
 
     const request = await prisma.$transaction(async (tx) => {
-      const item = await tx.stockItem.upsert({
-        where: { projectId_name: { projectId: existing.projectId, name: existing.itemName } },
-        create: { projectId: existing.projectId, name: existing.itemName, unit: existing.unit },
-        update: {},
+      // A request's item name is free text unless it came from the picker, so
+      // match case-insensitively first — otherwise "cement" fulfilling
+      // against an existing "Cement" would upsert-create a second, near-
+      // identical StockItem instead of landing on the one already there.
+      const caseMatch = await tx.stockItem.findFirst({
+        where: { projectId: existing.projectId, name: { equals: existing.itemName, mode: 'insensitive' } },
       });
+      const item =
+        caseMatch ??
+        (await tx.stockItem.create({
+          data: { projectId: existing.projectId, name: existing.itemName, unit: existing.unit },
+        }));
       await tx.stockMovement.create({
         data: {
           stockItemId: item.id,

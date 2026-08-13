@@ -32,7 +32,7 @@ router.get(
 );
 
 const itemSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().trim().min(1),
   unit: z.string().min(1),
 });
 
@@ -40,6 +40,16 @@ router.post(
   '/',
   asyncHandler(async (req, res) => {
     const data = itemSchema.parse(req.body);
+    // The DB constraint only catches an exact byte-for-byte repeat, which
+    // "Cement" vs "cement" or a trailing space would slip past — exactly the
+    // near-duplicate this list is trying to avoid, so check case-insensitively
+    // first and fail with a message that names the clash.
+    const clash = await prisma.stockItem.findFirst({
+      where: { projectId: req.params.projectId, name: { equals: data.name, mode: 'insensitive' } },
+    });
+    if (clash) {
+      throw ApiError.conflict(`"${clash.name}" is already tracked here — use that item instead.`);
+    }
     const item = await prisma.stockItem.create({
       data: { ...data, projectId: req.params.projectId },
     });
