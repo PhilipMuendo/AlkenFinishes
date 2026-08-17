@@ -26,7 +26,7 @@ export function ToolsReadOnlyPanel() {
             <p className="font-medium text-fg">{t.name}</p>
             {t.category && <p className="text-xs text-fg-muted">{t.category}</p>}
           </div>
-          <p className="text-sm font-semibold nums text-fg">
+          <p className="nums text-sm font-semibold text-fg">
             {Number(t.quantity).toLocaleString()}{' '}
             <span className="font-normal text-fg-muted">{t.unit}</span>
           </p>

@@ -139,7 +139,9 @@ export function letterhead(
               text: [company.phone, company.email].filter(Boolean).join('  ·  '),
               style: 'companyMeta',
             },
-            ...(company.kraPin ? [{ text: `KRA PIN: ${company.kraPin}`, style: 'companyMeta' }] : []),
+            ...(company.kraPin
+              ? [{ text: `KRA PIN: ${company.kraPin}`, style: 'companyMeta' }]
+              : []),
           ],
         },
       ],

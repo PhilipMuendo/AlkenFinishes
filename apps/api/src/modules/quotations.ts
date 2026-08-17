@@ -101,7 +101,11 @@ router.get(
       .parse(req.query);
 
     const quotations = await prisma.quotation.findMany({
-      where: { ...(status && { status }), ...(clientId && { clientId }), ...(leadId && { leadId }) },
+      where: {
+        ...(status && { status }),
+        ...(clientId && { clientId }),
+        ...(leadId && { leadId }),
+      },
       include,
       orderBy: [{ issueDate: 'desc' }, { createdAt: 'desc' }],
       take: 300,

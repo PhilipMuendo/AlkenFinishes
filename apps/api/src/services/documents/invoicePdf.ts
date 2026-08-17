@@ -137,15 +137,13 @@ export async function renderInvoicePdf(
               { text: 'RATE', style: 'tableHeader', alignment: 'right' },
               { text: 'AMOUNT', style: 'tableHeader', alignment: 'right' },
             ] as TableCell[],
-            ...inv.lines.map(
-              (l): TableCell[] => [
-                { text: l.description + (l.taxable ? '' : '  (zero-rated)') },
-                { text: trimQty(n(l.quantity)), alignment: 'right' },
-                { text: l.unit, color: MUTED },
-                { text: money(n(l.unitPrice)), alignment: 'right' },
-                { text: money(n(l.lineTotal)), alignment: 'right' },
-              ],
-            ),
+            ...inv.lines.map((l): TableCell[] => [
+              { text: l.description + (l.taxable ? '' : '  (zero-rated)') },
+              { text: trimQty(n(l.quantity)), alignment: 'right' },
+              { text: l.unit, color: MUTED },
+              { text: money(n(l.unitPrice)), alignment: 'right' },
+              { text: money(n(l.lineTotal)), alignment: 'right' },
+            ]),
           ],
         },
         layout: lineTableLayout,

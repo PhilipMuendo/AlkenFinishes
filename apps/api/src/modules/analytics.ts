@@ -5,7 +5,12 @@ import { env } from '../config/env';
 import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
-import { projectFinancials, getFinanceSettings, buildCategories, health } from '../services/finance';
+import {
+  projectFinancials,
+  getFinanceSettings,
+  buildCategories,
+  health,
+} from '../services/finance';
 import {
   companyReceivables,
   daysOverdue,
@@ -64,11 +69,25 @@ async function monthlyTotals(
 function toSeries(rows: MonthRow[]) {
   const byMonth = new Map<
     string,
-    { month: string; MATERIALS: number; LABOUR: number; TRANSPORT: number; OTHER: number; total: number }
+    {
+      month: string;
+      MATERIALS: number;
+      LABOUR: number;
+      TRANSPORT: number;
+      OTHER: number;
+      total: number;
+    }
   >();
   for (const r of rows) {
     if (!byMonth.has(r.month)) {
-      byMonth.set(r.month, { month: r.month, MATERIALS: 0, LABOUR: 0, TRANSPORT: 0, OTHER: 0, total: 0 });
+      byMonth.set(r.month, {
+        month: r.month,
+        MATERIALS: 0,
+        LABOUR: 0,
+        TRANSPORT: 0,
+        OTHER: 0,
+        total: 0,
+      });
     }
     const row = byMonth.get(r.month)!;
     const cat = r.category as 'MATERIALS' | 'LABOUR' | 'TRANSPORT' | 'OTHER';
@@ -157,9 +176,13 @@ router.get(
       bucket[row.category] = Number(row._sum.amount ?? 0);
       expenseByProject.set(row.projectId, bucket);
     }
-    const labourByProject = new Map(labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]));
+    const labourByProject = new Map(
+      labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]),
+    );
     const overridesByProject = new Map(overrideAgg.map((o) => [o.projectId, o._count]));
-    const collectedByProject = new Map(paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]));
+    const collectedByProject = new Map(
+      paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]),
+    );
     const budgetLinesByProject = new Map<string, typeof budgetLines>();
     for (const line of budgetLines) {
       const bucket = budgetLinesByProject.get(line.projectId) ?? [];
@@ -288,10 +311,15 @@ router.get(
       bucket[row.category] = Number(row._sum.amount ?? 0);
       expenseByProject.set(row.projectId, bucket);
     }
-    const labourByProject = new Map(labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]));
-    const collectedByProject = new Map(paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]));
+    const labourByProject = new Map(
+      labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]),
+    );
+    const collectedByProject = new Map(
+      paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]),
+    );
     const lastReportByProject = new Map<string, number>();
-    for (const d of dailyMax) if (d._max.date) lastReportByProject.set(d.projectId, d._max.date.getTime());
+    for (const d of dailyMax)
+      if (d._max.date) lastReportByProject.set(d.projectId, d._max.date.getTime());
     for (const w of weeklyMax) {
       if (!w._max.weekEnding) continue;
       const t = w._max.weekEnding.getTime();
@@ -363,11 +391,21 @@ router.get(
         const last = lastReportByProject.get(p.id) ?? null;
         const daysSince = last == null ? null : Math.floor((now - last) / DAY);
         if (daysSince == null || daysSince > QUIET_AFTER_DAYS) {
-          wentQuiet.push({ id: p.id, name: p.name, lastReportAt: last ? new Date(last) : null, daysSince });
+          wentQuiet.push({
+            id: p.id,
+            name: p.name,
+            lastReportAt: last ? new Date(last) : null,
+            daysSince,
+          });
         }
         const daysLeft = Math.ceil((p.expectedCompletion.getTime() - now) / DAY);
         if (daysLeft >= 0 && daysLeft <= FINISHING_SOON_DAYS) {
-          finishingSoon.push({ id: p.id, name: p.name, expectedCompletion: p.expectedCompletion, daysLeft });
+          finishingSoon.push({
+            id: p.id,
+            name: p.name,
+            expectedCompletion: p.expectedCompletion,
+            daysLeft,
+          });
         }
       }
     }
@@ -410,17 +448,31 @@ router.get(
     // project so "3 pending" points somewhere rather than being a bare count.
     const [expensePending, materialPending, overridePending] = await Promise.all([
       prisma.expense.groupBy({ by: ['projectId'], where: { status: 'PENDING' }, _count: true }),
-      prisma.materialRequest.groupBy({ by: ['projectId'], where: { status: 'PENDING' }, _count: true }),
+      prisma.materialRequest.groupBy({
+        by: ['projectId'],
+        where: { status: 'PENDING' },
+        _count: true,
+      }),
       prisma.attendanceOverrideRequest.groupBy({
         by: ['projectId'],
         where: { status: 'PENDING' },
         _count: true,
       }),
     ]);
-    const pendingByProject = new Map<string, { expenses: number; materialRequests: number; attendanceOverrides: number }>();
-    const bump = (rows: { projectId: string; _count: number }[], key: 'expenses' | 'materialRequests' | 'attendanceOverrides') => {
+    const pendingByProject = new Map<
+      string,
+      { expenses: number; materialRequests: number; attendanceOverrides: number }
+    >();
+    const bump = (
+      rows: { projectId: string; _count: number }[],
+      key: 'expenses' | 'materialRequests' | 'attendanceOverrides',
+    ) => {
       for (const r of rows) {
-        const e = pendingByProject.get(r.projectId) ?? { expenses: 0, materialRequests: 0, attendanceOverrides: 0 };
+        const e = pendingByProject.get(r.projectId) ?? {
+          expenses: 0,
+          materialRequests: 0,
+          attendanceOverrides: 0,
+        };
         e[key] = r._count;
         pendingByProject.set(r.projectId, e);
       }

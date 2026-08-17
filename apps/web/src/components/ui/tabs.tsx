@@ -10,10 +10,7 @@ export function Tabs({
   onChange: (id: string) => void;
 }) {
   return (
-    <div
-      role="tablist"
-      className="-mb-px flex gap-1 overflow-x-auto border-b border-hairline"
-    >
+    <div role="tablist" className="-mb-px flex gap-1 overflow-x-auto border-b border-hairline">
       {tabs.map((t) => (
         <button
           key={t.id}

@@ -191,8 +191,8 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
                       <p className="text-xs text-red-600">{inv.daysOverdue}d late</p>
                     )}
                   </Td>
-                  <Td className="text-right nums">{fmtMoney(inv.netPayable)}</Td>
-                  <Td className="text-right font-medium nums">
+                  <Td className="nums text-right">{fmtMoney(inv.netPayable)}</Td>
+                  <Td className="nums text-right font-medium">
                     {inv.status === 'VOID' ? (
                       <span className="text-fg-subtle">—</span>
                     ) : (
@@ -289,7 +289,12 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
         )}
       </Dialog>
 
-      <Dialog open={!!viewing} onClose={() => setViewing(null)} title="Invoice" className="max-w-3xl">
+      <Dialog
+        open={!!viewing}
+        onClose={() => setViewing(null)}
+        title="Invoice"
+        className="max-w-3xl"
+      >
         {viewing && <InvoiceDetail projectId={projectId} invoiceId={viewing} />}
       </Dialog>
 
@@ -316,7 +321,12 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
               number on record so the series stays unbroken — it is cancelled, not deleted. The
               reason is stored in the audit log.
             </p>
-            <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
+            <Textarea
+              name="reason"
+              required
+              minLength={3}
+              placeholder="Why is this being voided?"
+            />
             <FormError error={voidInvoice.error} fallback="Failed to void this invoice" />
             <div className="flex gap-2">
               <Button
@@ -384,7 +394,7 @@ function SummaryTile({
       </CardHeader>
       <CardContent>
         <p
-          className={`text-xl font-semibold nums ${
+          className={`nums text-xl font-semibold ${
             tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
           }`}
         >

@@ -9,10 +9,10 @@ Where a rule is mechanically checkable it is in `eslint.config.js` or
 Two concepts are deliberately called different things by different audiences.
 That is not drift — but hedging between them is.
 
-| Concept | In code (models, routes, files) | Admin UI | Supervisor UI |
-|---|---|---|---|
-| A construction site | `Project` / `project` | **Project** | **Site** |
-| A worker on the tools | `Worker` / `worker` | **Worker** | **Fundi** |
+| Concept               | In code (models, routes, files) | Admin UI    | Supervisor UI |
+| --------------------- | ------------------------------- | ----------- | ------------- |
+| A construction site   | `Project` / `project`           | **Project** | **Site**      |
+| A worker on the tools | `Worker` / `worker`             | **Worker**  | **Fundi**     |
 
 Rules:
 
@@ -49,9 +49,9 @@ how `invalidateQueries({ queryKey: ['invoice'] })` came to match nothing.
 Shape is `[domain, ...scope]`:
 
 ```ts
-queryKeys.invoices.all()                 // ['invoices']            — invalidate everything
-queryKeys.invoices.byProject(projectId)  // ['invoices','by-project',id]
-queryKeys.invoices.detail(invoiceId)     // ['invoices','detail',id]
+queryKeys.invoices.all(); // ['invoices']            — invalidate everything
+queryKeys.invoices.byProject(projectId); // ['invoices','by-project',id]
+queryKeys.invoices.detail(invoiceId); // ['invoices','detail',id]
 ```
 
 - `domain` is the plural, kebab-case name of the thing (`daily-reports`, not
@@ -82,17 +82,17 @@ pages/supervisor/      one file per supervisor route, exporting `XxxPage`
 
 Reach for the shared piece rather than re-implementing it:
 
-| Need | Use |
-|---|---|
-| A labelled form control | `<Field label>` — wires `htmlFor`/`aria-describedby` for you |
-| A failed mutation next to a form | `<FormError error={m.error} fallback="…" />` |
-| Confirmation that something happened | `useToast().success(…)` |
-| A destructive action | `<ConfirmDialog>` — name the record being deleted |
-| Loading / error / data for a query | `<QueryState query={q}>{(data) => …}</QueryState>` |
-| A keyboard focus ring | `focusRing` / `focusRingOnMuted` from `lib/utils` |
-| A status colour | the maps in `lib/tone.ts` |
-| Aligned figures | the `.nums` class, never `tabular-nums` directly |
-| A colour | a semantic token (`bg-surface`, `text-fg-muted`, `bg-scrim`) |
+| Need                                 | Use                                                          |
+| ------------------------------------ | ------------------------------------------------------------ |
+| A labelled form control              | `<Field label>` — wires `htmlFor`/`aria-describedby` for you |
+| A failed mutation next to a form     | `<FormError error={m.error} fallback="…" />`                 |
+| Confirmation that something happened | `useToast().success(…)`                                      |
+| A destructive action                 | `<ConfirmDialog>` — name the record being deleted            |
+| Loading / error / data for a query   | `<QueryState query={q}>{(data) => …}</QueryState>`           |
+| A keyboard focus ring                | `focusRing` / `focusRingOnMuted` from `lib/utils`            |
+| A status colour                      | the maps in `lib/tone.ts`                                    |
+| Aligned figures                      | the `.nums` class, never `tabular-nums` directly             |
+| A colour                             | a semantic token (`bg-surface`, `text-fg-muted`, `bg-scrim`) |
 
 Two rules with no component to lean on:
 

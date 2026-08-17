@@ -83,10 +83,10 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
                   {l.description}
                   {!l.taxable && <span className="ml-1 text-xs text-fg-subtle">(zero-rated)</span>}
                 </Td>
-                <Td className="text-right nums">{Number(l.quantity)}</Td>
+                <Td className="nums text-right">{Number(l.quantity)}</Td>
                 <Td className="text-fg-muted">{l.unit}</Td>
-                <Td className="text-right nums">{fmtMoney(l.unitPrice)}</Td>
-                <Td className="text-right nums">{fmtMoney(l.lineTotal)}</Td>
+                <Td className="nums text-right">{fmtMoney(l.unitPrice)}</Td>
+                <Td className="nums text-right">{fmtMoney(l.lineTotal)}</Td>
               </tr>
             ))}
           </tbody>
@@ -96,7 +96,9 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
       <div className="flex justify-end">
         <dl className="w-full space-y-1.5 text-sm sm:w-72">
           <TotalRow label="Subtotal" value={inv.subtotal} />
-          {inv.vatRatePct > 0 && <TotalRow label={`VAT @ ${inv.vatRatePct}%`} value={inv.vatAmount} />}
+          {inv.vatRatePct > 0 && (
+            <TotalRow label={`VAT @ ${inv.vatRatePct}%`} value={inv.vatAmount} />
+          )}
           <TotalRow label="Total" value={inv.grossTotal} />
           {inv.retentionRatePct > 0 && (
             <TotalRow
@@ -106,9 +108,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
           )}
           <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
             <dt className="font-medium text-fg">Amount payable</dt>
-            <dd className="text-base font-semibold nums text-fg">
-              {fmtMoney(inv.netPayable)}
-            </dd>
+            <dd className="nums text-base font-semibold text-fg">{fmtMoney(inv.netPayable)}</dd>
           </div>
           {inv.status !== 'VOID' && (
             <>
@@ -116,7 +116,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
               <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
                 <dt className="font-medium text-fg">Balance</dt>
                 <dd
-                  className={`text-base font-semibold nums ${
+                  className={`nums text-base font-semibold ${
                     inv.overdue ? 'text-red-600' : 'text-fg'
                   }`}
                 >

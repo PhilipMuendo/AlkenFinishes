@@ -16,7 +16,6 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 
-
 /**
  * A supervisor asks for materials, the office decides and marks it fulfilled
  * once it arrives — at which point fulfilment logs an ordinary stock IN
@@ -51,12 +50,14 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   });
 
   const approve = useMutation({
-    mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}/approve`, { body: {} }),
+    mutationFn: (id: string) =>
+      api(`/projects/${projectId}/material-requests/${id}/approve`, { body: {} }),
     onSuccess: invalidate,
   });
 
   const fulfil = useMutation({
-    mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}/fulfil`, { body: {} }),
+    mutationFn: (id: string) =>
+      api(`/projects/${projectId}/material-requests/${id}/fulfil`, { body: {} }),
     onSuccess: invalidate,
   });
 
@@ -70,7 +71,8 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   });
 
   const withdraw = useMutation({
-    mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) =>
+      api(`/projects/${projectId}/material-requests/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       invalidate();
       toast.success('Request withdrawn');
@@ -78,7 +80,8 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   });
 
   const open_ = requests?.filter((r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED') ?? [];
-  const settled = requests?.filter((r) => r.status === 'FULFILLED' || r.status === 'REJECTED') ?? [];
+  const settled =
+    requests?.filter((r) => r.status === 'FULFILLED' || r.status === 'REJECTED') ?? [];
 
   return (
     <div className="space-y-3">
@@ -119,7 +122,11 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
               <div className="mt-2 flex gap-1.5">
                 {isAdmin && r.status === 'PENDING' && (
                   <>
-                    <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate(r.id)}>
+                    <Button
+                      size="sm"
+                      disabled={approve.isPending}
+                      onClick={() => approve.mutate(r.id)}
+                    >
                       Approve
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => setRejecting(r)}>
@@ -155,7 +162,10 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           </summary>
           <div className="mt-2 space-y-2">
             {settled.map((r) => (
-              <div key={r.id} className="flex items-center justify-between rounded-lg border border-hairline p-2.5 text-xs">
+              <div
+                key={r.id}
+                className="flex items-center justify-between rounded-lg border border-hairline p-2.5 text-xs"
+              >
                 <span>
                   {r.quantity} {r.unit} — {r.itemName}
                 </span>

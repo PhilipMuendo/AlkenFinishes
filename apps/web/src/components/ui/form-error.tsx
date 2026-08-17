@@ -26,10 +26,7 @@ export function FormError({
   const message = errorMessage(error, fallback);
   if (!message) return null;
   return (
-    <p
-      role="alert"
-      className={cn('flex items-start gap-1.5 text-sm text-red-600', className)}
-    >
+    <p role="alert" className={cn('flex items-start gap-1.5 text-sm text-red-600', className)}>
       <AlertCircle size={15} aria-hidden className="mt-0.5 shrink-0" />
       <span>{message}</span>
     </p>

@@ -58,9 +58,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
         </div>
       )}
 
-      {reports?.length === 0 && (
-        <Empty icon={ClipboardList}>No daily reports submitted yet</Empty>
-      )}
+      {reports?.length === 0 && <Empty icon={ClipboardList}>No daily reports submitted yet</Empty>}
 
       <div className="space-y-3">
         {reports?.map((r) => (
@@ -126,7 +124,11 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
             <Input name="date" type="date" defaultValue={todayISO()} required />
           </Field>
           <Field label="Work completed today">
-            <Textarea name="workCompleted" required placeholder="Finished first coat in living room…" />
+            <Textarea
+              name="workCompleted"
+              required
+              placeholder="Finished first coat in living room…"
+            />
           </Field>
           <Field label="Workers present">
             <Input name="workersPresent" type="number" min="0" inputMode="numeric" required />
@@ -150,7 +152,11 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
                 <Textarea name="visitors" rows={2} placeholder="Client visited at 2pm" />
               </Field>
               <Field label="Materials delivered">
-                <Textarea name="materialsDelivered" rows={2} placeholder="50 bags cement, delivered 9am" />
+                <Textarea
+                  name="materialsDelivered"
+                  rows={2}
+                  placeholder="50 bags cement, delivered 9am"
+                />
               </Field>
               <Field label="Instructions given">
                 <Textarea name="instructionsGiven" rows={2} />

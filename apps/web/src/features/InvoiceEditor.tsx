@@ -180,9 +180,7 @@ export function InvoiceEditor({
           )}
           <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
             <dt className="font-medium text-fg">Amount payable</dt>
-            <dd className="text-base font-semibold nums text-fg">
-              {fmtMoney(totals.netPayable)}
-            </dd>
+            <dd className="nums text-base font-semibold text-fg">{fmtMoney(totals.netPayable)}</dd>
           </div>
         </dl>
         {Number(retentionRatePct) > 0 && (

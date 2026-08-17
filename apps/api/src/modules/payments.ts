@@ -7,7 +7,13 @@ import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  fileUrl,
+  removeUploadedFile,
+  signFileUrl,
+  upload,
+  verifyUpload,
+} from '../middleware/upload';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
 import { dueDateHealth } from '../services/payments';
@@ -37,9 +43,9 @@ const include = {
 } as const;
 
 /** Signs both receipt documents. They are different artifacts — see the schema. */
-function serialize<T extends { receiptUrl: string | null; receiptPdfUrl: string | null; amount: unknown }>(
-  p: T,
-) {
+function serialize<
+  T extends { receiptUrl: string | null; receiptPdfUrl: string | null; amount: unknown },
+>(p: T) {
   return {
     ...p,
     amount: Number(p.amount),

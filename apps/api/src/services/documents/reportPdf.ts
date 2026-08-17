@@ -11,7 +11,11 @@ import type { CompanyProfile } from '../invoicing';
  * follow; an internal report does not carry that requirement.
  */
 
-export type ReportColumn = { header: string; width?: number | 'auto' | '*'; align?: 'left' | 'right' };
+export type ReportColumn = {
+  header: string;
+  width?: number | 'auto' | '*';
+  align?: 'left' | 'right';
+};
 
 export interface ReportSection {
   heading?: string;
@@ -52,7 +56,12 @@ export async function renderReportPdf(opts: {
       content.push({ text: section.heading, style: 'sectionLabel', margin: [0, 16, 0, 6] });
     }
     if (section.rows.length === 0) {
-      content.push({ text: 'Nothing to show for this period.', italics: true, color: '#64748b', fontSize: 9 });
+      content.push({
+        text: 'Nothing to show for this period.',
+        italics: true,
+        color: '#64748b',
+        fontSize: 9,
+      });
       continue;
     }
     const widths = section.columns.map((c) => c.width ?? '*');

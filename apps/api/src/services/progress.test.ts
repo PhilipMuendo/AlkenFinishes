@@ -65,7 +65,10 @@ test('all weights unusable falls back to the plain mean rather than reporting ze
 });
 
 test('completion is clamped, so bad data cannot push progress past 100', () => {
-  const r = weightedProgress([{ completionPct: 400, weight: 1 }, { completionPct: -50, weight: 1 }]);
+  const r = weightedProgress([
+    { completionPct: 400, weight: 1 },
+    { completionPct: -50, weight: 1 },
+  ]);
   assert.equal(r.pct, 50);
 });
 

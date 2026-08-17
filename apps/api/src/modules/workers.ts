@@ -19,7 +19,10 @@ const MAX_HOURLY_RATE = 5000;
 const hourlyRateField = z.coerce
   .number()
   .nonnegative()
-  .max(MAX_HOURLY_RATE, `Hourly rate looks too high (over KES ${MAX_HOURLY_RATE.toLocaleString()}/hr) — check for an extra digit`);
+  .max(
+    MAX_HOURLY_RATE,
+    `Hourly rate looks too high (over KES ${MAX_HOURLY_RATE.toLocaleString()}/hr) — check for an extra digit`,
+  );
 
 const workerSchema = z.object({
   name: z.string().min(1),
@@ -208,7 +211,10 @@ const importRowSchema = z.object({
   hourlyRate: z.coerce
     .number()
     .positive('hourly rate is required and must be greater than 0')
-    .max(MAX_HOURLY_RATE, `hourly rate over KES ${MAX_HOURLY_RATE.toLocaleString()}/hr — check for an extra digit`),
+    .max(
+      MAX_HOURLY_RATE,
+      `hourly rate over KES ${MAX_HOURLY_RATE.toLocaleString()}/hr — check for an extra digit`,
+    ),
   biometricId: z.string().optional(),
 });
 

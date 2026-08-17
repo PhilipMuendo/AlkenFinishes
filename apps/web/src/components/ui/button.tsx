@@ -9,7 +9,8 @@ export const buttonVariants = cva(
       variant: {
         default: 'bg-brand-600 text-white shadow-xs hover:bg-brand-700',
         secondary: 'bg-surface-sunken text-fg hover:bg-hairline-strong/60',
-        outline: 'border border-hairline-strong bg-surface text-fg shadow-xs hover:bg-surface-muted',
+        outline:
+          'border border-hairline-strong bg-surface text-fg shadow-xs hover:bg-surface-muted',
         ghost: 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
         destructive: 'bg-red-600 text-white shadow-xs hover:bg-red-700',
       },
@@ -25,8 +26,7 @@ export const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, ...props }, ref) => (

@@ -38,7 +38,13 @@ import { CommandCentrePanel } from '@/features/CommandCentrePanel';
  * Optimized for one-handed phone use on site — no financials here.
  */
 const ACTIONS = [
-  { id: 'fundis', label: 'Fundis', hint: 'Add and manage fundis', icon: HardHat, chip: 'bg-rose-50 text-rose-600' },
+  {
+    id: 'fundis',
+    label: 'Fundis',
+    hint: 'Add and manage fundis',
+    icon: HardHat,
+    chip: 'bg-rose-50 text-rose-600',
+  },
   {
     id: 'attendance',
     label: 'Attendance',
@@ -46,9 +52,27 @@ const ACTIONS = [
     icon: Fingerprint,
     chip: 'bg-brand-50 text-brand-600',
   },
-  { id: 'stock', label: 'Stock', hint: 'Materials on site', icon: Boxes, chip: 'bg-emerald-50 text-emerald-600' },
-  { id: 'expenses', label: 'Expenses', hint: 'Log spending', icon: Receipt, chip: 'bg-amber-50 text-amber-600' },
-  { id: 'tasks', label: 'Tasks', hint: 'Track progress', icon: ListChecks, chip: 'bg-violet-50 text-violet-600' },
+  {
+    id: 'stock',
+    label: 'Stock',
+    hint: 'Materials on site',
+    icon: Boxes,
+    chip: 'bg-emerald-50 text-emerald-600',
+  },
+  {
+    id: 'expenses',
+    label: 'Expenses',
+    hint: 'Log spending',
+    icon: Receipt,
+    chip: 'bg-amber-50 text-amber-600',
+  },
+  {
+    id: 'tasks',
+    label: 'Tasks',
+    hint: 'Track progress',
+    icon: ListChecks,
+    chip: 'bg-violet-50 text-violet-600',
+  },
   {
     id: 'report',
     label: 'Daily report',
@@ -63,7 +87,13 @@ const ACTIONS = [
     icon: CalendarRange,
     chip: 'bg-sky-50 text-sky-600',
   },
-  { id: 'tools', label: 'Tools', hint: 'Equipment on site', icon: Wrench, chip: 'bg-teal-50 text-teal-600' },
+  {
+    id: 'tools',
+    label: 'Tools',
+    hint: 'Equipment on site',
+    icon: Wrench,
+    chip: 'bg-teal-50 text-teal-600',
+  },
   {
     id: 'snags',
     label: 'Snag list',
@@ -109,77 +139,79 @@ export function SiteDetailPage() {
   return (
     <QueryState query={query} errorTitle="Couldn’t load this site" skeleton={<SiteSkeleton />}>
       {(project) => (
-    <div className="space-y-4">
-      <div>
-        {view ? (
-          <button
-            onClick={closeView}
-            className={cn(
-              'mb-2 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-fg-muted transition-colors hover:text-fg',
-              focusRingOnMuted,
+        <div className="space-y-4">
+          <div>
+            {view ? (
+              <button
+                onClick={closeView}
+                className={cn(
+                  'mb-2 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-fg-muted transition-colors hover:text-fg',
+                  focusRingOnMuted,
+                )}
+              >
+                <ChevronLeft size={16} /> {project.name}
+              </button>
+            ) : (
+              <Link
+                to="/sites"
+                className={cn(
+                  'mb-2 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-fg-muted transition-colors hover:text-fg',
+                  focusRingOnMuted,
+                )}
+              >
+                <ChevronLeft size={16} /> My Sites
+              </Link>
             )}
-          >
-            <ChevronLeft size={16} /> {project.name}
-          </button>
-        ) : (
-          <Link
-            to="/sites"
-            className={cn(
-              'mb-2 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-fg-muted transition-colors hover:text-fg',
-              focusRingOnMuted,
-            )}
-          >
-            <ChevronLeft size={16} /> My Sites
-          </Link>
-        )}
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight text-fg">
-            {view ? ACTIONS.find((a) => a.id === view)?.label : project.name}
-          </h1>
-          {!view && <StatusBadge status={project.status} tones={projectStatusTone} />}
-        </div>
-        {!view && <p className="mt-0.5 text-sm text-fg-muted">{project.location}</p>}
-      </div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight text-fg">
+                {view ? ACTIONS.find((a) => a.id === view)?.label : project.name}
+              </h1>
+              {!view && <StatusBadge status={project.status} tones={projectStatusTone} />}
+            </div>
+            {!view && <p className="mt-0.5 text-sm text-fg-muted">{project.location}</p>}
+          </div>
 
-      {/* The same control room the office sees, minus the money — the server
+          {/* The same control room the office sees, minus the money — the server
           omits the financial sections for a supervisor, so nothing is being
           hidden client-side here. */}
-      {!view && <CommandCentrePanel projectId={projectId} linked={false} />}
+          {!view && <CommandCentrePanel projectId={projectId} linked={false} />}
 
-      {!view && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {ACTIONS.map(({ id, label, hint, icon: Icon, chip }) => (
-            <button
-              key={id}
-              onClick={() => openView(id)}
-              className={cn(
-                'flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left shadow-sm transition-all active:scale-[0.98] active:bg-surface-sunken',
-                focusRingOnMuted,
-              )}
-            >
-              <span className={cn('flex h-11 w-11 items-center justify-center rounded-xl', chip)}>
-                <Icon size={22} />
-              </span>
-              <span>
-                <span className="block text-sm font-semibold text-fg">{label}</span>
-                <span className="block text-xs text-fg-subtle">{hint}</span>
-              </span>
-            </button>
-          ))}
+          {!view && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {ACTIONS.map(({ id, label, hint, icon: Icon, chip }) => (
+                <button
+                  key={id}
+                  onClick={() => openView(id)}
+                  className={cn(
+                    'flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left shadow-sm transition-all active:scale-[0.98] active:bg-surface-sunken',
+                    focusRingOnMuted,
+                  )}
+                >
+                  <span
+                    className={cn('flex h-11 w-11 items-center justify-center rounded-xl', chip)}
+                  >
+                    <Icon size={22} />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold text-fg">{label}</span>
+                    <span className="block text-xs text-fg-subtle">{hint}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {view === 'fundis' && <WorkersPanel projectId={projectId} />}
+          {view === 'attendance' && <AttendancePanel projectId={projectId} />}
+          {view === 'stock' && <StockPanel projectId={projectId} />}
+          {view === 'expenses' && <ExpensesPanel projectId={projectId} />}
+          {view === 'tasks' && <TasksPanel projectId={projectId} />}
+          {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
+          {view === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit />}
+          {view === 'tools' && <ToolsReadOnlyPanel />}
+          {view === 'snags' && <SnagsPanel projectId={projectId} />}
+          {view === 'safety' && <SafetyPanel projectId={projectId} />}
         </div>
-      )}
-
-      {view === 'fundis' && <WorkersPanel projectId={projectId} />}
-      {view === 'attendance' && <AttendancePanel projectId={projectId} />}
-      {view === 'stock' && <StockPanel projectId={projectId} />}
-      {view === 'expenses' && <ExpensesPanel projectId={projectId} />}
-      {view === 'tasks' && <TasksPanel projectId={projectId} />}
-      {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
-      {view === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit />}
-      {view === 'tools' && <ToolsReadOnlyPanel />}
-      {view === 'snags' && <SnagsPanel projectId={projectId} />}
-      {view === 'safety' && <SafetyPanel projectId={projectId} />}
-    </div>
       )}
     </QueryState>
   );

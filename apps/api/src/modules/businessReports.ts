@@ -10,7 +10,11 @@ import { getCompanyProfile } from '../services/invoicing';
 import { projectFinancials } from '../services/finance';
 import { projectReceivables } from '../services/invoicing';
 import { printDate as fmtDate } from '../services/pdf';
-import { renderReportPdf, type ReportSection, type SummaryLine } from '../services/documents/reportPdf';
+import {
+  renderReportPdf,
+  type ReportSection,
+  type SummaryLine,
+} from '../services/documents/reportPdf';
 
 /**
  * The report pack: eight printable views over data that already lives
@@ -90,7 +94,12 @@ async function buildReport(
   project: { name: string; clientName: string },
   from?: Date,
   to?: Date,
-): Promise<{ title: string; subtitle: string; sections: ReportSection[]; summary?: SummaryLine[] }> {
+): Promise<{
+  title: string;
+  subtitle: string;
+  sections: ReportSection[];
+  summary?: SummaryLine[];
+}> {
   const dateWhere = { ...(from && { gte: from }), ...(to && { lte: to }) };
 
   switch (type) {
@@ -151,7 +160,12 @@ async function buildReport(
               { header: 'Status' },
               { header: '% complete', align: 'right' },
             ],
-            rows: tasksByPhase.map((t) => [t.phase, t.name, t.status.replace('_', ' '), t.completionPct]),
+            rows: tasksByPhase.map((t) => [
+              t.phase,
+              t.name,
+              t.status.replace('_', ' '),
+              t.completionPct,
+            ]),
           },
         ],
         summary: [
@@ -174,7 +188,10 @@ async function buildReport(
       });
       const totalHours = records.reduce((s, r) => s + Number(r.hoursWorked ?? 0), 0);
       const totalCost = records.reduce((s, r) => s + Number(r.labourCost ?? 0), 0);
-      const overtimeHours = records.reduce((s, r) => s + Math.max(0, Number(r.hoursWorked ?? 0) - 8), 0);
+      const overtimeHours = records.reduce(
+        (s, r) => s + Math.max(0, Number(r.hoursWorked ?? 0) - 8),
+        0,
+      );
       return {
         title: 'Attendance & Labour Report',
         subtitle: 'Hours and labour cost by worker',
@@ -200,7 +217,11 @@ async function buildReport(
         summary: [
           { label: 'Total hours', value: totalHours.toFixed(1) },
           { label: 'Of which overtime', value: `${overtimeHours.toFixed(1)} h` },
-          { label: 'Total labour cost', value: `KES ${totalCost.toLocaleString()}`, emphasis: true },
+          {
+            label: 'Total labour cost',
+            value: `KES ${totalCost.toLocaleString()}`,
+            emphasis: true,
+          },
         ],
       };
     }
@@ -211,7 +232,9 @@ async function buildReport(
         include: { submittedBy: { select: { name: true } } },
         orderBy: { expenseDate: 'asc' },
       });
-      const total = expenses.filter((e) => e.status === 'APPROVED').reduce((s, e) => s + Number(e.amount), 0);
+      const total = expenses
+        .filter((e) => e.status === 'APPROVED')
+        .reduce((s, e) => s + Number(e.amount), 0);
       return {
         title: 'Expense Report',
         subtitle: 'Claims by category and status',
@@ -295,7 +318,11 @@ async function buildReport(
           },
         ],
         summary: [
-          { label: 'Balance outstanding', value: `KES ${running.toLocaleString()}`, emphasis: true },
+          {
+            label: 'Balance outstanding',
+            value: `KES ${running.toLocaleString()}`,
+            emphasis: true,
+          },
         ],
       };
     }
@@ -358,7 +385,10 @@ async function buildReport(
         ],
         summary: contract
           ? [
-              { label: 'Original contract sum', value: `KES ${Number(contract.originalValue).toLocaleString()}` },
+              {
+                label: 'Original contract sum',
+                value: `KES ${Number(contract.originalValue).toLocaleString()}`,
+              },
               { label: 'Net approved variations', value: `KES ${netChange.toLocaleString()}` },
               {
                 label: 'Current contract sum',

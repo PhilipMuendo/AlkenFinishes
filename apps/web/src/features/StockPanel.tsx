@@ -178,10 +178,21 @@ export function StockPanel({ projectId }: { projectId: string }) {
               </Select>
             </Field>
             <Field label="Quantity">
-              <Input name="quantity" type="number" min="0.01" step="0.01" inputMode="decimal" required />
+              <Input
+                name="quantity"
+                type="number"
+                min="0.01"
+                step="0.01"
+                inputMode="decimal"
+                required
+              />
             </Field>
             <Field label="Reason">
-              <Textarea name="reason" required placeholder="Delivery from supplier / used for bedroom walls" />
+              <Textarea
+                name="reason"
+                required
+                placeholder="Delivery from supplier / used for bedroom walls"
+              />
             </Field>
             <FormError error={move.error} fallback="Failed to save movement" />
             <Button type="submit" size="lg" className="w-full" disabled={move.isPending}>
@@ -199,7 +210,10 @@ export function StockPanel({ projectId }: { projectId: string }) {
         <div className="max-h-80 space-y-2 overflow-y-auto">
           {history?.length === 0 && <Empty>No movements yet</Empty>}
           {history?.map((m) => (
-            <div key={m.id} className="flex items-center justify-between rounded-lg border border-hairline p-3">
+            <div
+              key={m.id}
+              className="flex items-center justify-between rounded-lg border border-hairline p-3"
+            >
               <div>
                 <div className="flex items-center gap-2">
                   <Badge tone={m.type === 'IN' ? 'green' : m.type === 'OUT' ? 'blue' : 'yellow'}>

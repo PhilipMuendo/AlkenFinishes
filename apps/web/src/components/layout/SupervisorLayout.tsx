@@ -44,7 +44,7 @@ export function SupervisorLayout() {
       <main className="mx-auto w-full max-w-2xl flex-1 p-4 lg:max-w-5xl lg:p-6">
         <Outlet />
       </main>
-      <nav className="fixed inset-x-0 bottom-0 border-t border-hairline bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed inset-x-0 bottom-0 border-t border-hairline bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
         <NavLink
           to="/sites"
           className={({ isActive }) =>

@@ -82,7 +82,12 @@ router.post(
 
     const summary = await ingestPunches(device, punches);
     logger.info(
-      { sn: device.serialNumber, received: summary.received, accepted: summary.accepted, issues: summary.issues.length },
+      {
+        sn: device.serialNumber,
+        received: summary.received,
+        accepted: summary.accepted,
+        issues: summary.issues.length,
+      },
       'iclock attendance upload',
     );
     // ZKTeco expects an OK acknowledgement to advance its cursor.

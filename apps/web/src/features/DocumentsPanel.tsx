@@ -22,9 +22,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
   const { data: docs } = useQuery({
     queryKey: queryKeys.documents.filtered(projectId, filter),
     queryFn: () =>
-      api<ProjectDocument[]>(
-        `/projects/${projectId}/documents${filter ? `?type=${filter}` : ''}`,
-      ),
+      api<ProjectDocument[]>(`/projects/${projectId}/documents${filter ? `?type=${filter}` : ''}`),
   });
 
   const uploadDoc = useMutation({

@@ -3,12 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, Trash2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
-import type {
-  AnyCalendarEventType,
-  CalendarEvent,
-  CalendarEventType,
-  Project,
-} from '@/lib/types';
+import type { AnyCalendarEventType, CalendarEvent, CalendarEventType, Project } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { calendarEventTone } from '@/lib/tone';
 import { cn, focusRingOnMuted } from '@/lib/utils';
@@ -43,7 +38,6 @@ const TYPE_LABEL: Record<AnyCalendarEventType, string> = {
   RETENTION_DUE: 'Retention due',
   WARRANTY_EXPIRY: 'Warranty ends',
 };
-
 
 function startOfToday(): string {
   return new Date().toISOString().slice(0, 10);
@@ -129,8 +123,8 @@ export function CalendarPage() {
             <Empty icon={CalendarDays}>
               <p className="font-medium text-fg">Nothing coming up</p>
               <p className="mt-1 max-w-xs text-fg-muted">
-                Add a milestone, inspection or delivery date to keep it off the "did anyone tell
-                me" list.
+                Add a milestone, inspection or delivery date to keep it off the "did anyone tell me"
+                list.
               </p>
             </Empty>
           </CardContent>

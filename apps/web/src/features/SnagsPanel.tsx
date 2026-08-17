@@ -15,7 +15,6 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 
-
 /** A pin overlaid on a photo at a {x,y} fraction — the point of the annotation. */
 function PhotoWithPin({ src, pin }: { src: string; pin: { x: number; y: number } | null }) {
   return (
@@ -111,10 +110,14 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
 
   const { data: snags } = useQuery({
     queryKey: queryKeys.snags.filtered(projectId, statusFilter),
-    queryFn: () => api<SnagItem[]>(`/projects/${projectId}/snags${statusFilter ? `?status=${statusFilter}` : ''}`),
+    queryFn: () =>
+      api<SnagItem[]>(
+        `/projects/${projectId}/snags${statusFilter ? `?status=${statusFilter}` : ''}`,
+      ),
   });
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: queryKeys.snags.byProject(projectId) });
+  const invalidate = () =>
+    void qc.invalidateQueries({ queryKey: queryKeys.snags.byProject(projectId) });
 
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/snags`, { formData }),
@@ -162,7 +165,10 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="max-w-[10rem]">
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as SnagStatus | '')}>
+          <Select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as SnagStatus | '')}
+          >
             <option value="">All statuses</option>
             <option value="OPEN">Open</option>
             <option value="IN_PROGRESS">In progress</option>
@@ -316,13 +322,20 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
             {viewing.resolvedPhotoUrl && (
               <div>
                 <p className="mb-1 text-xs font-medium uppercase text-fg-subtle">Fix photo</p>
-                <img src={viewing.resolvedPhotoUrl} alt="" className="w-full rounded-lg object-cover" />
+                <img
+                  src={viewing.resolvedPhotoUrl}
+                  alt=""
+                  className="w-full rounded-lg object-cover"
+                />
               </div>
             )}
 
             <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
               {viewing.status === 'OPEN' && (
-                <Button onClick={() => startInProgress(viewing.id)} disabled={changeStatus.isPending}>
+                <Button
+                  onClick={() => startInProgress(viewing.id)}
+                  disabled={changeStatus.isPending}
+                >
                   Start work
                 </Button>
               )}
@@ -342,7 +355,11 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
                   <Button disabled={verify.isPending} onClick={() => verify.mutate(viewing.id)}>
                     Confirm fix
                   </Button>
-                  <Button variant="outline" disabled={reopen.isPending} onClick={() => reopen.mutate(viewing.id)}>
+                  <Button
+                    variant="outline"
+                    disabled={reopen.isPending}
+                    onClick={() => reopen.mutate(viewing.id)}
+                  >
                     <RotateCcw size={16} /> Not fixed — reopen
                   </Button>
                 </>
@@ -365,7 +382,13 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
           className="space-y-3"
         >
           <Field label="Photo of the fix">
-            <Input name="resolvedPhoto" type="file" accept="image/*" capture="environment" required />
+            <Input
+              name="resolvedPhoto"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              required
+            />
           </Field>
           <p className="text-xs text-fg-subtle">
             A photo is required — it's what lets the office verify the fix without visiting.

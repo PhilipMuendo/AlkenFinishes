@@ -2,12 +2,7 @@ import { cn } from '@/lib/utils';
 
 /** Neutral placeholder block for loading states. */
 export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn('animate-pulse rounded-lg bg-surface-sunken', className)}
-      {...props}
-    />
-  );
+  return <div className={cn('animate-pulse rounded-lg bg-surface-sunken', className)} {...props} />;
 }
 
 /** A few stacked skeleton rows — the default "content is loading" block. */

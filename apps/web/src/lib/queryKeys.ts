@@ -93,8 +93,7 @@ export const queryKeys = {
   },
   attendance: {
     byProject: (projectId: string) => ['attendance', projectId] as const,
-    overrideRequests: (projectId: string) =>
-      ['attendance-override-requests', projectId] as const,
+    overrideRequests: (projectId: string) => ['attendance-override-requests', projectId] as const,
   },
   stock: {
     byProject: (projectId: string) => ['stock', projectId] as const,

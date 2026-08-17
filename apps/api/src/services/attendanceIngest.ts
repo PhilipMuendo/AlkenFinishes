@@ -125,7 +125,14 @@ export async function ingestPunches(
           date: g.date,
         })),
       },
-      select: { id: true, workerId: true, projectId: true, date: true, checkIn: true, checkOut: true },
+      select: {
+        id: true,
+        workerId: true,
+        projectId: true,
+        date: true,
+        checkIn: true,
+        checkOut: true,
+      },
     });
     const exByKey = new Map(existing.map((e) => [keyOf(e.workerId, e.projectId, e.date), e]));
 
@@ -139,7 +146,10 @@ export async function ingestPunches(
       const cost = computeCost(checkIn, checkOut, g.rate);
       if (ex) {
         ops.push(
-          prisma.attendanceRecord.update({ where: { id: ex.id }, data: { checkIn, checkOut, ...cost } }),
+          prisma.attendanceRecord.update({
+            where: { id: ex.id },
+            data: { checkIn, checkOut, ...cost },
+          }),
         );
       } else {
         ops.push(
@@ -167,7 +177,11 @@ export async function ingestPunches(
     .update({ where: { id: device.id }, data: { lastSyncAt: new Date() } })
     .catch((e) => logger.warn({ err: e }, 'device lastSyncAt update failed'));
 
-  return { accepted: groups.size, received: punches.length, issues: issues.map(({ biometricId, reason }) => ({ biometricId, reason })) };
+  return {
+    accepted: groups.size,
+    received: punches.length,
+    issues: issues.map(({ biometricId, reason }) => ({ biometricId, reason })),
+  };
 }
 
 /** Dedupe-record a punch we couldn't place, so the admin can act on it. */

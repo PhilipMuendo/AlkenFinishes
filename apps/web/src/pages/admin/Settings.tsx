@@ -110,7 +110,8 @@ export function SettingsPage() {
   });
 
   const createDevice = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api<{ apiKey: string; vendor: DeviceVendor }>('/devices', { body }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api<{ apiKey: string; vendor: DeviceVendor }>('/devices', { body }),
     onSuccess: (data) => {
       if (data.vendor === 'ZKTECO') setNewKey(data.apiKey);
       else setDeviceOpen(false); // Suprema needs no key handoff screen
@@ -125,7 +126,8 @@ export function SettingsPage() {
   });
 
   const syncDevice = useMutation({
-    mutationFn: (id: string) => api<{ received: number; accepted: number }>(`/devices/${id}/sync`, { body: {} }),
+    mutationFn: (id: string) =>
+      api<{ received: number; accepted: number }>(`/devices/${id}/sync`, { body: {} }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.devices.all() }),
   });
 
@@ -326,7 +328,8 @@ export function SettingsPage() {
           )}
           <div className="divide-y divide-hairline">
             {auditLog?.items.map((entry) => {
-              const actor = entry.user?.name ?? (entry.meta?.email as string | undefined) ?? 'Unknown';
+              const actor =
+                entry.user?.name ?? (entry.meta?.email as string | undefined) ?? 'Unknown';
               return (
                 <div key={entry.id} className="flex items-start justify-between gap-3 py-2 text-sm">
                   <div className="min-w-0">
@@ -385,9 +388,7 @@ export function SettingsPage() {
       >
         {newKey ? (
           <div className="space-y-3">
-            <p className="text-sm text-fg-muted">
-              Device registered. Two ways to connect it:
-            </p>
+            <p className="text-sm text-fg-muted">Device registered. Two ways to connect it:</p>
             <ul className="space-y-1.5 text-sm text-fg-muted">
               <li>
                 <span className="font-medium text-fg">ZKTeco / ADMS terminal:</span> set its server
@@ -397,9 +398,12 @@ export function SettingsPage() {
               </li>
               <li>
                 <span className="font-medium text-fg">Custom bridge:</span> POST batches to{' '}
-                <code className="rounded bg-surface-sunken px-1 text-xs">/api/v1/attendance/device-sync</code>{' '}
-                with header <code className="rounded bg-surface-sunken px-1 text-xs">X-Device-Key</code>{' '}
-                set to the key below. Copy it now — it&rsquo;s shown only once.
+                <code className="rounded bg-surface-sunken px-1 text-xs">
+                  /api/v1/attendance/device-sync
+                </code>{' '}
+                with header{' '}
+                <code className="rounded bg-surface-sunken px-1 text-xs">X-Device-Key</code> set to
+                the key below. Copy it now — it&rsquo;s shown only once.
               </li>
             </ul>
             <p className="break-all rounded-lg bg-slate-900 p-3 font-mono text-xs text-emerald-400">
@@ -597,7 +601,8 @@ function CompanyLetterheadCard() {
   });
 
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api('/settings/company', { method: 'PUT', body }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/settings/company', { method: 'PUT', body }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.settings.company() }),
   });
   const uploadLogo = useMutation({
@@ -741,7 +746,8 @@ function PipelineCard() {
   });
 
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api('/settings/pipeline', { method: 'PUT', body }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/settings/pipeline', { method: 'PUT', body }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.settings.pipeline() });
       void qc.invalidateQueries({ queryKey: queryKeys.settings.quotationDefaults() });
@@ -785,7 +791,7 @@ function PipelineCard() {
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs text-fg-subtle">{label}</dt>
-                <dd className="font-medium nums text-fg">{value}</dd>
+                <dd className="nums font-medium text-fg">{value}</dd>
               </div>
             ))}
           </dl>
@@ -828,7 +834,9 @@ function PipelineCard() {
           </p>
 
           {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-          {save.isError && <p className="text-sm text-red-600">Couldn&rsquo;t save those settings</p>}
+          {save.isError && (
+            <p className="text-sm text-red-600">Couldn&rsquo;t save those settings</p>
+          )}
           <Button type="submit" disabled={save.isPending}>
             Save quotation &amp; contract settings
           </Button>
@@ -885,11 +893,11 @@ function InvoicingCard() {
           <dl className="grid grid-cols-2 gap-3 rounded-lg border border-hairline bg-surface-muted/40 p-3 text-sm">
             <div>
               <dt className="text-xs text-fg-subtle">Next invoice number</dt>
-              <dd className="font-medium nums text-fg">{data.nextInvoiceNo}</dd>
+              <dd className="nums font-medium text-fg">{data.nextInvoiceNo}</dd>
             </div>
             <div>
               <dt className="text-xs text-fg-subtle">Next receipt number</dt>
-              <dd className="font-medium nums text-fg">{data.nextReceiptNo}</dd>
+              <dd className="nums font-medium text-fg">{data.nextReceiptNo}</dd>
             </div>
           </dl>
 

@@ -5,7 +5,13 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  fileUrl,
+  removeUploadedFile,
+  signFileUrl,
+  upload,
+  verifyUpload,
+} from '../middleware/upload';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -49,7 +55,9 @@ router.post(
       },
       include,
     });
-    audit(req, 'safetyIncident.create', 'SafetyIncident', incident.id, { severity: incident.severity });
+    audit(req, 'safetyIncident.create', 'SafetyIncident', incident.id, {
+      severity: incident.severity,
+    });
     res.status(201).json({ ...incident, photoUrl: signFileUrl(incident.photoUrl) });
   }),
 );

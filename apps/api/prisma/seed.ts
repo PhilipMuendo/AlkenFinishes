@@ -14,8 +14,13 @@ async function main() {
   const email = (process.env.SEED_ADMIN_EMAIL ?? 'admin@alkenfinishes.local').toLowerCase();
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'ChangeMe!123';
 
-  if (process.env.NODE_ENV === 'production' && (!process.env.SEED_ADMIN_PASSWORD || password === 'ChangeMe!123')) {
-    throw new Error('Refusing to seed production with a default admin password. Set SEED_ADMIN_PASSWORD.');
+  if (
+    process.env.NODE_ENV === 'production' &&
+    (!process.env.SEED_ADMIN_PASSWORD || password === 'ChangeMe!123')
+  ) {
+    throw new Error(
+      'Refusing to seed production with a default admin password. Set SEED_ADMIN_PASSWORD.',
+    );
   }
 
   await prisma.user.upsert({

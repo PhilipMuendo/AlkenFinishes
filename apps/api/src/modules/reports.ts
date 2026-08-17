@@ -57,7 +57,10 @@ router.get(
     if (to) dateFilter.lte = to;
     if (cursor) dateFilter.lt = cursor;
     const hasDateFilter = Object.keys(dateFilter).length > 0;
-    const projectInclude = { project: { select: { id: true, name: true } }, submittedBy: { select: { name: true } } } as const;
+    const projectInclude = {
+      project: { select: { id: true, name: true } },
+      submittedBy: { select: { name: true } },
+    } as const;
 
     const [daily, weekly] = await Promise.all([
       type === 'WEEKLY'
@@ -71,7 +74,10 @@ router.get(
       type === 'DAILY'
         ? []
         : prisma.weeklyReport.findMany({
-            where: { ...(projectId && { projectId }), ...(hasDateFilter && { weekEnding: dateFilter }) },
+            where: {
+              ...(projectId && { projectId }),
+              ...(hasDateFilter && { weekEnding: dateFilter }),
+            },
             include: projectInclude,
             orderBy: { weekEnding: 'desc' },
             take: PAGE_SIZE,
@@ -109,7 +115,8 @@ router.get(
     // we haven't fetched yet, even if not all of them made this page.
     const hasMore = daily.length === PAGE_SIZE || weekly.length === PAGE_SIZE;
     const items = feed.slice(0, PAGE_SIZE);
-    const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].date.toISOString() : null;
+    const nextCursor =
+      hasMore && items.length > 0 ? items[items.length - 1].date.toISOString() : null;
 
     res.json({ items, nextCursor });
   }),

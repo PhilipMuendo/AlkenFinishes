@@ -19,7 +19,6 @@ import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 
-
 export function ContractsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -179,7 +178,7 @@ export function ContractsPage() {
                   </Td>
                   <Td>{c.client.name}</Td>
                   <Td className="max-w-[16rem] truncate">{c.title}</Td>
-                  <Td className="whitespace-nowrap text-right nums">
+                  <Td className="nums whitespace-nowrap text-right">
                     {fmtMoney(c.position.currentValue)}
                     {c.position.approvedVariations !== 0 && (
                       <p className="text-xs text-fg-subtle">
@@ -199,7 +198,9 @@ export function ContractsPage() {
                       {c.position.pendingVariations !== 0 && (
                         <Badge tone="yellow">Variation pending</Badge>
                       )}
-                      {!c.projectId && c.status !== 'DRAFT' && <Badge tone="blue">No site yet</Badge>}
+                      {!c.projectId && c.status !== 'DRAFT' && (
+                        <Badge tone="blue">No site yet</Badge>
+                      )}
                     </div>
                   </Td>
                   <Td className="text-right">
@@ -357,9 +358,7 @@ export function ContractsPage() {
             The scan becomes the operative document. The copy we generated stays on file as the
             record of what went out for signature.
           </p>
-          {sign.isError && (
-            <FormError error={sign.error} fallback="That action failed" />
-          )}
+          {sign.isError && <FormError error={sign.error} fallback="That action failed" />}
           <Button type="submit" className="w-full" disabled={sign.isPending}>
             Save
           </Button>
@@ -597,7 +596,7 @@ function Position({ contract }: { contract: Contract }) {
         )}
         <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
           <dt className="font-medium text-fg">Current sum, excl. VAT</dt>
-          <dd className="font-semibold nums text-fg">{fmtMoney(p.currentValue)}</dd>
+          <dd className="nums font-semibold text-fg">{fmtMoney(p.currentValue)}</dd>
         </div>
         {p.vatRatePct > 0 && <Row label={`VAT @ ${p.vatRatePct}%`} value={p.vatAmount} />}
         <Row label="Total payable" value={p.grossValue} />
@@ -667,7 +666,7 @@ function VariationRow({
           {v.rejectReason && <p className="mt-1 text-xs text-red-600">{v.rejectReason}</p>}
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-sm font-semibold nums text-fg">
+          <p className="nums text-sm font-semibold text-fg">
             {v.amount > 0 ? '+' : ''}
             {fmtMoney(v.amount)}
           </p>

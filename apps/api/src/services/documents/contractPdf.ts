@@ -263,15 +263,13 @@ function scheduleOfWorks(c: ContractForPdf): Content[] {
             { text: 'RATE', style: 'tableHeader', alignment: 'right' },
             { text: 'AMOUNT', style: 'tableHeader', alignment: 'right' },
           ] as TableCell[],
-          ...lines.map(
-            (l): TableCell[] => [
-              { text: l.description + (l.taxable ? '' : '  (zero-rated)') },
-              { text: String(Number(Number(l.quantity).toFixed(3))), alignment: 'right' },
-              { text: l.unit, color: MUTED },
-              { text: money(Number(l.unitPrice)), alignment: 'right' },
-              { text: money(Number(l.lineTotal)), alignment: 'right' },
-            ],
-          ),
+          ...lines.map((l): TableCell[] => [
+            { text: l.description + (l.taxable ? '' : '  (zero-rated)') },
+            { text: String(Number(Number(l.quantity).toFixed(3))), alignment: 'right' },
+            { text: l.unit, color: MUTED },
+            { text: money(Number(l.unitPrice)), alignment: 'right' },
+            { text: money(Number(l.lineTotal)), alignment: 'right' },
+          ]),
           // The schedule has to be seen to add up to the Contract Sum in the
           // Particulars, or the two halves of the document look unrelated.
           [
@@ -307,14 +305,12 @@ function conditions(text: string): Content[] {
         { text: first, fontSize: 8.5, alignment: 'justify' },
       ],
     },
-    ...rest.map(
-      (clause): Content => ({
-        text: clause,
-        fontSize: 8.5,
-        alignment: 'justify',
-        margin: [0, 7, 0, 0],
-      }),
-    ),
+    ...rest.map((clause): Content => ({
+      text: clause,
+      fontSize: 8.5,
+      alignment: 'justify',
+      margin: [0, 7, 0, 0],
+    })),
   ];
 }
 

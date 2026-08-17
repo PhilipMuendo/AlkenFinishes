@@ -133,7 +133,9 @@ export function ToolsPage() {
                 aria-label={`Status for ${tool.name}`}
                 className="w-auto"
                 value={tool.status}
-                onChange={(e) => setStatus.mutate({ id: tool.id, status: e.target.value as Tool['status'] })}
+                onChange={(e) =>
+                  setStatus.mutate({ id: tool.id, status: e.target.value as Tool['status'] })
+                }
               >
                 <option value="ACTIVE">Active</option>
                 <option value="MAINTENANCE">Maintenance</option>
@@ -238,7 +240,10 @@ export function ToolsPage() {
                 required
               />
             </Field>
-            <FormError error={transferTool.error} fallback="Transfer failed — check the details and try again" />
+            <FormError
+              error={transferTool.error}
+              fallback="Transfer failed — check the details and try again"
+            />
             <Button type="submit" size="lg" className="w-full" disabled={transferTool.isPending}>
               Confirm transfer
             </Button>
@@ -259,7 +264,7 @@ export function ToolsPage() {
                 <p className="text-sm font-medium text-fg">
                   {t.fromProject?.name ?? 'Central store'} → {t.toProject.name}
                 </p>
-                <span className="text-xs nums text-fg-muted">
+                <span className="nums text-xs text-fg-muted">
                   {Number(t.quantity).toLocaleString()} {historyTool?.unit}
                 </span>
               </div>

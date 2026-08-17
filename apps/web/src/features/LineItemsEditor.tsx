@@ -34,7 +34,16 @@ export const blankLine = (): DraftLine => ({
 });
 
 export const linesFrom = (
-  existing: { id: string; description: string; quantity: number; unit: string; unitPrice: number; taxable: boolean }[] | undefined,
+  existing:
+    | {
+        id: string;
+        description: string;
+        quantity: number;
+        unit: string;
+        unitPrice: number;
+        taxable: boolean;
+      }[]
+    | undefined,
 ): DraftLine[] =>
   existing?.length
     ? existing.map((l) => ({
@@ -146,7 +155,7 @@ export function LineItemsEditor({
                   />
                   VAT
                 </label>
-                <span className="ml-auto whitespace-nowrap text-sm font-medium nums text-fg sm:ml-0 sm:min-w-[5.5rem] sm:text-right">
+                <span className="nums ml-auto whitespace-nowrap text-sm font-medium text-fg sm:ml-0 sm:min-w-[5.5rem] sm:text-right">
                   {fmtMoney(lineTotals[i] ?? 0)}
                 </span>
               </div>

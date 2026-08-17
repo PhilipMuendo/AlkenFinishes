@@ -25,7 +25,6 @@ const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-
 export function ExpensesPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const { user } = useAuth();
@@ -119,7 +118,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-semibold nums text-fg">{fmtMoney(e.amount)}</p>
+                    <p className="nums font-semibold text-fg">{fmtMoney(e.amount)}</p>
                     <Badge tone={expenseStatusTone[e.status]} className="mt-1 capitalize">
                       {e.status.toLowerCase()}
                     </Badge>
@@ -134,7 +133,11 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
         )}
 
         <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
-          <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
+          <ExpenseForm
+            onSubmit={(fd) => create.mutate(fd)}
+            pending={create.isPending}
+            error={create.error}
+          />
         </Dialog>
       </div>
     );
@@ -169,16 +172,21 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
               <tr key={e.id}>
                 <Td className="whitespace-nowrap">{fmtDate(e.expenseDate)}</Td>
                 <Td>
-                  <Badge>{CATEGORIES.find((c) => c.value === e.expenseCategory)?.label ?? e.expenseCategory}</Badge>
+                  <Badge>
+                    {CATEGORIES.find((c) => c.value === e.expenseCategory)?.label ??
+                      e.expenseCategory}
+                  </Badge>
                 </Td>
                 <Td>{e.description}</Td>
-                <Td className="text-right font-medium nums">{fmtMoney(e.amount)}</Td>
+                <Td className="nums text-right font-medium">{fmtMoney(e.amount)}</Td>
                 <Td>{e.submittedBy.name}</Td>
                 <Td>
                   <Badge tone={expenseStatusTone[e.status]} className="capitalize">
                     {e.status.toLowerCase()}
                   </Badge>
-                  {e.rejectReason && <p className="mt-0.5 text-xs text-fg-subtle">{e.rejectReason}</p>}
+                  {e.rejectReason && (
+                    <p className="mt-0.5 text-xs text-fg-subtle">{e.rejectReason}</p>
+                  )}
                 </Td>
                 <Td>
                   {e.receiptUrl ? (
@@ -197,7 +205,11 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                 <Td className="text-right">
                   {e.status === 'PENDING' && (
                     <div className="flex justify-end gap-1.5">
-                      <Button size="sm" disabled={approve.isPending} onClick={() => approve.mutate(e.id)}>
+                      <Button
+                        size="sm"
+                        disabled={approve.isPending}
+                        onClick={() => approve.mutate(e.id)}
+                      >
                         Approve
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setRejecting(e)}>
@@ -213,7 +225,11 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
-        <ExpenseForm onSubmit={(fd) => create.mutate(fd)} pending={create.isPending} error={create.error} />
+        <ExpenseForm
+          onSubmit={(fd) => create.mutate(fd)}
+          pending={create.isPending}
+          error={create.error}
+        />
       </Dialog>
 
       <Dialog open={!!rejecting} onClose={() => setRejecting(null)} title="Decline this claim">

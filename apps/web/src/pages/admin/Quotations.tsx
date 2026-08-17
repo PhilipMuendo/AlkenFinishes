@@ -18,7 +18,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuotationEditor, type QuotationPayload } from '@/features/QuotationEditor';
 
-
 interface Defaults {
   vatRatePct: number;
   validityDays: number;
@@ -43,7 +42,10 @@ export function QuotationsPage() {
     queryKey: queryKeys.clients.list(),
     queryFn: () => api<Client[]>('/clients'),
   });
-  const { data: leads } = useQuery({ queryKey: queryKeys.leads.all(), queryFn: () => api<Lead[]>('/leads') });
+  const { data: leads } = useQuery({
+    queryKey: queryKeys.leads.all(),
+    queryFn: () => api<Lead[]>('/leads'),
+  });
   const { data: defaults } = useQuery({
     queryKey: queryKeys.settings.quotationDefaults(),
     queryFn: () => api<Defaults>('/settings/quotation-defaults'),
@@ -196,7 +198,7 @@ export function QuotationsPage() {
                   <Td className="max-w-[16rem] truncate">{q.title}</Td>
                   <Td className="whitespace-nowrap">{fmtDate(q.issueDate)}</Td>
                   <Td className="whitespace-nowrap">{fmtDate(q.validUntil)}</Td>
-                  <Td className="text-right nums">{fmtMoney(q.total)}</Td>
+                  <Td className="nums text-right">{fmtMoney(q.total)}</Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
                       <Badge tone={quotationStatusTone[q.status]} className="capitalize">
@@ -282,11 +284,11 @@ export function QuotationsPage() {
                         {l.description}
                         {!l.taxable && <span className="text-fg-subtle"> · zero-rated</span>}
                       </Td>
-                      <Td className="whitespace-nowrap text-right nums">
+                      <Td className="nums whitespace-nowrap text-right">
                         {l.quantity} {l.unit}
                       </Td>
-                      <Td className="text-right nums">{fmtMoney(l.unitPrice)}</Td>
-                      <Td className="text-right nums">{fmtMoney(l.lineTotal)}</Td>
+                      <Td className="nums text-right">{fmtMoney(l.unitPrice)}</Td>
+                      <Td className="nums text-right">{fmtMoney(l.lineTotal)}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -322,7 +324,10 @@ export function QuotationsPage() {
               </p>
             )}
 
-            <FormError error={send.error ?? decide.error ?? remove.error} fallback="That action failed" />
+            <FormError
+              error={send.error ?? decide.error ?? remove.error}
+              fallback="That action failed"
+            />
 
             <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
               {viewing.status === 'DRAFT' && (
@@ -420,11 +425,7 @@ export function QuotationsPage() {
       </Dialog>
 
       {/* ---- Raise contract ---- */}
-      <Dialog
-        open={!!converting}
-        onClose={() => setConverting(null)}
-        title="Raise the contract"
-      >
+      <Dialog open={!!converting} onClose={() => setConverting(null)} title="Raise the contract">
         {converting && (
           <form
             key={converting.id}

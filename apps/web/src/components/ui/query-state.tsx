@@ -57,7 +57,9 @@ export function QueryState<T>({
 }) {
   if (query.isPending) return <>{skeleton ?? <SkeletonList />}</>;
   if (query.isError || query.data === undefined) {
-    return <ErrorState title={errorTitle} error={query.error} onRetry={() => void query.refetch()} />;
+    return (
+      <ErrorState title={errorTitle} error={query.error} onRetry={() => void query.refetch()} />
+    );
   }
   return <>{children(query.data)}</>;
 }

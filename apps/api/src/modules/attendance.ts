@@ -53,7 +53,10 @@ deviceRouter.post(
     const { deviceId, records } = syncSchema.parse(req.body);
     const results: { externalId: string; status: string }[] = [];
     // Punches we couldn't place, deduped, for the admin's Sync Issues view.
-    const issuesToRecord = new Map<string, { biometricId: string; reason: string; workerId?: string }>();
+    const issuesToRecord = new Map<
+      string,
+      { biometricId: string; reason: string; workerId?: string }
+    >();
     const flagIssue = (biometricId: string, reason: string, workerId?: string) =>
       issuesToRecord.set(`${biometricId}:${reason}`, { biometricId, reason, workerId });
 
@@ -345,7 +348,9 @@ router.post(
           rejectReason: reason,
         },
       });
-      audit(req, 'attendance.override_reject', 'AttendanceOverrideRequest', rejected.id, { reason });
+      audit(req, 'attendance.override_reject', 'AttendanceOverrideRequest', rejected.id, {
+        reason,
+      });
       return res.json(rejected);
     }
 
@@ -432,7 +437,10 @@ adminDeviceRouter.get(
   '/',
   asyncHandler(async (_req, res) => {
     res.json(
-      await prisma.attendanceDevice.findMany({ select: deviceSelect, orderBy: { createdAt: 'desc' } }),
+      await prisma.attendanceDevice.findMany({
+        select: deviceSelect,
+        orderBy: { createdAt: 'desc' },
+      }),
     );
   }),
 );
@@ -459,8 +467,13 @@ adminDeviceRouter.post(
       .and(biostarFieldsSchema)
       .parse(req.body);
 
-    if (vendor === 'SUPREMA' && (!biostar.biostarBaseUrl || !biostar.biostarLoginId || !biostar.biostarPassword)) {
-      throw ApiError.badRequest('A Suprema device needs the BioStar 2 server address, login and password');
+    if (
+      vendor === 'SUPREMA' &&
+      (!biostar.biostarBaseUrl || !biostar.biostarLoginId || !biostar.biostarPassword)
+    ) {
+      throw ApiError.badRequest(
+        'A Suprema device needs the BioStar 2 server address, login and password',
+      );
     }
 
     const apiKey = crypto.randomBytes(32).toString('hex');
@@ -478,7 +491,12 @@ adminDeviceRouter.post(
         biostarInsecureTls: biostar.biostarInsecureTls ?? false,
       },
     });
-    audit(req, 'device.create', 'AttendanceDevice', device.id, { name, vendor, projectId, serialNumber });
+    audit(req, 'device.create', 'AttendanceDevice', device.id, {
+      name,
+      vendor,
+      projectId,
+      serialNumber,
+    });
     // The plaintext API key is returned exactly once — ZKTeco's bridge auth
     // path only, unused by a Suprema device but harmless to hand back.
     res.status(201).json({ id: device.id, name: device.name, vendor: device.vendor, apiKey });
@@ -525,7 +543,9 @@ adminDeviceRouter.post(
     const device = await prisma.attendanceDevice.findUnique({ where: { id: req.params.id } });
     if (!device) throw ApiError.notFound();
     if (device.vendor !== 'SUPREMA') {
-      throw ApiError.badRequest('Only Suprema/BioStar 2 devices are synced this way — ZKTeco devices push on their own');
+      throw ApiError.badRequest(
+        'Only Suprema/BioStar 2 devices are synced this way — ZKTeco devices push on their own',
+      );
     }
     const summary = await syncSupremaDevice(device.id).catch((err) => {
       if (err instanceof BiostarError) throw ApiError.badGateway(err.message);

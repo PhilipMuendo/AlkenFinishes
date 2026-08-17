@@ -91,7 +91,9 @@ router.post(
   '/logout',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { refreshToken } = z.object({ refreshToken: z.string().optional() }).parse(req.body ?? {});
+    const { refreshToken } = z
+      .object({ refreshToken: z.string().optional() })
+      .parse(req.body ?? {});
     if (refreshToken) {
       await prisma.refreshToken.updateMany({
         where: { tokenHash: hashToken(refreshToken), userId: req.user!.id },

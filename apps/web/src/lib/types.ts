@@ -153,11 +153,7 @@ export interface PaymentsSummary {
 }
 
 export type InvoiceType =
-  | 'MOBILISATION'
-  | 'PROGRESS_CLAIM'
-  | 'VARIATION'
-  | 'FINAL_ACCOUNT'
-  | 'RETENTION';
+  'MOBILISATION' | 'PROGRESS_CLAIM' | 'VARIATION' | 'FINAL_ACCOUNT' | 'RETENTION';
 
 export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 
@@ -500,7 +496,12 @@ export interface AttentionDigest {
     }[];
     overBudget: { id: string; name: string; consumedPct: number | null }[];
     unassigned: { id: string; name: string }[];
-    wentQuiet: { id: string; name: string; lastReportAt: string | null; daysSince: number | null }[];
+    wentQuiet: {
+      id: string;
+      name: string;
+      lastReportAt: string | null;
+      daysSince: number | null;
+    }[];
     finishingSoon: { id: string; name: string; expectedCompletion: string; daysLeft: number }[];
     pendingApprovals: {
       id: string;
@@ -557,13 +558,7 @@ export interface AuditLogPage {
 
 export type LeadStage = 'NEW' | 'CONTACTED' | 'SITE_VISIT' | 'QUOTED' | 'WON' | 'LOST';
 export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED';
-export type ContractStatus =
-  | 'DRAFT'
-  | 'ISSUED'
-  | 'SIGNED'
-  | 'ACTIVE'
-  | 'COMPLETED'
-  | 'TERMINATED';
+export type ContractStatus = 'DRAFT' | 'ISSUED' | 'SIGNED' | 'ACTIVE' | 'COMPLETED' | 'TERMINATED';
 export type VariationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface Client {
@@ -884,7 +879,12 @@ export interface CommandCentreData {
     windowDays: number;
     total: number;
     bySeverity: Record<'SERIOUS' | 'MINOR' | 'NEAR_MISS', number>;
-    recent: { id: string; severity: SafetyIncidentSeverity; description: string; occurredAt: string }[];
+    recent: {
+      id: string;
+      severity: SafetyIncidentSeverity;
+      description: string;
+      occurredAt: string;
+    }[];
   };
   photos: CommandCentrePhoto[];
   insights: Insight[];

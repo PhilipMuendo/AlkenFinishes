@@ -5,7 +5,13 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  fileUrl,
+  removeUploadedFile,
+  signFileUrl,
+  upload,
+  verifyUpload,
+} from '../middleware/upload';
 
 /**
  * The defect/snag list. A photo with a pinned location is how a site actually
@@ -311,7 +317,9 @@ router.post(
         resolvedAt: null,
         verifiedAt: null,
         lastActionById: req.user!.id,
-        description: reason ? `${existing.description ?? ''}\n\nReopened: ${reason}`.trim() : existing.description,
+        description: reason
+          ? `${existing.description ?? ''}\n\nReopened: ${reason}`.trim()
+          : existing.description,
       },
       include,
     });

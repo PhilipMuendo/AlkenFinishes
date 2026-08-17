@@ -45,7 +45,10 @@ export async function getFinanceSettings(): Promise<FinanceSettings> {
   };
 }
 
-export function health(consumedPct: number | null, t: Thresholds): 'GREEN' | 'YELLOW' | 'RED' | 'NONE' {
+export function health(
+  consumedPct: number | null,
+  t: Thresholds,
+): 'GREEN' | 'YELLOW' | 'RED' | 'NONE' {
   if (consumedPct === null) return 'NONE';
   if (consumedPct >= t.redPct) return 'RED';
   if (consumedPct >= t.yellowPct) return 'YELLOW';

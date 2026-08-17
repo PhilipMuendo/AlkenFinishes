@@ -6,16 +6,19 @@ Instead of running `git pull`, `docker compose build`, and `docker compose up`
 separately, use the deploy script.
 
 **Windows (PowerShell):**
+
 ```powershell
 .\deploy.ps1
 ```
 
 **Linux / macOS:**
+
 ```bash
 ./deploy.sh
 ```
 
 **Or with npm (any OS):**
+
 ```bash
 npm run deploy
 ```
@@ -25,6 +28,7 @@ that changed, (re)start the app in the background, and clean up old images. The
 app stays at **http://localhost**.
 
 Useful follow-ups:
+
 ```bash
 npm run logs      # watch the container logs
 npm run stop      # stop the app
@@ -59,6 +63,7 @@ you just deployed, Compose decided that service "hadn't changed" and left the
 stale container running on a stale image. Both deploy scripts now pass
 `--force-recreate` to prevent this, but if you ever run `docker compose up`
 manually, use:
+
 ```bash
 docker compose up -d --build --force-recreate
 ```
@@ -92,7 +97,7 @@ Best if you want to keep the current `docker-compose.yml` unchanged.
    name: Deploy
    on:
      push:
-       branches: [main]        # or your deployment branch
+       branches: [main] # or your deployment branch
    jobs:
      deploy:
        runs-on: ubuntu-latest

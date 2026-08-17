@@ -285,8 +285,6 @@ export async function serveUploads(req: Request, res: Response, next: NextFuncti
 /** Best-effort removal of a cached thumbnail alongside its source file. */
 function removeThumbnails(filename: string) {
   for (const width of ALLOWED_THUMB_WIDTHS) {
-    fs.promises
-      .unlink(path.join(thumbDir, `${filename}-w${width}.jpg`))
-      .catch(() => undefined);
+    fs.promises.unlink(path.join(thumbDir, `${filename}-w${width}.jpg`)).catch(() => undefined);
   }
 }

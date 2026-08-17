@@ -81,14 +81,14 @@ export function InvoicesPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
               Total outstanding
             </p>
-            <p className="mt-1 text-2xl font-semibold nums text-fg">{fmtMoney(totalAr)}</p>
+            <p className="nums mt-1 text-2xl font-semibold text-fg">{fmtMoney(totalAr)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 sm:p-5">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Overdue</p>
             <p
-              className={`mt-1 text-2xl font-semibold nums ${
+              className={`nums mt-1 text-2xl font-semibold ${
                 (receivables?.totalOverdue ?? 0) > 0 ? 'text-red-600' : 'text-fg'
               }`}
             >
@@ -119,7 +119,7 @@ export function InvoicesPage() {
               {BUCKET_ORDER.map((b) => (
                 <div key={b}>
                   <dt className="text-fg-subtle">{BUCKET_LABEL[b]}</dt>
-                  <dd className="font-medium nums text-fg">
+                  <dd className="nums font-medium text-fg">
                     {fmtMoney(receivables?.buckets[b] ?? 0)}
                   </dd>
                 </div>
@@ -212,8 +212,8 @@ export function InvoicesPage() {
                     {fmtDate(r.dueDate)}
                     {r.overdue && <p className="text-xs text-red-600">{r.daysOverdue}d late</p>}
                   </Td>
-                  <Td className="text-right nums">{fmtMoney(r.netPayable)}</Td>
-                  <Td className="text-right font-medium nums">
+                  <Td className="nums text-right">{fmtMoney(r.netPayable)}</Td>
+                  <Td className="nums text-right font-medium">
                     {r.status === 'VOID' ? (
                       <span className="text-fg-subtle">—</span>
                     ) : (

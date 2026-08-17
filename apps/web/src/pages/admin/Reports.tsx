@@ -56,7 +56,9 @@ function ReportRow({ r }: { r: ReportFeedItem }) {
         {fields.map(({ key, label }) =>
           r[key] ? (
             <div key={key}>
-              <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{label}</dt>
+              <dt className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
+                {label}
+              </dt>
               <dd className="whitespace-pre-line text-fg">{r[key] as string}</dd>
             </div>
           ) : null,
@@ -91,13 +93,7 @@ export function ReportsPage() {
     queryFn: () => api<Project[]>('/projects'),
   });
 
-  const {
-    data,
-    isLoading,
-    isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-  } = useInfiniteQuery({
+  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = useInfiniteQuery({
     queryKey: queryKeys.reports.feed({ projectId, type, from, to }),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }: { pageParam: string | null }) => {

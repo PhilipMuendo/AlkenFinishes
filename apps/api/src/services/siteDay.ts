@@ -26,7 +26,8 @@ const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 export async function getSiteDaySettings(): Promise<SiteDaySettings> {
   const row = await prisma.setting.findUnique({ where: { key: 'siteDay' } });
   const v = (row?.value ?? {}) as Partial<SiteDaySettings>;
-  const dayStart = typeof v.dayStart === 'string' && HHMM.test(v.dayStart) ? v.dayStart : DEFAULT_SITE_DAY_START;
+  const dayStart =
+    typeof v.dayStart === 'string' && HHMM.test(v.dayStart) ? v.dayStart : DEFAULT_SITE_DAY_START;
   const grace =
     typeof v.lateGraceMinutes === 'number' && v.lateGraceMinutes >= 0 && v.lateGraceMinutes <= 240
       ? Math.round(v.lateGraceMinutes)

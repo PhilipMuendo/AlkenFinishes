@@ -141,66 +141,66 @@ export function WorkersPage() {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-        <Table>
-          <thead>
-            <tr>
-              <Th>Name</Th>
-              <Th>Trade</Th>
-              <Th className="text-right">Hourly rate</Th>
-              <Th>Biometric ID</Th>
-              <Th>Current site</Th>
-              <Th>Status</Th>
-              <Th />
-            </tr>
-          </thead>
-          <tbody>
-            {workers?.map((w) => (
-              <tr key={w.id}>
-                <Td>
-                  <span className="font-medium text-fg">{w.name}</span>
-                  <p className="text-xs text-fg-subtle">{w.phone ?? '—'}</p>
-                </Td>
-                <Td>{w.trade}</Td>
-                <Td className="text-right nums">{fmtMoney(Number(w.hourlyRate))}/hr</Td>
-                <Td>
-                  {w.biometricId ? (
-                    <Badge tone="green">Enrolled</Badge>
-                  ) : (
-                    <Badge tone="yellow">Not enrolled</Badge>
-                  )}
-                </Td>
-                <Td>
-                  {w.assignments[0]?.project.name ?? (
-                    <span className="text-fg-subtle">Unassigned</span>
-                  )}
-                </Td>
-                <Td>
-                  <StatusBadge status={w.status} tones={workerStatusTone} />
-                </Td>
-                <Td className="text-right">
-                  <div className="flex justify-end gap-1.5">
-                    {w.assignments[0] ? (
-                      <Button size="sm" variant="outline" onClick={() => unassign.mutate(w.id)}>
-                        Unassign
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="secondary" onClick={() => setAssigning(w)}>
-                        Assign to site
-                      </Button>
-                    )}
-                    <button
-                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
-                      aria-label={`Delete ${w.name}`}
-                      onClick={() => setDeleting(w)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </Td>
+          <Table>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Trade</Th>
+                <Th className="text-right">Hourly rate</Th>
+                <Th>Biometric ID</Th>
+                <Th>Current site</Th>
+                <Th>Status</Th>
+                <Th />
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {workers?.map((w) => (
+                <tr key={w.id}>
+                  <Td>
+                    <span className="font-medium text-fg">{w.name}</span>
+                    <p className="text-xs text-fg-subtle">{w.phone ?? '—'}</p>
+                  </Td>
+                  <Td>{w.trade}</Td>
+                  <Td className="nums text-right">{fmtMoney(Number(w.hourlyRate))}/hr</Td>
+                  <Td>
+                    {w.biometricId ? (
+                      <Badge tone="green">Enrolled</Badge>
+                    ) : (
+                      <Badge tone="yellow">Not enrolled</Badge>
+                    )}
+                  </Td>
+                  <Td>
+                    {w.assignments[0]?.project.name ?? (
+                      <span className="text-fg-subtle">Unassigned</span>
+                    )}
+                  </Td>
+                  <Td>
+                    <StatusBadge status={w.status} tones={workerStatusTone} />
+                  </Td>
+                  <Td className="text-right">
+                    <div className="flex justify-end gap-1.5">
+                      {w.assignments[0] ? (
+                        <Button size="sm" variant="outline" onClick={() => unassign.mutate(w.id)}>
+                          Unassign
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="secondary" onClick={() => setAssigning(w)}>
+                          Assign to site
+                        </Button>
+                      )}
+                      <button
+                        className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                        aria-label={`Delete ${w.name}`}
+                        onClick={() => setDeleting(w)}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
         </Card>
       )}
 
@@ -260,7 +260,10 @@ export function WorkersPage() {
                 {importResult.results
                   .filter((r) => r.status === 'error' || r.warning)
                   .map((r) => (
-                    <p key={r.row} className={r.status === 'error' ? 'text-red-600' : 'text-amber-700'}>
+                    <p
+                      key={r.row}
+                      className={r.status === 'error' ? 'text-red-600' : 'text-amber-700'}
+                    >
                       Row {r.row}
                       {r.name ? ` (${r.name})` : ''}: {r.error ?? r.warning}
                     </p>
@@ -292,8 +295,8 @@ export function WorkersPage() {
             className="space-y-3"
           >
             <p className="text-sm text-fg-muted">
-              Upload a CSV or Excel file with your worker list — columns: Name, Phone, Trade,
-              Hourly Rate, and optionally Biometric ID.{' '}
+              Upload a CSV or Excel file with your worker list — columns: Name, Phone, Trade, Hourly
+              Rate, and optionally Biometric ID.{' '}
               <button
                 type="button"
                 onClick={downloadImportTemplate}

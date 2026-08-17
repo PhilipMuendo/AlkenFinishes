@@ -90,7 +90,8 @@ function BudgetForm({ projectId, lines }: { projectId: string; lines: BudgetLine
           </Field>
         ))}
         <p className="text-sm text-fg-muted">
-          Total budget: <span className="nums font-semibold">KES {total.toLocaleString('en-KE')}</span>
+          Total budget:{' '}
+          <span className="nums font-semibold">KES {total.toLocaleString('en-KE')}</span>
         </p>
         <FormError error={save.error} fallback="Failed to save budget" />
         <Button onClick={() => save.mutate()} disabled={save.isPending}>

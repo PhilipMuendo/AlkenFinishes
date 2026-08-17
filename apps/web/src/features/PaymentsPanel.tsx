@@ -112,7 +112,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <CardTitle>Contract &amp; deposit</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p className="text-lg font-semibold nums text-fg">
+          <p className="nums text-lg font-semibold text-fg">
             {fmtMoney(summary?.contractValue ?? 0)}
           </p>
           {summary?.deposit ? (
@@ -138,7 +138,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <CardTitle>Balance on contract</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-2xl font-semibold nums text-fg">
+          <p className="nums text-2xl font-semibold text-fg">
             {fmtMoney(summary?.pendingBalance ?? 0)}
           </p>
           <Progress value={percentPaid} health="GREEN" />
@@ -208,11 +208,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                       </p>
                     )}
                   </Td>
-                  <Td
-                    className={`text-right font-medium nums ${
-                      p.voidedAt ? 'line-through' : ''
-                    }`}
-                  >
+                  <Td className={`nums text-right font-medium ${p.voidedAt ? 'line-through' : ''}`}>
                     {fmtMoney(Number(p.amount))}
                   </Td>
                   <Td className="whitespace-nowrap">
@@ -368,7 +364,12 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
               collections and reopens any invoice it settled. The receipt number stays on record so
               the series is not broken.
             </p>
-            <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
+            <Textarea
+              name="reason"
+              required
+              minLength={3}
+              placeholder="Why is this being voided?"
+            />
             <FormError error={voidPayment.error} fallback="Failed to void this payment" />
             <div className="flex gap-2">
               <Button

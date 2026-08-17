@@ -10,7 +10,13 @@ import { getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { peekNextNumber } from '../services/numbering';
 import { getPipelineConfig } from '../services/pipeline';
-import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  fileUrl,
+  removeUploadedFile,
+  signFileUrl,
+  upload,
+  verifyUpload,
+} from '../middleware/upload';
 import { ApiError } from '../utils/http';
 
 const router = Router();
@@ -144,8 +150,16 @@ router.post(
 );
 
 const invoicingSchema = z.object({
-  invoicePrefix: z.string().min(1).max(8).regex(/^[A-Za-z0-9-]+$/, 'Letters, digits and dashes only'),
-  receiptPrefix: z.string().min(1).max(8).regex(/^[A-Za-z0-9-]+$/, 'Letters, digits and dashes only'),
+  invoicePrefix: z
+    .string()
+    .min(1)
+    .max(8)
+    .regex(/^[A-Za-z0-9-]+$/, 'Letters, digits and dashes only'),
+  receiptPrefix: z
+    .string()
+    .min(1)
+    .max(8)
+    .regex(/^[A-Za-z0-9-]+$/, 'Letters, digits and dashes only'),
   numberPadding: z.coerce.number().int().min(3).max(10),
   vatRatePct: z.coerce.number().min(0).max(100),
   defaultRetentionPct: z.coerce.number().min(0).max(100),

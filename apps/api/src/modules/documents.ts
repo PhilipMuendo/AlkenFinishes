@@ -5,7 +5,13 @@ import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  fileUrl,
+  removeUploadedFile,
+  signFileUrl,
+  upload,
+  verifyUpload,
+} from '../middleware/upload';
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -16,7 +22,16 @@ router.get(
     const { type } = z
       .object({
         type: z
-          .enum(['CONTRACT', 'APPROVAL', 'CUSTOMER', 'RECEIPT', 'COMPLETION', 'PHOTO', 'INVOICE', 'OTHER'])
+          .enum([
+            'CONTRACT',
+            'APPROVAL',
+            'CUSTOMER',
+            'RECEIPT',
+            'COMPLETION',
+            'PHOTO',
+            'INVOICE',
+            'OTHER',
+          ])
           .optional(),
       })
       .parse(req.query);
@@ -38,7 +53,16 @@ router.post(
     await verifyUpload(req.file);
     const { type, name } = z
       .object({
-        type: z.enum(['CONTRACT', 'APPROVAL', 'CUSTOMER', 'RECEIPT', 'COMPLETION', 'PHOTO', 'INVOICE', 'OTHER']),
+        type: z.enum([
+          'CONTRACT',
+          'APPROVAL',
+          'CUSTOMER',
+          'RECEIPT',
+          'COMPLETION',
+          'PHOTO',
+          'INVOICE',
+          'OTHER',
+        ]),
         name: z.string().min(1),
       })
       .parse(req.body);

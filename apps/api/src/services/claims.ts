@@ -93,10 +93,7 @@ export function previouslyClaimedBySourceLine(priors: PriorClaim[]): Map<string,
 }
 
 /** The claim position of every schedule item: worth, claimed, remaining. */
-export function claimPositions(
-  schedule: ScheduleLine[],
-  priors: PriorClaim[],
-): ClaimPosition[] {
+export function claimPositions(schedule: ScheduleLine[], priors: PriorClaim[]): ClaimPosition[] {
   const claimed = previouslyClaimedBySourceLine(priors);
   return schedule
     .slice()
@@ -142,7 +139,11 @@ export function buildClaim(
     if (!line) {
       throw new ClaimError(`Schedule item ${input.sourceLineId} is not on this contract`);
     }
-    if (!Number.isFinite(input.cumulativePct) || input.cumulativePct < 0 || input.cumulativePct > 100) {
+    if (
+      !Number.isFinite(input.cumulativePct) ||
+      input.cumulativePct < 0 ||
+      input.cumulativePct > 100
+    ) {
       throw new ClaimError(
         `${line.description}: completion to date must be between 0 and 100 percent`,
       );

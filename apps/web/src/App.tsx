@@ -20,9 +20,7 @@ const ProjectsPage = lazy(() =>
 const ClientsPage = lazy(() =>
   import('./pages/admin/Clients').then((m) => ({ default: m.ClientsPage })),
 );
-const LeadsPage = lazy(() =>
-  import('./pages/admin/Leads').then((m) => ({ default: m.LeadsPage })),
-);
+const LeadsPage = lazy(() => import('./pages/admin/Leads').then((m) => ({ default: m.LeadsPage })));
 const QuotationsPage = lazy(() =>
   import('./pages/admin/Quotations').then((m) => ({ default: m.QuotationsPage })),
 );

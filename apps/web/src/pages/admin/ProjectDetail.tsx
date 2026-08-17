@@ -147,109 +147,111 @@ export function ProjectDetailPage() {
       skeleton={<ProjectSkeleton />}
     >
       {(project) => (
-    <div className="space-y-5">
-      <div>
-        <Link
-          to="/admin/projects"
-          className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
-        >
-          <ChevronLeft size={16} /> Projects
-        </Link>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-fg">{project.name}</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select
-              value={project.status}
-              onChange={(e) => setStatus.mutate(e.target.value as ProjectStatus)}
-              className="h-9 w-auto text-sm"
-              aria-label="Project status"
-              disabled={setStatus.isPending}
+        <div className="space-y-5">
+          <div>
+            <Link
+              to="/admin/projects"
+              className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
             >
-              {STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {STATUS_LABEL[s]}
-                </option>
-              ))}
-            </Select>
-            <Select
-              value={project.supervisor?.id ?? ''}
-              onChange={(e) => setSupervisor.mutate(e.target.value || null)}
-              className="h-9 w-auto text-sm"
-              aria-label="Assigned supervisor"
-              disabled={setSupervisor.isPending}
-            >
-              <option value="">Unassigned</option>
-              {supervisors.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </Select>
+              <ChevronLeft size={16} /> Projects
+            </Link>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight text-fg">{project.name}</h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={project.status}
+                  onChange={(e) => setStatus.mutate(e.target.value as ProjectStatus)}
+                  className="h-9 w-auto text-sm"
+                  aria-label="Project status"
+                  disabled={setStatus.isPending}
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_LABEL[s]}
+                    </option>
+                  ))}
+                </Select>
+                <Select
+                  value={project.supervisor?.id ?? ''}
+                  onChange={(e) => setSupervisor.mutate(e.target.value || null)}
+                  className="h-9 w-auto text-sm"
+                  aria-label="Assigned supervisor"
+                  disabled={setSupervisor.isPending}
+                >
+                  <option value="">Unassigned</option>
+                  {supervisors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            <p className="mt-1 text-sm text-fg-muted">
+              {project.code && (
+                <span className="font-medium text-fg-subtle">{project.code} · </span>
+              )}
+              {project.clientName} · {project.location} · {fmtDate(project.startDate)} →{' '}
+              {fmtDate(project.expectedCompletion)}
+              {project.contract?.contractNo && (
+                <>
+                  {' · '}
+                  <Link
+                    to="/admin/contracts"
+                    className="text-brand-700 underline underline-offset-2 hover:text-brand-800"
+                  >
+                    {project.contract.contractNo}
+                  </Link>
+                </>
+              )}
+            </p>
           </div>
-        </div>
-        <p className="mt-1 text-sm text-fg-muted">
-          {project.code && <span className="font-medium text-fg-subtle">{project.code} · </span>}
-          {project.clientName} · {project.location} · {fmtDate(project.startDate)} →{' '}
-          {fmtDate(project.expectedCompletion)}
-          {project.contract?.contractNo && (
-            <>
-              {' · '}
-              <Link
-                to="/admin/contracts"
-                className="text-brand-700 underline underline-offset-2 hover:text-brand-800"
-              >
-                {project.contract.contractNo}
-              </Link>
-            </>
-          )}
-        </p>
-      </div>
 
-      <div className="space-y-2">
-        <Tabs
-          tabs={GROUPS.map((g) => ({ id: g.id, label: g.label }))}
-          active={activeGroup}
-          onChange={selectGroup}
-        />
-        {/* A single-tab group is its own heading — a second row repeating it
+          <div className="space-y-2">
+            <Tabs
+              tabs={GROUPS.map((g) => ({ id: g.id, label: g.label }))}
+              active={activeGroup}
+              onChange={selectGroup}
+            />
+            {/* A single-tab group is its own heading — a second row repeating it
             would be noise. */}
-        {currentGroup.tabs.length > 1 && (
-          <div className="flex flex-wrap gap-1.5">
-            {currentGroup.tabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                aria-current={tab === t.id ? 'page' : undefined}
-                className={cn(
-                  'rounded-lg px-2.5 py-1 text-sm font-medium transition-colors',
-                  focusRingOnMuted,
-                  tab === t.id
-                    ? 'bg-brand-50 text-brand-700'
-                    : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
+            {currentGroup.tabs.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {currentGroup.tabs.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    aria-current={tab === t.id ? 'page' : undefined}
+                    className={cn(
+                      'rounded-lg px-2.5 py-1 text-sm font-medium transition-colors',
+                      focusRingOnMuted,
+                      tab === t.id
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {tab === 'overview' && <CommandCentrePanel projectId={projectId} />}
-      {tab === 'financials' && <FinancialsPanel projectId={projectId} />}
-      {tab === 'invoices' && <InvoicesPanel projectId={projectId} />}
-      {tab === 'payments' && <PaymentsPanel projectId={projectId} />}
-      {tab === 'budget' && <BudgetPanel projectId={projectId} />}
-      {tab === 'tasks' && <TasksPanel projectId={projectId} />}
-      {tab === 'expenses' && <ExpensesPanel projectId={projectId} />}
-      {tab === 'attendance' && <AttendancePanel projectId={projectId} />}
-      {tab === 'stock' && <StockPanel projectId={projectId} />}
-      {tab === 'documents' && <DocumentsPanel projectId={projectId} />}
-      {tab === 'reports' && <ReportsPanel projectId={projectId} canSubmit={false} />}
-      {tab === 'snags' && <SnagsPanel projectId={projectId} />}
-      {tab === 'safety' && <SafetyPanel projectId={projectId} />}
-      {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}
-    </div>
+          {tab === 'overview' && <CommandCentrePanel projectId={projectId} />}
+          {tab === 'financials' && <FinancialsPanel projectId={projectId} />}
+          {tab === 'invoices' && <InvoicesPanel projectId={projectId} />}
+          {tab === 'payments' && <PaymentsPanel projectId={projectId} />}
+          {tab === 'budget' && <BudgetPanel projectId={projectId} />}
+          {tab === 'tasks' && <TasksPanel projectId={projectId} />}
+          {tab === 'expenses' && <ExpensesPanel projectId={projectId} />}
+          {tab === 'attendance' && <AttendancePanel projectId={projectId} />}
+          {tab === 'stock' && <StockPanel projectId={projectId} />}
+          {tab === 'documents' && <DocumentsPanel projectId={projectId} />}
+          {tab === 'reports' && <ReportsPanel projectId={projectId} canSubmit={false} />}
+          {tab === 'snags' && <SnagsPanel projectId={projectId} />}
+          {tab === 'safety' && <SafetyPanel projectId={projectId} />}
+          {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}
+        </div>
       )}
     </QueryState>
   );

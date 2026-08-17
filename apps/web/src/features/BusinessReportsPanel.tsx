@@ -49,7 +49,9 @@ export function BusinessReportsPanel({ projectId }: { projectId: string }) {
     mutationFn: async ({ type, ranged }: { type: string; ranged: boolean }) => {
       setDownloading(type);
       const qs = ranged ? `?from=${from}&to=${to}` : '';
-      const { url } = await api<{ url: string }>(`/projects/${projectId}/business-reports/${type}${qs}`);
+      const { url } = await api<{ url: string }>(
+        `/projects/${projectId}/business-reports/${type}${qs}`,
+      );
       return url;
     },
     onSuccess: (url) => {
@@ -64,8 +66,8 @@ export function BusinessReportsPanel({ projectId }: { projectId: string }) {
       <Card className="p-4">
         <p className="mb-3 text-sm font-medium text-fg">Date range</p>
         <p className="mb-3 text-xs text-fg-subtle">
-          Applies to Attendance, Expenses and the Site Diary Digest — the other reports are always
-          a point-in-time snapshot.
+          Applies to Attendance, Expenses and the Site Diary Digest — the other reports are always a
+          point-in-time snapshot.
         </p>
         <div className="grid max-w-sm grid-cols-2 gap-3">
           <Field label="From">

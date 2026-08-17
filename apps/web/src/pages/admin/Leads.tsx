@@ -72,8 +72,15 @@ export function LeadsPage() {
   });
 
   const move = useMutation({
-    mutationFn: ({ id, stage, lostReason }: { id: string; stage: LeadStage; lostReason?: string }) =>
-      api(`/leads/${id}/stage`, { body: { stage, lostReason } }),
+    mutationFn: ({
+      id,
+      stage,
+      lostReason,
+    }: {
+      id: string;
+      stage: LeadStage;
+      lostReason?: string;
+    }) => api(`/leads/${id}/stage`, { body: { stage, lostReason } }),
     onSuccess: () => {
       invalidate();
       setLosing(null);
@@ -152,7 +159,7 @@ export function LeadsPage() {
                 <header className="border-b border-hairline px-3 py-2.5">
                   <div className="flex items-baseline justify-between gap-2">
                     <h2 className="text-sm font-semibold text-fg">{stage.label}</h2>
-                    <span className="text-xs nums text-fg-subtle">{items.length}</span>
+                    <span className="nums text-xs text-fg-subtle">{items.length}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-fg-subtle">
                     {value > 0 ? fmtMoney(value) : stage.hint}
@@ -172,9 +179,7 @@ export function LeadsPage() {
                         setEditing(lead);
                       }}
                       onAdvance={(to) =>
-                        to === 'LOST'
-                          ? setLosing(lead)
-                          : move.mutate({ id: lead.id, stage: to })
+                        to === 'LOST' ? setLosing(lead) : move.mutate({ id: lead.id, stage: to })
                       }
                       busy={move.isPending}
                     />
@@ -380,7 +385,7 @@ function LeadCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {lead.estimatedValue != null && (
-          <span className="text-sm font-semibold nums text-fg">
+          <span className="nums text-sm font-semibold text-fg">
             {fmtMoney(lead.estimatedValue)}
           </span>
         )}

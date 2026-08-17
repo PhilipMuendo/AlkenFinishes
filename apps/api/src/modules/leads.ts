@@ -39,7 +39,9 @@ const include = {
   },
 } as const;
 
-type LeadRow = Awaited<ReturnType<typeof prisma.lead.findFirstOrThrow<{ include: typeof include }>>>;
+type LeadRow = Awaited<
+  ReturnType<typeof prisma.lead.findFirstOrThrow<{ include: typeof include }>>
+>;
 
 function serialize(lead: LeadRow) {
   return {

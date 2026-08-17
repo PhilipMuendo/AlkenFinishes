@@ -88,15 +88,21 @@ test('an unweighted projection is caveated and never called critical', () => {
 });
 
 test('spend running ahead of progress fires only past the tolerance', () => {
-  const within = buildInsights(baseInput({ budget: { totalBudget: 100, totalActual: 58, consumedPct: 58 } }));
+  const within = buildInsights(
+    baseInput({ budget: { totalBudget: 100, totalActual: 58, consumedPct: 58 } }),
+  );
   assert.ok(!ids(within).includes('budget.spendAheadOfProgress'), '8% ahead is inside tolerance');
 
-  const beyond = buildInsights(baseInput({ budget: { totalBudget: 100, totalActual: 70, consumedPct: 70 } }));
+  const beyond = buildInsights(
+    baseInput({ budget: { totalBudget: 100, totalActual: 70, consumedPct: 70 } }),
+  );
   assert.ok(ids(beyond).includes('budget.spendAheadOfProgress'));
 });
 
 test('an exhausted budget is critical, not a warning', () => {
-  const out = buildInsights(baseInput({ budget: { totalBudget: 100, totalActual: 105, consumedPct: 105 } }));
+  const out = buildInsights(
+    baseInput({ budget: { totalBudget: 100, totalActual: 105, consumedPct: 105 } }),
+  );
   const b = out.find((i) => i.id === 'budget.spendAheadOfProgress');
   assert.ok(b);
   assert.equal(b.severity, 'CRITICAL');
@@ -162,8 +168,16 @@ test('a site that has never reported is called out separately from a quiet one',
 });
 
 test('rework is only worth mentioning once it repeats', () => {
-  assert.ok(!ids(buildInsights(baseInput({ snags: { open: 1, overdue: 0, highOpen: 0, rework: 1 } }))).includes('snags.rework'));
-  assert.ok(ids(buildInsights(baseInput({ snags: { open: 1, overdue: 0, highOpen: 0, rework: 3 } }))).includes('snags.rework'));
+  assert.ok(
+    !ids(
+      buildInsights(baseInput({ snags: { open: 1, overdue: 0, highOpen: 0, rework: 1 } })),
+    ).includes('snags.rework'),
+  );
+  assert.ok(
+    ids(
+      buildInsights(baseInput({ snags: { open: 1, overdue: 0, highOpen: 0, rework: 3 } })),
+    ).includes('snags.rework'),
+  );
 });
 
 test('a serious safety incident outranks everything else', () => {

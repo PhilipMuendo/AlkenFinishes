@@ -83,7 +83,8 @@ const SECTIONS: Section[] = [
     hint: 'Active sites without anyone assigned',
     icon: UserX,
     tone: 'amber',
-    rows: (g) => g.unassigned.map((i) => ({ id: i.id, name: i.name, detail: 'Assign a supervisor' })),
+    rows: (g) =>
+      g.unassigned.map((i) => ({ id: i.id, name: i.name, detail: 'Assign a supervisor' })),
   },
   {
     key: 'wentQuiet',
@@ -143,8 +144,7 @@ function AttentionSection({ section, rows }: { section: Section; rows: Row[] }) 
         </span>
         <div className="min-w-0">
           <p className="text-sm font-semibold text-fg">
-            {section.label}{' '}
-            <span className="nums font-normal text-fg-subtle">({rows.length})</span>
+            {section.label} <span className="nums font-normal text-fg-subtle">({rows.length})</span>
           </p>
           <p className="text-xs text-fg-subtle">{section.hint}</p>
         </div>
@@ -161,9 +161,7 @@ function AttentionSection({ section, rows }: { section: Section; rows: Row[] }) 
             >
               <span className="truncate text-sm font-medium text-fg">{row.name}</span>
               <span className="flex shrink-0 items-center gap-1.5">
-                <span className={`nums text-xs font-medium ${toneText[tone]}`}>
-                  {row.detail}
-                </span>
+                <span className={`nums text-xs font-medium ${toneText[tone]}`}>{row.detail}</span>
                 <ChevronRight size={15} className="text-fg-subtle" />
               </span>
             </Link>
@@ -230,13 +228,13 @@ function PipelineStrip() {
               but it must not pull the eye the way a live figure does. */}
           <p
             className={cn(
-              'mt-1 text-2xl font-semibold nums',
+              'nums mt-1 text-2xl font-semibold',
               t.count > 0 ? 'text-fg' : 'text-fg-subtle/50',
             )}
           >
             {t.count}
           </p>
-          <p className="mt-0.5 text-xs nums text-fg-subtle">
+          <p className="nums mt-0.5 text-xs text-fg-subtle">
             {t.value > 0 ? fmtMoney(t.value) : '—'}
           </p>
         </Link>
@@ -276,10 +274,7 @@ export function CompanyDashboard() {
         title="Overview"
         description={`${data.activeCount} active · ${data.portfolioCount} in portfolio`}
         actions={
-          <Link
-            to="/admin/projects"
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
-          >
+          <Link to="/admin/projects" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             All projects <ArrowRight size={15} />
           </Link>
         }
@@ -296,11 +291,14 @@ export function CompanyDashboard() {
             <div>
               <p className="font-medium text-fg">Everything&rsquo;s on track</p>
               <p className="mt-1 max-w-sm text-sm text-fg-muted">
-                No overdue payments, budget risks, or quiet sites right now. New issues will show
-                up here the moment they appear.
+                No overdue payments, budget risks, or quiet sites right now. New issues will show up
+                here the moment they appear.
               </p>
             </div>
-            <Link to="/admin/projects" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+            <Link
+              to="/admin/projects"
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
               View all projects
             </Link>
           </CardContent>

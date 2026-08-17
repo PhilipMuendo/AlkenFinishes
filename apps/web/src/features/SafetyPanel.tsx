@@ -36,7 +36,8 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
   });
 
   const create = useMutation({
-    mutationFn: (formData: FormData) => api(`/projects/${projectId}/safety-incidents`, { formData }),
+    mutationFn: (formData: FormData) =>
+      api(`/projects/${projectId}/safety-incidents`, { formData }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.safetyIncidents.byProject(projectId) });
       setOpen(false);

@@ -97,10 +97,9 @@ router.get(
       }),
     ]);
 
-    const merged = [
-      ...stored.map((e) => ({ ...e, derived: false as const })),
-      ...derived,
-    ].sort((a, b) => a.date.getTime() - b.date.getTime());
+    const merged = [...stored.map((e) => ({ ...e, derived: false as const })), ...derived].sort(
+      (a, b) => a.date.getTime() - b.date.getTime(),
+    );
 
     res.json(merged);
   }),

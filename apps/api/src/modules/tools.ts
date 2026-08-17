@@ -26,7 +26,8 @@ const include = { currentProject: { select: { id: true, name: true } } } as cons
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const where = req.user!.role === 'SUPERADMIN' ? {} : { currentProject: projectScope(req.user!) };
+    const where =
+      req.user!.role === 'SUPERADMIN' ? {} : { currentProject: projectScope(req.user!) };
     res.json(await prisma.tool.findMany({ where, include, orderBy: { name: 'asc' } }));
   }),
 );
@@ -47,7 +48,8 @@ router.post(
     const data = toolSchema.parse(req.body);
     if (data.currentProjectId) {
       const project = await prisma.project.findUnique({ where: { id: data.currentProjectId } });
-      if (!project) throw ApiError.badRequest('currentProjectId does not reference an existing project');
+      if (!project)
+        throw ApiError.badRequest('currentProjectId does not reference an existing project');
     }
     const tool = await prisma.tool.create({ data, include });
     audit(req, 'tool.create', 'Tool', tool.id, { name: tool.name });
@@ -106,7 +108,9 @@ router.post(
       throw ApiError.badRequest('Tool has no quantity to transfer');
     }
     if (tool.status !== 'ACTIVE') {
-      throw ApiError.conflict(`This tool is marked ${tool.status.toLowerCase()} and cannot be transferred`);
+      throw ApiError.conflict(
+        `This tool is marked ${tool.status.toLowerCase()} and cannot be transferred`,
+      );
     }
 
     await verifyUpload(req.file);
@@ -129,7 +133,10 @@ router.post(
           transferredBy: { select: { id: true, name: true } },
         },
       });
-      await tx.tool.update({ where: { id: tool.id }, data: { currentProjectId: data.toProjectId } });
+      await tx.tool.update({
+        where: { id: tool.id },
+        data: { currentProjectId: data.toProjectId },
+      });
       await tx.auditLog.create({
         data: {
           userId: req.user!.id,

@@ -45,7 +45,7 @@ export function LoginPage() {
           <img src="/logo.jpeg" alt="Alken Decor Limited" className="w-full" />
         </div>
         <div className="relative max-w-md text-center">
-          <h2 className="text-2xl font-semibold leading-tight tracking-tight text-white text-balance">
+          <h2 className="text-balance text-2xl font-semibold leading-tight tracking-tight text-white">
             Every site, every shilling, in one place.
           </h2>
           <p className="mt-3 text-[15px] leading-relaxed text-brand-100">
@@ -59,11 +59,7 @@ export function LoginPage() {
       <div className="flex items-center justify-center bg-surface-muted px-5 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-8 lg:hidden">
-            <img
-              src="/logo.jpeg"
-              alt="Alken Decor Limited"
-              className="mx-auto w-40 rounded-xl"
-            />
+            <img src="/logo.jpeg" alt="Alken Decor Limited" className="mx-auto w-40 rounded-xl" />
           </div>
 
           <h1 className="text-2xl font-semibold tracking-tight text-fg">Welcome back</h1>

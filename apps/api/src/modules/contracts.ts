@@ -319,7 +319,8 @@ router.post(
       const file = files[field]?.[0];
       return file ? [{ field, file }] : [];
     });
-    const discard = () => incoming.forEach(({ file }) => removeUploadedFile(`/uploads/${file.filename}`));
+    const discard = () =>
+      incoming.forEach(({ file }) => removeUploadedFile(`/uploads/${file.filename}`));
 
     if (incoming.length === 0) throw ApiError.badRequest('Attach a BOQ or a specification');
     for (const { file } of incoming) await verifyUpload(file);

@@ -296,7 +296,8 @@ router.get(
       lastReportAt == null ? null : Math.floor((now.getTime() - lastReportAt.getTime()) / DAY);
 
     // ---- 4/5/6/7. Materials, budget, profit, invoices ------------------------
-    const materialsCategory = financials?.categories.find((c) => c.category === 'MATERIALS') ?? null;
+    const materialsCategory =
+      financials?.categories.find((c) => c.category === 'MATERIALS') ?? null;
     const materials = materialsCategory && {
       allocated: materialsCategory.allocated,
       actual: materialsCategory.actual,

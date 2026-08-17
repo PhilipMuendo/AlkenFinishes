@@ -52,7 +52,11 @@ export default tseslint.config(
       // every form control reachable from its label…
       'jsx-a11y/label-has-associated-control': [
         'error',
-        { assert: 'either', depth: 3, controlComponents: ['Input', 'Select', 'Textarea', 'Combobox'] },
+        {
+          assert: 'either',
+          depth: 3,
+          controlComponents: ['Input', 'Select', 'Textarea', 'Combobox'],
+        },
       ],
       // …and nothing clickable that a keyboard cannot reach.
       'jsx-a11y/no-static-element-interactions': 'error',

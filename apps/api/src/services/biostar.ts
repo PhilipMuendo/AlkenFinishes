@@ -72,7 +72,9 @@ async function biostarFetch(
     dispatcher: device.biostarInsecureTls ? insecureAgent : secureAgent,
   });
   if (!res.ok) {
-    throw new BiostarError(`BioStar 2 request failed: ${init.method ?? 'GET'} ${path} -> ${res.status}`);
+    throw new BiostarError(
+      `BioStar 2 request failed: ${init.method ?? 'GET'} ${path} -> ${res.status}`,
+    );
   }
   const json: unknown = await res.json().catch(() => ({}));
   return { json, sessionId: res.headers.get(SESSION_HEADER) ?? undefined };
@@ -80,7 +82,10 @@ async function biostarFetch(
 
 /** Logs into BioStar 2, returning the session id used on subsequent calls. */
 export async function biostarLogin(
-  device: Pick<AttendanceDevice, 'biostarBaseUrl' | 'biostarLoginId' | 'biostarPasswordEnc' | 'biostarInsecureTls'>,
+  device: Pick<
+    AttendanceDevice,
+    'biostarBaseUrl' | 'biostarLoginId' | 'biostarPasswordEnc' | 'biostarInsecureTls'
+  >,
 ): Promise<string> {
   if (!device.biostarLoginId || !device.biostarPasswordEnc) {
     throw new BiostarError('BioStar 2 login credentials are not configured for this device');
@@ -116,7 +121,9 @@ async function fetchEventsSince(
   sessionId: string,
   sinceEventId: string | null,
 ): Promise<BiostarEvent[]> {
-  const conditions: unknown[] = [{ column: 'event_type_id', operator: 0, values: SUCCESS_EVENT_TYPES }];
+  const conditions: unknown[] = [
+    { column: 'event_type_id', operator: 0, values: SUCCESS_EVENT_TYPES },
+  ];
   if (sinceEventId) conditions.push({ column: 'id', operator: 3, values: [sinceEventId] }); // 3 = greater-than
   if (device.biostarDeviceId) {
     conditions.push({ column: 'device_id', operator: 0, values: [device.biostarDeviceId] });
@@ -166,11 +173,19 @@ export async function syncSupremaDevice(deviceId: string) {
       data: { biostarLastEventId: lastEventId, lastSyncAt: new Date() },
     });
   } else {
-    await prisma.attendanceDevice.update({ where: { id: device.id }, data: { lastSyncAt: new Date() } });
+    await prisma.attendanceDevice.update({
+      where: { id: device.id },
+      data: { lastSyncAt: new Date() },
+    });
   }
 
   logger.info(
-    { deviceId: device.id, received: summary.received, accepted: summary.accepted, issues: summary.issues.length },
+    {
+      deviceId: device.id,
+      received: summary.received,
+      accepted: summary.accepted,
+      issues: summary.issues.length,
+    },
     'BioStar 2 sync complete',
   );
   return summary;

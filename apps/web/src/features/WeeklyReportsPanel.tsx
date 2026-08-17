@@ -134,7 +134,10 @@ export function WeeklyReportsPanel({
             <Textarea name="issues" placeholder="Awaiting paint delivery; short by 2 masons" />
           </Field>
           <Field label="Plan for next week (optional)">
-            <Textarea name="nextWeekPlan" placeholder="Start ceiling works, finish exterior plaster" />
+            <Textarea
+              name="nextWeekPlan"
+              placeholder="Start ceiling works, finish exterior plaster"
+            />
           </Field>
           <Field label="Photos (up to 6)">
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />

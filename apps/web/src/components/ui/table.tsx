@@ -23,20 +23,11 @@ export function Th({ className, ...props }: React.ThHTMLAttributes<HTMLTableCell
 
 export function Td({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <td
-      className={cn('border-b border-hairline/70 px-3 py-2.5 text-fg', className)}
-      {...props}
-    />
+    <td className={cn('border-b border-hairline/70 px-3 py-2.5 text-fg', className)} {...props} />
   );
 }
 
-export function Empty({
-  children,
-  icon: Icon,
-}: {
-  children: React.ReactNode;
-  icon?: LucideIcon;
-}) {
+export function Empty({ children, icon: Icon }: { children: React.ReactNode; icon?: LucideIcon }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-12 text-center text-sm text-fg-muted">
       {Icon && (

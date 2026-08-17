@@ -68,63 +68,65 @@ export function UsersPage() {
       />
 
       <Card className="overflow-hidden">
-      <Table>
-        <thead>
-          <tr>
-            <Th>Name</Th>
-            <Th>Email</Th>
-            <Th>Role</Th>
-            <Th>Assigned sites</Th>
-            <Th>Status</Th>
-            <Th />
-          </tr>
-        </thead>
-        <tbody>
-          {users?.map((u) => (
-            <tr key={u.id}>
-              <Td>
-                <span className="font-medium text-fg">{u.name}</span>
-                <p className="text-xs text-fg-subtle">{u.phone ?? ''}</p>
-              </Td>
-              <Td>{u.email}</Td>
-              <Td>
-                <Badge tone={u.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
-                  {u.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
-                </Badge>
-              </Td>
-              <Td>{u.projects.map((p) => p.name).join(', ') || '—'}</Td>
-              <Td>
-                <Badge tone={u.active ? 'green' : 'red'}>{u.active ? 'Active' : 'Disabled'}</Badge>
-              </Td>
-              <Td className="text-right">
-                <div className="flex justify-end gap-1.5">
-                  <button
-                    className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
-                    aria-label={`Reset password for ${u.name}`}
-                    onClick={() => setResetting(u)}
-                  >
-                    <KeyRound size={16} />
-                  </button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => toggle.mutate({ id: u.id, active: !u.active })}
-                  >
-                    {u.active ? 'Disable' : 'Enable'}
-                  </Button>
-                  <button
-                    className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
-                    aria-label={`Delete ${u.name}`}
-                    onClick={() => setDeleting(u)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </Td>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Name</Th>
+              <Th>Email</Th>
+              <Th>Role</Th>
+              <Th>Assigned sites</Th>
+              <Th>Status</Th>
+              <Th />
             </tr>
-          ))}
-        </tbody>
-      </Table>
+          </thead>
+          <tbody>
+            {users?.map((u) => (
+              <tr key={u.id}>
+                <Td>
+                  <span className="font-medium text-fg">{u.name}</span>
+                  <p className="text-xs text-fg-subtle">{u.phone ?? ''}</p>
+                </Td>
+                <Td>{u.email}</Td>
+                <Td>
+                  <Badge tone={u.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
+                    {u.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
+                  </Badge>
+                </Td>
+                <Td>{u.projects.map((p) => p.name).join(', ') || '—'}</Td>
+                <Td>
+                  <Badge tone={u.active ? 'green' : 'red'}>
+                    {u.active ? 'Active' : 'Disabled'}
+                  </Badge>
+                </Td>
+                <Td className="text-right">
+                  <div className="flex justify-end gap-1.5">
+                    <button
+                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+                      aria-label={`Reset password for ${u.name}`}
+                      onClick={() => setResetting(u)}
+                    >
+                      <KeyRound size={16} />
+                    </button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggle.mutate({ id: u.id, active: !u.active })}
+                    >
+                      {u.active ? 'Disable' : 'Enable'}
+                    </Button>
+                    <button
+                      className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                      aria-label={`Delete ${u.name}`}
+                      onClick={() => setDeleting(u)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
       </Card>
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Add user">
@@ -183,8 +185,9 @@ export function UsersPage() {
             className="space-y-3"
           >
             <p className="text-sm text-fg-muted">
-              Set a new temporary password for <span className="font-medium text-fg">{resetting.email}</span>.
-              Share it with them directly — they aren&rsquo;t notified automatically.
+              Set a new temporary password for{' '}
+              <span className="font-medium text-fg">{resetting.email}</span>. Share it with them
+              directly — they aren&rsquo;t notified automatically.
             </p>
             <Field label="New password (min 8 characters)">
               <Input name="password" type="text" minLength={8} required autoFocus />
@@ -210,8 +213,8 @@ export function UsersPage() {
         {deleting && (
           <div className="space-y-3">
             <p className="text-sm text-fg-muted">
-              This permanently removes <span className="font-medium text-fg">{deleting.email}</span>.
-              This can&rsquo;t be undone. If you might need this account again, use{' '}
+              This permanently removes <span className="font-medium text-fg">{deleting.email}</span>
+              . This can&rsquo;t be undone. If you might need this account again, use{' '}
               <span className="font-medium text-fg">Disable</span> instead — it blocks sign-in but
               keeps their history.
             </p>

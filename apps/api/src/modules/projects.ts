@@ -101,7 +101,9 @@ router.delete(
     // sit in uploads/ forever with nothing left in the database to name it.
     await prisma.project.delete({ where: { id: req.params.projectId } });
     for (const url of fileUrls) removeUploadedFile(url);
-    audit(req, 'project.delete', 'Project', req.params.projectId, { filesRemoved: fileUrls.length });
+    audit(req, 'project.delete', 'Project', req.params.projectId, {
+      filesRemoved: fileUrls.length,
+    });
     res.json({ ok: true });
   }),
 );
@@ -115,19 +117,38 @@ router.delete(
  * survive the delete and keep their files, so they're deliberately excluded.
  */
 async function collectProjectFileUrls(projectId: string): Promise<string[]> {
-  const [expenses, payments, invoices, taskPhotos, documents, dailyReports, weeklyReports, snags, incidents, toolTransfers] =
-    await Promise.all([
-      prisma.expense.findMany({ where: { projectId }, select: { receiptUrl: true } }),
-      prisma.payment.findMany({ where: { projectId }, select: { receiptUrl: true, receiptPdfUrl: true } }),
-      prisma.invoice.findMany({ where: { projectId }, select: { pdfUrl: true } }),
-      prisma.taskPhoto.findMany({ where: { task: { projectId } }, select: { fileUrl: true } }),
-      prisma.document.findMany({ where: { projectId }, select: { fileUrl: true } }),
-      prisma.dailyReport.findMany({ where: { projectId }, select: { photoUrls: true } }),
-      prisma.weeklyReport.findMany({ where: { projectId }, select: { photoUrls: true } }),
-      prisma.snagItem.findMany({ where: { projectId }, select: { photoUrl: true, resolvedPhotoUrl: true } }),
-      prisma.safetyIncident.findMany({ where: { projectId }, select: { photoUrl: true } }),
-      prisma.toolTransfer.findMany({ where: { toProjectId: projectId }, select: { proofPhotoUrl: true } }),
-    ]);
+  const [
+    expenses,
+    payments,
+    invoices,
+    taskPhotos,
+    documents,
+    dailyReports,
+    weeklyReports,
+    snags,
+    incidents,
+    toolTransfers,
+  ] = await Promise.all([
+    prisma.expense.findMany({ where: { projectId }, select: { receiptUrl: true } }),
+    prisma.payment.findMany({
+      where: { projectId },
+      select: { receiptUrl: true, receiptPdfUrl: true },
+    }),
+    prisma.invoice.findMany({ where: { projectId }, select: { pdfUrl: true } }),
+    prisma.taskPhoto.findMany({ where: { task: { projectId } }, select: { fileUrl: true } }),
+    prisma.document.findMany({ where: { projectId }, select: { fileUrl: true } }),
+    prisma.dailyReport.findMany({ where: { projectId }, select: { photoUrls: true } }),
+    prisma.weeklyReport.findMany({ where: { projectId }, select: { photoUrls: true } }),
+    prisma.snagItem.findMany({
+      where: { projectId },
+      select: { photoUrl: true, resolvedPhotoUrl: true },
+    }),
+    prisma.safetyIncident.findMany({ where: { projectId }, select: { photoUrl: true } }),
+    prisma.toolTransfer.findMany({
+      where: { toProjectId: projectId },
+      select: { proofPhotoUrl: true },
+    }),
+  ]);
 
   return [
     ...expenses.map((r) => r.receiptUrl),

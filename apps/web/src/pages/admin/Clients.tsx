@@ -140,10 +140,10 @@ export function ClientsPage() {
                     {c.contactPerson ?? <span className="text-fg-subtle">—</span>}
                     <p className="text-xs text-fg-subtle">{c.phone ?? c.email ?? ''}</p>
                   </Td>
-                  <Td className="text-right nums">{c._count.quotations}</Td>
-                  <Td className="text-right nums">{c._count.contracts}</Td>
-                  <Td className="text-right nums">{c._count.projects}</Td>
-                  <Td className="text-right nums">
+                  <Td className="nums text-right">{c._count.quotations}</Td>
+                  <Td className="nums text-right">{c._count.contracts}</Td>
+                  <Td className="nums text-right">{c._count.projects}</Td>
+                  <Td className="nums text-right">
                     {c.totalContractValue > 0 ? (
                       fmtMoney(c.totalContractValue)
                     ) : (

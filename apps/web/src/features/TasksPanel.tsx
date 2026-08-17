@@ -68,12 +68,8 @@ export function TasksPanel({ projectId }: { projectId: string }) {
       <div className="flex items-center justify-between gap-3">
         {progress && progress.taskCount > 0 ? (
           <p className="text-sm text-fg-muted">
-            <span className="font-semibold nums text-fg">{progress.pct}% complete</span>
-            {progress.weighted ? (
-              <> · weighted by task size</>
-            ) : (
-              <> · every task counted equally</>
-            )}
+            <span className="nums font-semibold text-fg">{progress.pct}% complete</span>
+            {progress.weighted ? <> · weighted by task size</> : <> · every task counted equally</>}
           </p>
         ) : (
           <span />
@@ -112,15 +108,17 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         const avg =
           phaseWeight > 0
             ? Math.round(
-                phaseTasks.reduce((s, t) => s + t.completionPct * (t.weight > 0 ? t.weight : 0), 0) /
-                  phaseWeight,
+                phaseTasks.reduce(
+                  (s, t) => s + t.completionPct * (t.weight > 0 ? t.weight : 0),
+                  0,
+                ) / phaseWeight,
               )
             : Math.round(phaseTasks.reduce((s, t) => s + t.completionPct, 0) / phaseTasks.length);
         return (
           <Card key={phase} className="p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-semibold text-fg">{phase}</h2>
-              <span className="text-xs nums text-fg-muted">{avg}% complete</span>
+              <span className="nums text-xs text-fg-muted">{avg}% complete</span>
             </div>
             <div className="space-y-2">
               {phaseTasks.map((t) => (
@@ -133,11 +131,9 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                     <p className="truncate text-sm font-medium text-fg">{t.name}</p>
                     <div className="mt-1.5 flex items-center gap-2">
                       <Progress value={t.completionPct} health="GREEN" className="max-w-[160px]" />
-                      <span className="text-xs nums text-fg-muted">
-                        {t.completionPct}%
-                      </span>
+                      <span className="nums text-xs text-fg-muted">{t.completionPct}%</span>
                       {t.weight !== 1 && (
-                        <span className="text-xs nums text-fg-subtle">
+                        <span className="nums text-xs text-fg-subtle">
                           size {t.weight.toLocaleString()}
                         </span>
                       )}

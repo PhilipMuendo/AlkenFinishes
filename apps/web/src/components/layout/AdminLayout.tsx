@@ -29,7 +29,8 @@ import { OfflineBanner } from '@/components/OfflineBanner';
  * it, run it, get paid for it. Without the headings this is thirteen
  * undifferentiated links, which is where a sidebar stops being navigable.
  */
-type NavEntry = { heading: string } | { to: string; label: string; icon: LucideIcon; end?: boolean };
+type NavEntry =
+  { heading: string } | { to: string; label: string; icon: LucideIcon; end?: boolean };
 
 const nav: NavEntry[] = [
   { to: '/admin', label: 'Overview', icon: BarChart3, end: true },

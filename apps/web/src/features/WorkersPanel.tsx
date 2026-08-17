@@ -28,14 +28,13 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
   });
   // GET /workers returns fundis across every site this supervisor covers;
   // narrow to the one being viewed right now.
-  const workers = allWorkers?.filter((w) =>
-    w.assignments.some((a) => a.project.id === projectId),
-  );
+  const workers = allWorkers?.filter((w) => w.assignments.some((a) => a.project.id === projectId));
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: queryKeys.workers.all() });
 
   const create = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api('/workers', { body: { ...body, projectId } }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/workers', { body: { ...body, projectId } }),
     onSuccess: () => {
       invalidate();
       setAddOpen(false);
@@ -140,7 +139,11 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
         </form>
       </Dialog>
 
-      <Dialog open={!!editing} onClose={() => setEditing(null)} title={editing ? `Edit ${editing.name}` : ''}>
+      <Dialog
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        title={editing ? `Edit ${editing.name}` : ''}
+      >
         {editing && (
           <form
             key={editing.id}

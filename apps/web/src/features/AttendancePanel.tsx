@@ -50,7 +50,8 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
   });
   const { data: requests } = useQuery({
     queryKey: queryKeys.attendance.overrideRequests(projectId),
-    queryFn: () => api<AttendanceOverrideRequest[]>(`/projects/${projectId}/attendance/override-requests`),
+    queryFn: () =>
+      api<AttendanceOverrideRequest[]>(`/projects/${projectId}/attendance/override-requests`),
   });
   const { data: project } = useQuery({
     queryKey: queryKeys.projects.detail(projectId),
@@ -75,7 +76,15 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
   });
 
   const decide = useMutation({
-    mutationFn: ({ id, outcome, reason }: { id: string; outcome: 'APPROVED' | 'REJECTED'; reason?: string }) =>
+    mutationFn: ({
+      id,
+      outcome,
+      reason,
+    }: {
+      id: string;
+      outcome: 'APPROVED' | 'REJECTED';
+      reason?: string;
+    }) =>
       api(`/projects/${projectId}/attendance/override-requests/${id}/decision`, {
         body: { outcome, reason },
       }),
@@ -130,8 +139,8 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     {r.worker.name} · {fmtDate(r.date)}
                   </p>
                   <p className="text-xs text-fg-muted">
-                    {fmtTime(r.checkIn)} – {r.checkOut ? fmtTime(r.checkOut) : 'open'} · requested by{' '}
-                    {r.requestedBy.name}
+                    {fmtTime(r.checkIn)} – {r.checkOut ? fmtTime(r.checkOut) : 'open'} · requested
+                    by {r.requestedBy.name}
                   </p>
                   <p className="mt-1 text-sm text-fg">{r.reason}</p>
                   <GeofenceSignal req={r} />
@@ -156,8 +165,8 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
 
       {!isAdmin && pending.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {pending.length} of your manual entry request{pending.length > 1 ? 's are' : ' is'} waiting
-          on the office.
+          {pending.length} of your manual entry request{pending.length > 1 ? 's are' : ' is'}{' '}
+          waiting on the office.
         </div>
       )}
 
@@ -204,7 +213,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     <span className="text-fg-subtle">Open</span>
                   )}
                 </Td>
-                <Td className="text-right nums">
+                <Td className="nums text-right">
                   {r.hoursWorked ?? '—'}
                   {r.hoursWorked != null && Number(r.hoursWorked) > 8 && (
                     <span className="ml-1 text-xs text-amber-700">
@@ -212,7 +221,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     </span>
                   )}
                 </Td>
-                <Td className="text-right nums">
+                <Td className="nums text-right">
                   {r.labourCost ? fmtMoney(Number(r.labourCost)) : '—'}
                 </Td>
                 <Td>
@@ -267,7 +276,10 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
               name="workerId"
               placeholder="Search worker…"
               aria-label="Worker"
-              options={(workers ?? []).map((w) => ({ value: w.id, label: `${w.name} — ${w.trade}` }))}
+              options={(workers ?? []).map((w) => ({
+                value: w.id,
+                label: `${w.name} — ${w.trade}`,
+              }))}
             />
           </Field>
           <Field label="Date">
@@ -346,7 +358,8 @@ function GeofenceCard({ project }: { project: Project }) {
   const [capturing, setCapturing] = useState(false);
 
   const save = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api(`/projects/${project.id}`, { method: 'PATCH', body }),
+    mutationFn: (body: Record<string, unknown>) =>
+      api(`/projects/${project.id}`, { method: 'PATCH', body }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) }),
   });
 
