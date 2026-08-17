@@ -1,23 +1,21 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuth } from '@/lib/auth';
-import type { MaterialRequest, MaterialRequestStatus } from '@/lib/types';
+import type { MaterialRequest } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
+import { materialRequestStatusTone } from '@/lib/tone';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/components/ui/toast';
+import { FormError } from '@/components/ui/form-error';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
 
-const STATUS_TONE: Record<MaterialRequestStatus, 'yellow' | 'blue' | 'green' | 'red'> = {
-  PENDING: 'yellow',
-  APPROVED: 'blue',
-  FULFILLED: 'green',
-  REJECTED: 'red',
-};
 
 /**
  * A supervisor asks for materials, the office decides and marks it fulfilled
@@ -27,19 +25,20 @@ const STATUS_TONE: Record<MaterialRequestStatus, 'yellow' | 'blue' | 'green' | '
  */
 export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'SUPERADMIN';
   const [open, setOpen] = useState(false);
   const [rejecting, setRejecting] = useState<MaterialRequest | null>(null);
 
   const { data: requests } = useQuery({
-    queryKey: ['material-requests', projectId],
+    queryKey: queryKeys.materialRequests.byProject(projectId),
     queryFn: () => api<MaterialRequest[]>(`/projects/${projectId}/material-requests`),
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['material-requests', projectId] });
-    void qc.invalidateQueries({ queryKey: ['stock', projectId] });
+    void qc.invalidateQueries({ queryKey: queryKeys.materialRequests.byProject(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.stock.byProject(projectId) });
   };
 
   const create = useMutation({
@@ -72,7 +71,10 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
 
   const withdraw = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/material-requests/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Request withdrawn');
+    },
   });
 
   const open_ = requests?.filter((r) => r.status !== 'FULFILLED' && r.status !== 'REJECTED') ?? [];
@@ -81,7 +83,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-fg">Material requests</h3>
+        <h2 className="text-sm font-semibold text-fg">Material requests</h2>
         <Button size="sm" onClick={() => setOpen(true)}>
           <Plus size={14} /> Request material
         </Button>
@@ -110,7 +112,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
                   </p>
                   {r.notes && <p className="mt-1 text-xs text-fg-muted">{r.notes}</p>}
                 </div>
-                <Badge tone={STATUS_TONE[r.status]} className="shrink-0 capitalize">
+                <Badge tone={materialRequestStatusTone[r.status]} className="shrink-0 capitalize">
                   {r.status.toLowerCase()}
                 </Badge>
               </div>
@@ -157,7 +159,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
                 <span>
                   {r.quantity} {r.unit} — {r.itemName}
                 </span>
-                <Badge tone={STATUS_TONE[r.status]} className="capitalize">
+                <Badge tone={materialRequestStatusTone[r.status]} className="capitalize">
                   {r.status.toLowerCase()}
                 </Badge>
               </div>
@@ -199,11 +201,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           <Field label="Notes (optional)">
             <Textarea name="notes" rows={2} placeholder="For floor screed, block A" />
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Send request
           </Button>
@@ -225,11 +223,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           <Field label="Why?">
             <Textarea name="reason" required rows={2} autoFocus />
           </Field>
-          {reject.isError && (
-            <p className="text-sm text-red-600">
-              {reject.error instanceof ApiRequestError ? reject.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={reject.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={reject.isPending}>
             Decline request
           </Button>

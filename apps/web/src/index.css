@@ -23,6 +23,7 @@
     --primary: 30 60 102; /* brand-600 navy */
     --primary-fg: 255 255 255;
     --ring: 45 81 131; /* brand-500 navy focus ring */
+    --scrim: 2 6 23; /* behind dialogs and the mobile drawer */
   }
 
   html {

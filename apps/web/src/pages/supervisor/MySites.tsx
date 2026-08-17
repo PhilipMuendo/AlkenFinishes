@@ -2,15 +2,18 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { ChevronRight, MapPin, Building2 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Project } from '@/lib/types';
 import { StatusBadge } from '@/components/ui/badge';
+import { projectStatusTone } from '@/lib/tone';
 import { Progress } from '@/components/ui/progress';
 import { Empty } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn, focusRingOnMuted } from '@/lib/utils';
 
 export function MySitesPage() {
   const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
 
@@ -49,12 +52,15 @@ export function MySitesPage() {
           <Link
             key={p.id}
             to={`/sites/${p.id}`}
-            className="flex items-center gap-3 rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-colors hover:border-hairline-strong active:bg-surface-sunken"
+            className={cn(
+              'flex items-center gap-3 rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-colors hover:border-hairline-strong active:bg-surface-sunken',
+              focusRingOnMuted,
+            )}
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="truncate font-semibold text-fg">{p.name}</p>
-                <StatusBadge status={p.status} />
+                <StatusBadge status={p.status} tones={projectStatusTone} />
               </div>
               <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted">
                 <MapPin size={12} className="shrink-0" /> {p.location}

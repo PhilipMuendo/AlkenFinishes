@@ -20,8 +20,9 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { cn } from '@/lib/utils';
+import { cn, focusRing } from '@/lib/utils';
 import { Wordmark } from '@/components/Wordmark';
+import { OfflineBanner } from '@/components/OfflineBanner';
 
 /**
  * Grouped in the order work actually moves through the business: win it, agree
@@ -79,6 +80,7 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
             className={({ isActive }) =>
               cn(
                 'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                focusRing,
                 isActive
                   ? 'bg-brand-50 text-brand-700'
                   : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
@@ -118,7 +120,10 @@ function UserFooter({ name, onSignOut }: { name?: string; onSignOut: () => void 
         <button
           onClick={onSignOut}
           aria-label="Sign out"
-          className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+          className={cn(
+            'rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg',
+            focusRing,
+          )}
         >
           <LogOut size={16} />
         </button>
@@ -144,6 +149,7 @@ export function AdminLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <OfflineBanner />
         {/* Mobile header */}
         <header className="sticky top-0 z-20 flex items-center justify-between border-b border-hairline bg-surface/90 px-4 py-3 backdrop-blur lg:hidden">
           <div className="flex items-center gap-2">
@@ -154,7 +160,10 @@ export function AdminLayout() {
             aria-label={open ? 'Close menu' : 'Open menu'}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
-            className="rounded-lg p-2 text-fg-muted transition-colors hover:bg-surface-sunken"
+            className={cn(
+              'rounded-lg p-2 text-fg-muted transition-colors hover:bg-surface-sunken',
+              focusRing,
+            )}
           >
             {open ? <X size={22} /> : <Menu size={22} />}
           </button>
@@ -165,7 +174,7 @@ export function AdminLayout() {
           <>
             <button
               aria-label="Close menu"
-              className="fixed inset-0 z-30 bg-slate-950/40 backdrop-blur-[2px] lg:hidden"
+              className="fixed inset-0 z-30 bg-scrim/40 backdrop-blur-[2px] lg:hidden"
               onClick={() => setOpen(false)}
             />
             <div className="fixed inset-y-0 left-0 z-40 flex w-72 max-w-[80vw] animate-fade-in flex-col border-r border-hairline bg-surface shadow-lg lg:hidden">

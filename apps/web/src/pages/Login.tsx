@@ -41,7 +41,7 @@ export function LoginPage() {
             maskImage: 'radial-gradient(ellipse at 50% 40%, black, transparent 75%)',
           }}
         />
-        <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-lg">
+        <div className="relative w-full max-w-sm rounded-2xl bg-surface p-6 shadow-lg">
           <img src="/logo.jpeg" alt="Alken Decor Limited" className="w-full" />
         </div>
         <div className="relative max-w-md text-center">

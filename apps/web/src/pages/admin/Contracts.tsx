@@ -2,33 +2,23 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Download, FileSignature, HardHat, Plus, Trash2, Upload } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { AppUser, Contract, ContractStatus, Variation } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
+import { contractStatusTone } from '@/lib/tone';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
+import { FormError } from '@/components/ui/form-error';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const STATUS_TONE: Record<ContractStatus, 'slate' | 'blue' | 'green' | 'red' | 'yellow'> = {
-  DRAFT: 'slate',
-  ISSUED: 'blue',
-  SIGNED: 'green',
-  ACTIVE: 'green',
-  COMPLETED: 'slate',
-  TERMINATED: 'red',
-};
-
-function errorMessage(err: unknown): string | null {
-  if (!err) return null;
-  return err instanceof ApiRequestError ? err.message : 'That action failed';
-}
 
 export function ContractsPage() {
   const qc = useQueryClient();
@@ -40,27 +30,27 @@ export function ContractsPage() {
   const [converting, setConverting] = useState(false);
 
   const { data: contracts, isLoading } = useQuery({
-    queryKey: ['contracts', status],
+    queryKey: queryKeys.contracts.list(status),
     queryFn: () => api<Contract[]>(`/contracts${status ? `?status=${status}` : ''}`),
   });
   // Fetched fresh rather than read out of the list, so the position and
   // variations are current after every mutation below.
   const { data: contract } = useQuery({
-    queryKey: ['contract', openId],
+    queryKey: queryKeys.contracts.detail(openId),
     queryFn: () => api<Contract>(`/contracts/${openId}`),
     enabled: !!openId,
   });
   const { data: team } = useQuery({
-    queryKey: ['users'],
+    queryKey: queryKeys.users.all(),
     queryFn: () => api<AppUser[]>('/users'),
     enabled: converting,
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['contracts'] });
-    void qc.invalidateQueries({ queryKey: ['contract', openId] });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.contracts.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.contracts.detail(openId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.projects.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   };
 
   const issue = useMutation({
@@ -129,8 +119,6 @@ export function ContractsPage() {
     window.open(url, '_blank', 'noopener');
   };
 
-  const actionError = errorMessage(issue.error ?? decideVariation.error);
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -142,7 +130,7 @@ export function ContractsPage() {
         <Field label="Status">
           <Select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus | '')}>
             <option value="">All contracts</option>
-            {(Object.keys(STATUS_TONE) as ContractStatus[]).map((s) => (
+            {(Object.keys(contractStatusTone) as ContractStatus[]).map((s) => (
               <option key={s} value={s}>
                 {s.charAt(0) + s.slice(1).toLowerCase()}
               </option>
@@ -191,7 +179,7 @@ export function ContractsPage() {
                   </Td>
                   <Td>{c.client.name}</Td>
                   <Td className="max-w-[16rem] truncate">{c.title}</Td>
-                  <Td className="whitespace-nowrap text-right tabular-nums">
+                  <Td className="whitespace-nowrap text-right nums">
                     {fmtMoney(c.position.currentValue)}
                     {c.position.approvedVariations !== 0 && (
                       <p className="text-xs text-fg-subtle">
@@ -205,7 +193,7 @@ export function ContractsPage() {
                   </Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
-                      <Badge tone={STATUS_TONE[c.status]} className="capitalize">
+                      <Badge tone={contractStatusTone[c.status]} className="capitalize">
                         {c.status.toLowerCase()}
                       </Badge>
                       {c.position.pendingVariations !== 0 && (
@@ -242,7 +230,7 @@ export function ContractsPage() {
                 {fmtDate(contract.expectedCompletion)}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
-                <Badge tone={STATUS_TONE[contract.status]} className="capitalize">
+                <Badge tone={contractStatusTone[contract.status]} className="capitalize">
                   {contract.status.toLowerCase()}
                 </Badge>
                 {contract.signedDate && (
@@ -316,7 +304,7 @@ export function ContractsPage() {
               </p>
             )}
 
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            <FormError error={issue.error ?? decideVariation.error} fallback="That action failed" />
 
             <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
               {contract.status === 'DRAFT' && (
@@ -370,7 +358,7 @@ export function ContractsPage() {
             record of what went out for signature.
           </p>
           {sign.isError && (
-            <p className="text-sm text-red-600">{errorMessage(sign.error)}</p>
+            <FormError error={sign.error} fallback="That action failed" />
           )}
           <Button type="submit" className="w-full" disabled={sign.isPending}>
             Save
@@ -407,7 +395,7 @@ export function ContractsPage() {
             <Input name="document" type="file" accept=".pdf,image/*" />
           </Field>
           {addVariation.isError && (
-            <p className="text-sm text-red-600">{errorMessage(addVariation.error)}</p>
+            <FormError error={addVariation.error} fallback="That action failed" />
           )}
           <Button type="submit" className="w-full" disabled={addVariation.isPending}>
             Raise variation
@@ -456,7 +444,7 @@ export function ContractsPage() {
               />
             </Field>
             {toProject.isError && (
-              <p className="text-sm text-red-600">{errorMessage(toProject.error)}</p>
+              <FormError error={toProject.error} fallback="That action failed" />
             )}
             <Button type="submit" className="w-full" disabled={toProject.isPending}>
               Open the site
@@ -609,7 +597,7 @@ function Position({ contract }: { contract: Contract }) {
         )}
         <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
           <dt className="font-medium text-fg">Current sum, excl. VAT</dt>
-          <dd className="font-semibold tabular-nums text-fg">{fmtMoney(p.currentValue)}</dd>
+          <dd className="font-semibold nums text-fg">{fmtMoney(p.currentValue)}</dd>
         </div>
         {p.vatRatePct > 0 && <Row label={`VAT @ ${p.vatRatePct}%`} value={p.vatAmount} />}
         <Row label="Total payable" value={p.grossValue} />
@@ -625,7 +613,7 @@ function Position({ contract }: { contract: Contract }) {
       <dl className="mt-3 space-y-1 border-t border-hairline pt-2 text-xs text-fg-muted">
         <div className="flex justify-between">
           <dt>Retention at {p.retentionPct}%</dt>
-          <dd className="tabular-nums">{fmtMoney(p.retentionAmount)} over the job</dd>
+          <dd className="nums">{fmtMoney(p.retentionAmount)} over the job</dd>
         </div>
         <div className="flex justify-between">
           <dt>Defects liability</dt>
@@ -645,7 +633,7 @@ function Row({ label, value, signed }: { label: string; value: number; signed?: 
   return (
     <div className="flex items-baseline justify-between">
       <dt className="text-fg-muted">{label}</dt>
-      <dd className="tabular-nums text-fg">
+      <dd className="nums text-fg">
         {signed && value > 0 ? '+' : ''}
         {fmtMoney(value)}
       </dd>
@@ -679,7 +667,7 @@ function VariationRow({
           {v.rejectReason && <p className="mt-1 text-xs text-red-600">{v.rejectReason}</p>}
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-sm font-semibold tabular-nums text-fg">
+          <p className="text-sm font-semibold nums text-fg">
             {v.amount > 0 ? '+' : ''}
             {fmtMoney(v.amount)}
           </p>

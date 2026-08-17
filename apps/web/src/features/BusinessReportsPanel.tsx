@@ -11,9 +11,10 @@ import {
   ScrollText,
   Wallet,
 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card } from '@/components/ui/card';
 import { Field, Input } from '@/components/ui/input';
 
@@ -76,11 +77,7 @@ export function BusinessReportsPanel({ projectId }: { projectId: string }) {
         </div>
       </Card>
 
-      {download.isError && (
-        <p className="text-sm text-red-600">
-          {download.error instanceof ApiRequestError ? download.error.message : 'Failed to generate that report'}
-        </p>
-      )}
+      <FormError error={download.error} fallback="Failed to generate that report" />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {REPORTS.map((r) => (

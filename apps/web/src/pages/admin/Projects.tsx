@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
-import type { AppUser, Project } from '@/lib/types';
+import { Building2, Plus, Search } from 'lucide-react';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
+import type { AppUser, Project, ProjectStatus } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
@@ -12,23 +14,47 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProjectCard } from '@/components/ProjectCard';
 
+const STATUS_FILTERS: { value: '' | ProjectStatus; label: string }[] = [
+  { value: '', label: 'All projects' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'PLANNING', label: 'Planning' },
+  { value: 'ON_HOLD', label: 'On hold' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+];
+
 export function ProjectsPage() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  // Filtering client-side: the list is already fetched whole for the cards, so
+  // a round trip per keystroke would buy nothing.
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<'' | ProjectStatus>('');
   const { data: projects, isLoading } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
   const { data: users } = useQuery({
-    queryKey: ['users'],
+    queryKey: queryKeys.users.all(),
     queryFn: () => api<AppUser[]>('/users'),
   });
   const supervisors = users?.filter((u) => u.role === 'SUPERVISOR' && u.active) ?? [];
 
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (projects ?? []).filter((p) => {
+      if (status && p.status !== status) return false;
+      if (!q) return true;
+      return [p.name, p.clientName, p.location, p.code ?? ''].some((field) =>
+        field.toLowerCase().includes(q),
+      );
+    });
+  }, [projects, search, status]);
+
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/projects', { body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['projects'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.projects.all() });
       setOpen(false);
     },
   });
@@ -68,6 +94,43 @@ export function ProjectsPage() {
         </div>
       )}
 
+      {!isLoading && !!projects?.length && (
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="relative min-w-[16rem] flex-1">
+            <Field label="Search">
+              <Search
+                size={15}
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 left-3 top-[1.85rem] text-fg-subtle"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Project, client, location or code"
+                className="pl-9"
+              />
+            </Field>
+          </div>
+          <div className="w-44">
+            <Field label="Status">
+              <Select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as '' | ProjectStatus)}
+              >
+                {STATUS_FILTERS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <p className="nums pb-2.5 text-sm text-fg-muted">
+            {visible.length} of {projects.length}
+          </p>
+        </div>
+      )}
+
       {!isLoading && projects?.length === 0 && (
         <Card>
           <CardContent>
@@ -84,8 +147,31 @@ export function ProjectsPage() {
         </Card>
       )}
 
+      {!isLoading && !!projects?.length && visible.length === 0 && (
+        <Card>
+          <CardContent>
+            <Empty icon={Search}>
+              <p className="font-medium text-fg">Nothing matches those filters</p>
+              <p className="mt-1 max-w-xs text-fg-muted">
+                Try a different search term, or set the status back to all projects.
+              </p>
+              <Button
+                className="mt-3"
+                variant="outline"
+                onClick={() => {
+                  setSearch('');
+                  setStatus('');
+                }}
+              >
+                Clear filters
+              </Button>
+            </Empty>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {projects?.map((p) => (
+        {visible.map((p) => (
           <ProjectCard key={p.id} project={p} />
         ))}
       </div>
@@ -128,11 +214,7 @@ export function ProjectsPage() {
               ))}
             </Select>
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to create project'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed to create project" />
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Create project
           </Button>

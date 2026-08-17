@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { SafetyIncident, SafetyIncidentSeverity } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
+import { safetySeverityTone } from '@/lib/tone';
 import { Badge } from '@/components/ui/badge';
+import { FormError } from '@/components/ui/form-error';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -15,11 +18,6 @@ const SEVERITY_LABEL: Record<SafetyIncidentSeverity, string> = {
   NEAR_MISS: 'Near miss',
   MINOR: 'Minor',
   SERIOUS: 'Serious',
-};
-const SEVERITY_TONE: Record<SafetyIncidentSeverity, 'slate' | 'yellow' | 'red'> = {
-  NEAR_MISS: 'slate',
-  MINOR: 'yellow',
-  SERIOUS: 'red',
 };
 
 function nowLocalISO(): string {
@@ -33,14 +31,14 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
 
   const { data: incidents } = useQuery({
-    queryKey: ['safety-incidents', projectId],
+    queryKey: queryKeys.safetyIncidents.byProject(projectId),
     queryFn: () => api<SafetyIncident[]>(`/projects/${projectId}/safety-incidents`),
   });
 
   const create = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/safety-incidents`, { formData }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['safety-incidents', projectId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.safetyIncidents.byProject(projectId) });
       setOpen(false);
     },
   });
@@ -78,7 +76,7 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
                   <p className="mt-1 text-xs text-fg-muted">Action taken: {i.actionTaken}</p>
                 )}
               </div>
-              <Badge tone={SEVERITY_TONE[i.severity]} className="shrink-0">
+              <Badge tone={safetySeverityTone[i.severity]} className="shrink-0">
                 {SEVERITY_LABEL[i.severity]}
               </Badge>
             </div>
@@ -119,11 +117,7 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
           <Field label="Photo (optional)">
             <Input name="photo" type="file" accept="image/*" capture="environment" />
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Save
           </Button>

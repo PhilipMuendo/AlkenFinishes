@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpFromLine, Boxes, History, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { StockItem, StockMovement } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -19,12 +21,12 @@ export function StockPanel({ projectId }: { projectId: string }) {
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
 
   const { data: items } = useQuery({
-    queryKey: ['stock', projectId],
+    queryKey: queryKeys.stock.byProject(projectId),
     queryFn: () => api<StockItem[]>(`/projects/${projectId}/stock`),
   });
 
   const { data: history } = useQuery({
-    queryKey: ['stock-history', historyItem?.id],
+    queryKey: queryKeys.stock.history(historyItem?.id),
     queryFn: () =>
       api<StockMovement[]>(`/projects/${projectId}/stock/${historyItem!.id}/movements`),
     enabled: !!historyItem,
@@ -33,7 +35,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
   const createItem = useMutation({
     mutationFn: (body: Record<string, unknown>) => api(`/projects/${projectId}/stock`, { body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['stock', projectId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.stock.byProject(projectId) });
       setAddOpen(false);
     },
   });
@@ -42,7 +44,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
     mutationFn: ({ itemId, body }: { itemId: string; body: Record<string, unknown> }) =>
       api(`/projects/${projectId}/stock/${itemId}/movements`, { body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['stock', projectId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.stock.byProject(projectId) });
       setMovement(null);
     },
   });
@@ -52,7 +54,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
       <MaterialRequestsPanel projectId={projectId} />
 
       <div className="flex items-center justify-between border-t border-hairline pt-4">
-        <h3 className="text-sm font-semibold text-fg">Materials on hand</h3>
+        <h2 className="text-sm font-semibold text-fg">Materials on hand</h2>
         <Button onClick={() => setAddOpen(true)}>
           <Plus size={16} /> New material
         </Button>
@@ -139,13 +141,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
           <Field label="Unit">
             <Input name="unit" required placeholder="bags" />
           </Field>
-          {createItem.isError && (
-            <p className="text-sm text-red-600">
-              {createItem.error instanceof ApiRequestError
-                ? createItem.error.message
-                : 'Failed to add material'}
-            </p>
-          )}
+          <FormError error={createItem.error} fallback="Failed to add material" />
           <Button type="submit" className="w-full" disabled={createItem.isPending}>
             Add material
           </Button>
@@ -187,11 +183,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
             <Field label="Reason">
               <Textarea name="reason" required placeholder="Delivery from supplier / used for bedroom walls" />
             </Field>
-            {move.isError && (
-              <p className="text-sm text-red-600">
-                {move.error instanceof ApiRequestError ? move.error.message : 'Failed to save movement'}
-              </p>
-            )}
+            <FormError error={move.error} fallback="Failed to save movement" />
             <Button type="submit" size="lg" className="w-full" disabled={move.isPending}>
               Save movement
             </Button>

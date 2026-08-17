@@ -1,9 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Plus, Trash2 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { AppUser } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { FormError } from '@/components/ui/form-error';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -13,19 +16,20 @@ import { PageHeader } from '@/components/ui/page-header';
 
 export function UsersPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [resetting, setResetting] = useState<AppUser | null>(null);
   const [deleting, setDeleting] = useState<AppUser | null>(null);
 
   const { data: users } = useQuery({
-    queryKey: ['users'],
+    queryKey: queryKeys.users.all(),
     queryFn: () => api<AppUser[]>('/users'),
   });
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/users', { body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['users'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.users.all() });
       setOpen(false);
     },
   });
@@ -33,7 +37,7 @@ export function UsersPage() {
   const toggle = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/users/${id}`, { method: 'PATCH', body: { active } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['users'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.users.all() }),
   });
 
   const resetPassword = useMutation({
@@ -45,7 +49,8 @@ export function UsersPage() {
   const deleteUser = useMutation({
     mutationFn: (id: string) => api(`/users/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['users'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.users.all() });
+      toast.success('User removed');
       setDeleting(null);
     },
   });
@@ -155,13 +160,7 @@ export function UsersPage() {
               <option value="SUPERADMIN">Superadmin</option>
             </Select>
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError
-                ? create.error.message
-                : 'Failed — email may already exist'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed — email may already exist" />
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Create user
           </Button>
@@ -216,13 +215,7 @@ export function UsersPage() {
               <span className="font-medium text-fg">Disable</span> instead — it blocks sign-in but
               keeps their history.
             </p>
-            {deleteUser.isError && (
-              <p className="text-sm text-red-600">
-                {deleteUser.error instanceof ApiRequestError
-                  ? deleteUser.error.message
-                  : 'Failed to delete this account'}
-              </p>
-            )}
+            <FormError error={deleteUser.error} fallback="Failed to delete this account" />
             <div className="flex gap-2">
               <Button
                 variant="outline"

@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, Search } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Client } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { FormError } from '@/components/ui/form-error';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
@@ -19,16 +22,17 @@ import { Skeleton } from '@/components/ui/skeleton';
  */
 export function ClientsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState<Client | null>(null);
   const [open, setOpen] = useState(false);
 
   const { data: clients, isLoading } = useQuery({
-    queryKey: ['clients', q],
+    queryKey: queryKeys.clients.list(q),
     queryFn: () => api<Client[]>(`/clients${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   });
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ['clients'] });
+  const invalidate = () => void qc.invalidateQueries({ queryKey: queryKeys.clients.all() });
 
   const save = useMutation({
     mutationFn: ({ id, body }: { id?: string; body: Record<string, unknown> }) =>
@@ -44,6 +48,7 @@ export function ClientsPage() {
     mutationFn: (id: string) => api(`/clients/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       invalidate();
+      toast.success('Client deleted');
       setEditing(null);
     },
   });
@@ -135,10 +140,10 @@ export function ClientsPage() {
                     {c.contactPerson ?? <span className="text-fg-subtle">—</span>}
                     <p className="text-xs text-fg-subtle">{c.phone ?? c.email ?? ''}</p>
                   </Td>
-                  <Td className="text-right tabular-nums">{c._count.quotations}</Td>
-                  <Td className="text-right tabular-nums">{c._count.contracts}</Td>
-                  <Td className="text-right tabular-nums">{c._count.projects}</Td>
-                  <Td className="text-right tabular-nums">
+                  <Td className="text-right nums">{c._count.quotations}</Td>
+                  <Td className="text-right nums">{c._count.contracts}</Td>
+                  <Td className="text-right nums">{c._count.projects}</Td>
+                  <Td className="text-right nums">
                     {c.totalContractValue > 0 ? (
                       fmtMoney(c.totalContractValue)
                     ) : (
@@ -208,18 +213,8 @@ export function ClientsPage() {
             </p>
           )}
 
-          {save.isError && (
-            <p className="text-sm text-red-600">
-              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
-            </p>
-          )}
-          {remove.isError && (
-            <p className="text-sm text-red-600">
-              {remove.error instanceof ApiRequestError
-                ? remove.error.message
-                : 'Failed to delete this client'}
-            </p>
-          )}
+          <FormError error={save.error} fallback="Failed to save" />
+          <FormError error={remove.error} fallback="Failed to delete this client" />
 
           <div className="flex gap-2 pt-1">
             {editing && (

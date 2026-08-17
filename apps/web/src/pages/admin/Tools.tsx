@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, Plus, Repeat, Wrench } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Project, Tool, ToolTransfer } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -19,15 +21,15 @@ export function ToolsPage() {
   const [historyTool, setHistoryTool] = useState<Tool | null>(null);
 
   const { data: tools } = useQuery({
-    queryKey: ['tools'],
+    queryKey: queryKeys.tools.all(),
     queryFn: () => api<Tool[]>('/tools'),
   });
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
   const { data: history } = useQuery({
-    queryKey: ['tools', 'transfers', historyTool?.id],
+    queryKey: queryKeys.tools.transfers(historyTool?.id),
     queryFn: () => api<ToolTransfer[]>(`/tools/${historyTool!.id}/transfers`),
     enabled: !!historyTool,
   });
@@ -35,7 +37,7 @@ export function ToolsPage() {
   const createTool = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/tools', { body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['tools'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.tools.all() });
       setAddOpen(false);
     },
   });
@@ -44,8 +46,8 @@ export function ToolsPage() {
     mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
       api(`/tools/${id}/transfer`, { formData }),
     onSuccess: (_data, vars) => {
-      void qc.invalidateQueries({ queryKey: ['tools'] });
-      void qc.invalidateQueries({ queryKey: ['tools', 'transfers', vars.id] });
+      void qc.invalidateQueries({ queryKey: queryKeys.tools.all() });
+      void qc.invalidateQueries({ queryKey: queryKeys.tools.transfers(vars.id) });
       setTransferring(null);
     },
   });
@@ -53,7 +55,7 @@ export function ToolsPage() {
   const setStatus = useMutation({
     mutationFn: ({ id, status }: { id: string; status: Tool['status'] }) =>
       api(`/tools/${id}`, { method: 'PATCH', body: { status } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tools'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.tools.all() }),
   });
 
   return (
@@ -182,11 +184,7 @@ export function ToolsPage() {
               ))}
             </Select>
           </Field>
-          {createTool.isError && (
-            <p className="text-sm text-red-600">
-              {createTool.error instanceof ApiRequestError ? createTool.error.message : 'Failed to add tool'}
-            </p>
-          )}
+          <FormError error={createTool.error} fallback="Failed to add tool" />
           <Button type="submit" className="w-full" disabled={createTool.isPending}>
             Add tool
           </Button>
@@ -240,13 +238,7 @@ export function ToolsPage() {
                 required
               />
             </Field>
-            {transferTool.isError && (
-              <p className="text-sm text-red-600">
-                {transferTool.error instanceof ApiRequestError
-                  ? transferTool.error.message
-                  : 'Transfer failed — check the details and try again'}
-              </p>
-            )}
+            <FormError error={transferTool.error} fallback="Transfer failed — check the details and try again" />
             <Button type="submit" size="lg" className="w-full" disabled={transferTool.isPending}>
               Confirm transfer
             </Button>
@@ -267,7 +259,7 @@ export function ToolsPage() {
                 <p className="text-sm font-medium text-fg">
                   {t.fromProject?.name ?? 'Central store'} → {t.toProject.name}
                 </p>
-                <span className="text-xs tabular-nums text-fg-muted">
+                <span className="text-xs nums text-fg-muted">
                   {Number(t.quantity).toLocaleString()} {historyTool?.unit}
                 </span>
               </div>

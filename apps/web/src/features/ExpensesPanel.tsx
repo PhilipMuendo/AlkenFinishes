@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Plus, Receipt } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuth } from '@/lib/auth';
-import type { Expense, ExpenseCategory, ExpenseStatus } from '@/lib/types';
+import type { Expense, ExpenseCategory } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
+import { expenseStatusTone } from '@/lib/tone';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -22,11 +25,6 @@ const CATEGORIES: { value: ExpenseCategory; label: string }[] = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-const STATUS_TONE: Record<ExpenseStatus, 'yellow' | 'green' | 'red'> = {
-  PENDING: 'yellow',
-  APPROVED: 'green',
-  REJECTED: 'red',
-};
 
 export function ExpensesPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
@@ -37,20 +35,20 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   const [rejecting, setRejecting] = useState<Expense | null>(null);
 
   const { data: expenses } = useQuery({
-    queryKey: ['expenses', projectId],
+    queryKey: queryKeys.expenses.byProject(projectId),
     queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses`),
     enabled: canBrowse,
   });
   const { data: mine } = useQuery({
-    queryKey: ['expenses', projectId, 'mine'],
+    queryKey: queryKeys.expenses.mine(projectId),
     queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses/mine`),
     enabled: !canBrowse,
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['expenses', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.expenses.byProject(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.project(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   };
 
   const create = useMutation({
@@ -121,8 +119,8 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-semibold tabular-nums text-fg">{fmtMoney(e.amount)}</p>
-                    <Badge tone={STATUS_TONE[e.status]} className="mt-1 capitalize">
+                    <p className="font-semibold nums text-fg">{fmtMoney(e.amount)}</p>
+                    <Badge tone={expenseStatusTone[e.status]} className="mt-1 capitalize">
                       {e.status.toLowerCase()}
                     </Badge>
                   </div>
@@ -174,10 +172,10 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
                   <Badge>{CATEGORIES.find((c) => c.value === e.expenseCategory)?.label ?? e.expenseCategory}</Badge>
                 </Td>
                 <Td>{e.description}</Td>
-                <Td className="text-right font-medium tabular-nums">{fmtMoney(e.amount)}</Td>
+                <Td className="text-right font-medium nums">{fmtMoney(e.amount)}</Td>
                 <Td>{e.submittedBy.name}</Td>
                 <Td>
-                  <Badge tone={STATUS_TONE[e.status]} className="capitalize">
+                  <Badge tone={expenseStatusTone[e.status]} className="capitalize">
                     {e.status.toLowerCase()}
                   </Badge>
                   {e.rejectReason && <p className="mt-0.5 text-xs text-fg-subtle">{e.rejectReason}</p>}
@@ -233,11 +231,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
           <Field label="Why?">
             <Textarea name="reason" required rows={2} autoFocus />
           </Field>
-          {reject.isError && (
-            <p className="text-sm text-red-600">
-              {reject.error instanceof ApiRequestError ? reject.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={reject.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={reject.isPending}>
             Decline claim
           </Button>
@@ -286,11 +280,7 @@ function ExpenseForm({
       <Field label="Receipt photo / document">
         <Input name="receipt" type="file" accept="image/*,.pdf" capture="environment" />
       </Field>
-      {error != null && (
-        <p className="text-sm text-red-600">
-          {error instanceof ApiRequestError ? error.message : 'Failed to save expense'}
-        </p>
-      )}
+      <FormError error={error} fallback="Failed to save expense" />
       <Button type="submit" size="lg" className="w-full" disabled={pending}>
         Save expense
       </Button>

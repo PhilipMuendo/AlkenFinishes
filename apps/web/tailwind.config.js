@@ -61,6 +61,9 @@ export default {
           muted: 'rgb(var(--fg-muted) / <alpha-value>)',
           subtle: 'rgb(var(--fg-subtle) / <alpha-value>)',
         },
+        // The wash behind a modal. One token so the dialog backdrop and the
+        // mobile drawer overlay cannot drift apart.
+        scrim: 'rgb(var(--scrim) / <alpha-value>)',
       },
       borderRadius: {
         lg: '0.625rem', // 10px — unified control radius

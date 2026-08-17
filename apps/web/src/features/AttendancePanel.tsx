@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fingerprint, MapPin, PenLine } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { useAuth } from '@/lib/auth';
 import type { AttendanceOverrideRequest, AttendanceRecord, Project, Worker } from '@/lib/types';
 import { fmtDate, fmtMoney, fmtTime, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
@@ -39,28 +41,28 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
   const [rejecting, setRejecting] = useState<AttendanceOverrideRequest | null>(null);
 
   const { data: records } = useQuery({
-    queryKey: ['attendance', projectId],
+    queryKey: queryKeys.attendance.byProject(projectId),
     queryFn: () => api<AttendanceRecord[]>(`/projects/${projectId}/attendance`),
   });
   const { data: workers } = useQuery({
-    queryKey: ['workers', projectId],
+    queryKey: queryKeys.workers.byProject(projectId),
     queryFn: () => api<Worker[]>(`/workers?projectId=${projectId}`),
   });
   const { data: requests } = useQuery({
-    queryKey: ['attendance-override-requests', projectId],
+    queryKey: queryKeys.attendance.overrideRequests(projectId),
     queryFn: () => api<AttendanceOverrideRequest[]>(`/projects/${projectId}/attendance/override-requests`),
   });
   const { data: project } = useQuery({
-    queryKey: ['project', projectId],
+    queryKey: queryKeys.projects.detail(projectId),
     queryFn: () => api<Project>(`/projects/${projectId}`),
     enabled: isAdmin,
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['attendance', projectId] });
-    void qc.invalidateQueries({ queryKey: ['attendance-override-requests', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.attendance.byProject(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.attendance.overrideRequests(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.project(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   };
 
   const request = useMutation({
@@ -185,8 +187,8 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                   <span className="font-medium">{r.worker.name}</span>
                   <p className="text-xs text-fg-muted">{r.worker.trade}</p>
                 </Td>
-                <Td className="tabular-nums">{fmtTime(r.checkIn)}</Td>
-                <Td className="tabular-nums">
+                <Td className="nums">{fmtTime(r.checkIn)}</Td>
+                <Td className="nums">
                   {r.checkOut ? (
                     fmtTime(r.checkOut)
                   ) : isAdmin ? (
@@ -202,7 +204,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     <span className="text-fg-subtle">Open</span>
                   )}
                 </Td>
-                <Td className="text-right tabular-nums">
+                <Td className="text-right nums">
                   {r.hoursWorked ?? '—'}
                   {r.hoursWorked != null && Number(r.hoursWorked) > 8 && (
                     <span className="ml-1 text-xs text-amber-700">
@@ -210,7 +212,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
                     </span>
                   )}
                 </Td>
-                <Td className="text-right tabular-nums">
+                <Td className="text-right nums">
                   {r.labourCost ? fmtMoney(Number(r.labourCost)) : '—'}
                 </Td>
                 <Td>
@@ -282,13 +284,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           <Field label="Reason for manual entry">
             <Textarea name="reason" required placeholder="Device battery died" />
           </Field>
-          {request.isError && (
-            <p className="text-sm text-red-600">
-              {request.error instanceof ApiRequestError
-                ? request.error.message
-                : 'Failed to send the request'}
-            </p>
-          )}
+          <FormError error={request.error} fallback="Failed to send the request" />
           <Button type="submit" className="w-full" disabled={request.isPending}>
             Send request
           </Button>
@@ -311,11 +307,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           <Field label="Why?">
             <Textarea name="reason" required rows={2} autoFocus />
           </Field>
-          {decide.isError && (
-            <p className="text-sm text-red-600">
-              {decide.error instanceof ApiRequestError ? decide.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={decide.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={decide.isPending}>
             Decline request
           </Button>
@@ -355,7 +347,7 @@ function GeofenceCard({ project }: { project: Project }) {
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api(`/projects/${project.id}`, { method: 'PATCH', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['project', project.id] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.projects.detail(project.id) }),
   });
 
   const hasGeofence = project.geofenceLat != null && project.geofenceLng != null;

@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Plus, Trash2 } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type {
   AnyCalendarEventType,
   CalendarEvent,
@@ -9,7 +10,12 @@ import type {
   Project,
 } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
+import { calendarEventTone } from '@/lib/tone';
+import { cn, focusRingOnMuted } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormError } from '@/components/ui/form-error';
+import { useToast } from '@/components/ui/toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -38,23 +44,6 @@ const TYPE_LABEL: Record<AnyCalendarEventType, string> = {
   WARRANTY_EXPIRY: 'Warranty ends',
 };
 
-type Tone = 'blue' | 'yellow' | 'green' | 'slate' | 'red';
-const TYPE_TONE: Record<AnyCalendarEventType, Tone> = {
-  MILESTONE: 'blue',
-  INSPECTION: 'yellow',
-  DELIVERY: 'green',
-  MEETING: 'slate',
-  SITE_VISIT: 'blue',
-  CLIENT_APPOINTMENT: 'blue',
-  OTHER: 'slate',
-  // Dates with money or a deadline behind them read louder than a meeting.
-  PROJECT_DEADLINE: 'red',
-  RETENTION_DUE: 'green',
-  WARRANTY_EXPIRY: 'yellow',
-  EQUIPMENT_SERVICE: 'yellow',
-  PAYROLL: 'green',
-  BIRTHDAY: 'slate',
-};
 
 function startOfToday(): string {
   return new Date().toISOString().slice(0, 10);
@@ -62,22 +51,24 @@ function startOfToday(): string {
 
 export function CalendarPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [projectId, setProjectId] = useState('');
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<CalendarEvent | null>(null);
 
   const { data: events, isLoading } = useQuery({
-    queryKey: ['calendar', projectId],
+    queryKey: queryKeys.calendar.byProject(projectId),
     queryFn: () =>
       api<CalendarEvent[]>(
         `/calendar?from=${startOfToday()}${projectId ? `&projectId=${projectId}` : ''}`,
       ),
   });
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ['calendar'] });
+  const invalidate = () => void qc.invalidateQueries({ queryKey: queryKeys.calendar.all() });
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/calendar', { body }),
@@ -89,7 +80,11 @@ export function CalendarPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/calendar/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Entry deleted');
+      setDeleting(null);
+    },
   });
 
   // Grouped by day so the list reads like a diary rather than a flat table.
@@ -153,7 +148,7 @@ export function CalendarPage() {
                 <Card key={e.id} className="flex items-start justify-between gap-3 p-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <Badge tone={TYPE_TONE[e.type]}>{TYPE_LABEL[e.type]}</Badge>
+                      <Badge tone={calendarEventTone[e.type]}>{TYPE_LABEL[e.type]}</Badge>
                       <p className="truncate font-medium text-fg">{e.title}</p>
                     </div>
                     <p className="mt-0.5 text-xs text-fg-subtle">
@@ -170,9 +165,12 @@ export function CalendarPage() {
                       deadline is to move the deadline. */}
                   {!e.derived && (
                     <button
-                      onClick={() => remove.mutate(e.id)}
+                      onClick={() => setDeleting(e)}
                       aria-label={`Delete ${e.title}`}
-                      className="shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600"
+                      className={cn(
+                        'shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-red-50 hover:text-red-600',
+                        focusRingOnMuted,
+                      )}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -230,16 +228,30 @@ export function CalendarPage() {
           <Field label="Notes (optional)">
             <Textarea name="notes" rows={2} />
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Add event
           </Button>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+        title="Delete this entry?"
+        confirmLabel="Delete entry"
+        pending={remove.isPending}
+        error={remove.error}
+        body={
+          deleting && (
+            <>
+              <strong className="font-medium text-fg">{deleting.title}</strong> on{' '}
+              {fmtDate(deleting.date)} will be removed from the calendar. This cannot be undone.
+            </>
+          )
+        }
+      />
     </div>
   );
 }

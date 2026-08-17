@@ -13,8 +13,9 @@ overview).
 React + TypeScript + Vite + Tailwind (PWA) · Node.js + Express + TypeScript ·
 PostgreSQL + Prisma · Docker Compose + Nginx.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and
-[`docs/API.md`](docs/API.md).
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+[`docs/API.md`](docs/API.md), and
+[`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) for naming and UI conventions.
 
 ## Production deployment
 
@@ -67,5 +68,11 @@ match punches against.
 
 ```bash
 npm run typecheck   # strict TS across both apps
+npm run lint        # eslint: correctness, react-hooks, jsx-a11y
+npm run format      # prettier (CI runs format:check)
+npm test -w @alken/api
 npm run build
 ```
+
+The API tests read `DATABASE_URL` and `JWT_SECRET` from the environment — any
+syntactically valid values will do, nothing connects to a database.

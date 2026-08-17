@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Invoice, InvoiceStatus, InvoicingConfig, ProjectReceivables } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormError } from '@/components/ui/form-error';
+import { useToast } from '@/components/ui/toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -40,24 +44,26 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
   const [addOpen, setAddOpen] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [voiding, setVoiding] = useState<Invoice | null>(null);
+  const [deleting, setDeleting] = useState<Invoice | null>(null);
+  const toast = useToast();
 
   const { data: invoices, isLoading } = useQuery({
-    queryKey: ['invoices', projectId],
+    queryKey: queryKeys.invoices.byProject(projectId),
     queryFn: () => api<Invoice[]>(`/projects/${projectId}/invoices`),
   });
   const { data: summary } = useQuery({
-    queryKey: ['invoices', 'summary', projectId],
+    queryKey: queryKeys.invoices.summary(projectId),
     queryFn: () => api<ProjectReceivables>(`/projects/${projectId}/invoices/summary`),
   });
   const { data: config } = useQuery({
-    queryKey: ['settings', 'invoicing'],
+    queryKey: queryKeys.settings.invoicing(),
     queryFn: () => api<InvoicingConfig>('/settings/invoicing'),
   });
 
   const invalidateAll = () => {
-    void qc.invalidateQueries({ queryKey: ['invoices'] });
-    void qc.invalidateQueries({ queryKey: ['payments', 'summary', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.invoices.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.payments.summary(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   };
 
   const create = useMutation({
@@ -93,7 +99,11 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
 
   const remove = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/invoices/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      invalidateAll();
+      toast.success('Draft invoice deleted');
+      setDeleting(null);
+    },
   });
 
   const defaults = {
@@ -181,8 +191,8 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
                       <p className="text-xs text-red-600">{inv.daysOverdue}d late</p>
                     )}
                   </Td>
-                  <Td className="text-right tabular-nums">{fmtMoney(inv.netPayable)}</Td>
-                  <Td className="text-right font-medium tabular-nums">
+                  <Td className="text-right nums">{fmtMoney(inv.netPayable)}</Td>
+                  <Td className="text-right font-medium nums">
                     {inv.status === 'VOID' ? (
                       <span className="text-fg-subtle">—</span>
                     ) : (
@@ -209,8 +219,10 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => remove.mutate(inv.id)}
-                            disabled={remove.isPending}
+                            onClick={() => setDeleting(inv)}
+                            // Per-row: one shared `isPending` greyed out every
+                            // Delete button in the table at once.
+                            disabled={remove.isPending && remove.variables === inv.id}
                           >
                             Delete
                           </Button>
@@ -240,16 +252,8 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
         </Card>
       )}
 
-      {issue.isError && (
-        <p className="text-sm text-red-600">
-          {issue.error instanceof ApiRequestError ? issue.error.message : 'Failed to issue invoice'}
-        </p>
-      )}
-      {remove.isError && (
-        <p className="text-sm text-red-600">
-          {remove.error instanceof ApiRequestError ? remove.error.message : 'Failed to delete draft'}
-        </p>
-      )}
+      <FormError error={issue.error} fallback="Failed to issue invoice" />
+      <FormError error={remove.error} fallback="Failed to delete draft" />
 
       <Dialog
         open={addOpen}
@@ -262,15 +266,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
             defaults={defaults}
             submitting={create.isPending}
             onSubmit={(body) => create.mutate(body)}
-            error={
-              create.isError && (
-                <p className="text-sm text-red-600">
-                  {create.error instanceof ApiRequestError
-                    ? create.error.message
-                    : 'Failed to save this invoice'}
-                </p>
-              )
-            }
+            error={<FormError error={create.error} fallback="Failed to save this invoice" />}
           />
         )}
       </Dialog>
@@ -288,15 +284,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
             defaults={defaults}
             submitting={update.isPending}
             onSubmit={(body) => update.mutate({ id: editing.id, body })}
-            error={
-              update.isError && (
-                <p className="text-sm text-red-600">
-                  {update.error instanceof ApiRequestError
-                    ? update.error.message
-                    : 'Failed to save changes'}
-                </p>
-              )
-            }
+            error={<FormError error={update.error} fallback="Failed to save changes" />}
           />
         )}
       </Dialog>
@@ -329,13 +317,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
               reason is stored in the audit log.
             </p>
             <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
-            {voidInvoice.isError && (
-              <p className="text-sm text-red-600">
-                {voidInvoice.error instanceof ApiRequestError
-                  ? voidInvoice.error.message
-                  : 'Failed to void this invoice'}
-              </p>
-            )}
+            <FormError error={voidInvoice.error} fallback="Failed to void this invoice" />
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -357,6 +339,27 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
           </form>
         )}
       </Dialog>
+
+      {/* Only drafts can be deleted — an issued invoice is voided instead, so
+          its number stays on record and the series is never broken. */}
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+        title="Delete this draft?"
+        confirmLabel="Delete draft"
+        pending={remove.isPending}
+        error={remove.error}
+        body={
+          deleting && (
+            <>
+              This draft{deleting.title ? ` — ${deleting.title}` : ''} for{' '}
+              <strong className="font-medium text-fg">{fmtMoney(deleting.netPayable)}</strong> will
+              be deleted. It has not been issued, so nothing on the client&rsquo;s account changes.
+            </>
+          )
+        }
+      />
     </div>
   );
 }
@@ -381,7 +384,7 @@ function SummaryTile({
       </CardHeader>
       <CardContent>
         <p
-          className={`text-xl font-semibold tabular-nums ${
+          className={`text-xl font-semibold nums ${
             tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
           }`}
         >

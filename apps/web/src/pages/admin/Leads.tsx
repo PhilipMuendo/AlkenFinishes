@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronRight, Plus, Target } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Client, Lead, LeadStage } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
+import { FormError } from '@/components/ui/form-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
@@ -46,17 +48,17 @@ export function LeadsPage() {
   const [losing, setLosing] = useState<Lead | null>(null);
 
   const { data: leads, isLoading } = useQuery({
-    queryKey: ['leads'],
+    queryKey: queryKeys.leads.all(),
     queryFn: () => api<Lead[]>('/leads'),
   });
   const { data: clients } = useQuery({
-    queryKey: ['clients', ''],
+    queryKey: queryKeys.clients.list(),
     queryFn: () => api<Client[]>('/clients'),
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['leads'] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.leads.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   };
 
   const save = useMutation({
@@ -150,7 +152,7 @@ export function LeadsPage() {
                 <header className="border-b border-hairline px-3 py-2.5">
                   <div className="flex items-baseline justify-between gap-2">
                     <h2 className="text-sm font-semibold text-fg">{stage.label}</h2>
-                    <span className="text-xs tabular-nums text-fg-subtle">{items.length}</span>
+                    <span className="text-xs nums text-fg-subtle">{items.length}</span>
                   </div>
                   <p className="mt-0.5 text-xs text-fg-subtle">
                     {value > 0 ? fmtMoney(value) : stage.hint}
@@ -301,11 +303,7 @@ export function LeadsPage() {
             <Textarea name="description" defaultValue={editing?.description ?? ''} rows={2} />
           </Field>
 
-          {save.isError && (
-            <p className="text-sm text-red-600">
-              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={save.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={save.isPending}>
             {editing ? 'Save changes' : 'Add lead'}
           </Button>
@@ -345,11 +343,7 @@ export function LeadsPage() {
           <p className="text-xs text-fg-subtle">
             Worth a sentence — the pattern in these is the most useful thing the pipeline tells you.
           </p>
-          {move.isError && (
-            <p className="text-sm text-red-600">
-              {move.error instanceof ApiRequestError ? move.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={move.error} fallback="Failed to save" />
           <Button type="submit" className="w-full" disabled={move.isPending}>
             Mark as lost
           </Button>
@@ -386,7 +380,7 @@ function LeadCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         {lead.estimatedValue != null && (
-          <span className="text-sm font-semibold tabular-nums text-fg">
+          <span className="text-sm font-semibold nums text-fg">
             {fmtMoney(lead.estimatedValue)}
           </span>
         )}

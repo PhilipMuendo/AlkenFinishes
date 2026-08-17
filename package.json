@@ -11,6 +11,10 @@
     "dev:web": "npm run dev -w @alken/web",
     "build": "npm run build -w @alken/api && npm run build -w @alken/web",
     "typecheck": "npm run typecheck -w @alken/api && npm run typecheck -w @alken/web",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "db:migrate": "npm run db:migrate -w @alken/api",
     "db:seed": "npm run db:seed -w @alken/api",
     "deploy": "git pull && docker compose build && docker compose up -d --force-recreate && docker image prune -f",
@@ -21,5 +25,17 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.4",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript-eslint": "^8.67.0"
   }
 }

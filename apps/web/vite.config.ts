@@ -11,7 +11,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'],
       manifest: {
         name: 'Alken Decor Limited',
         short_name: 'Alken Decor',
@@ -19,7 +19,16 @@ export default defineConfig({
         theme_color: '#14284a',
         background_color: '#f8fafc',
         display: 'standalone',
-        icons: [{ src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
+        // Android will not offer "install" without raster 192 and 512 icons —
+        // an SVG alone left the PWA uninstallable on the phones this is built
+        // for. The maskable copy keeps the mark inside the safe zone so
+        // launchers that crop to a circle do not clip it.
+        icons: [
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+        ],
       },
       workbox: {
         navigateFallbackDenylist: [/^\/api/, /^\/uploads/],

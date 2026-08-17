@@ -2,11 +2,14 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { AppUser, Project, ProjectStatus } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
-import { cn } from '@/lib/utils';
+import { cn, focusRingOnMuted } from '@/lib/utils';
 import { Tabs } from '@/components/ui/tabs';
 import { Select } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { FinancialsPanel } from '@/features/FinancialsPanel';
 import { BudgetPanel } from '@/features/BudgetPanel';
 import { PaymentsPanel } from '@/features/PaymentsPanel';
@@ -107,12 +110,12 @@ export function ProjectDetailPage() {
     if (group) setTab(group.tabs[0].id);
   };
 
-  const { data: project } = useQuery({
-    queryKey: ['project', projectId],
+  const projectQuery = useQuery({
+    queryKey: queryKeys.projects.detail(projectId),
     queryFn: () => api<Project>(`/projects/${projectId}`),
   });
   const { data: users } = useQuery({
-    queryKey: ['users'],
+    queryKey: queryKeys.users.all(),
     queryFn: () => api<AppUser[]>('/users'),
   });
   const supervisors = users?.filter((u) => u.role === 'SUPERVISOR' && u.active) ?? [];
@@ -121,9 +124,9 @@ export function ProjectDetailPage() {
     return api(`/projects/${projectId}`, { method: 'PATCH', body });
   }
   function onProjectChange() {
-    void qc.invalidateQueries({ queryKey: ['project', projectId] });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.projects.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   }
 
   const setStatus = useMutation({
@@ -137,9 +140,13 @@ export function ProjectDetailPage() {
 
   const currentGroup = GROUPS.find((g) => g.id === activeGroup) ?? GROUPS[0];
 
-  if (!project) return <p className="text-sm text-fg-muted">Loading project…</p>;
-
   return (
+    <QueryState
+      query={projectQuery}
+      errorTitle="Couldn’t load this project"
+      skeleton={<ProjectSkeleton />}
+    >
+      {(project) => (
     <div className="space-y-5">
       <div>
         <Link
@@ -215,6 +222,7 @@ export function ProjectDetailPage() {
                 aria-current={tab === t.id ? 'page' : undefined}
                 className={cn(
                   'rounded-lg px-2.5 py-1 text-sm font-medium transition-colors',
+                  focusRingOnMuted,
                   tab === t.id
                     ? 'bg-brand-50 text-brand-700'
                     : 'text-fg-muted hover:bg-surface-sunken hover:text-fg',
@@ -241,6 +249,26 @@ export function ProjectDetailPage() {
       {tab === 'snags' && <SnagsPanel projectId={projectId} />}
       {tab === 'safety' && <SafetyPanel projectId={projectId} />}
       {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}
+    </div>
+      )}
+    </QueryState>
+  );
+}
+
+function ProjectSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div>
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="mt-3 h-8 w-1/3" />
+        <Skeleton className="mt-2 h-4 w-2/3" />
+      </div>
+      <Skeleton className="h-10 w-full" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-32 w-full rounded-xl" />
+        ))}
+      </div>
     </div>
   );
 }

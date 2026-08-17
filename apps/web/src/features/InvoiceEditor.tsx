@@ -180,7 +180,7 @@ export function InvoiceEditor({
           )}
           <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
             <dt className="font-medium text-fg">Amount payable</dt>
-            <dd className="text-base font-semibold tabular-nums text-fg">
+            <dd className="text-base font-semibold nums text-fg">
               {fmtMoney(totals.netPayable)}
             </dd>
           </div>
@@ -214,7 +214,7 @@ function Row({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-baseline justify-between">
       <dt className="text-fg-muted">{label}</dt>
-      <dd className="tabular-nums text-fg">{fmtMoney(value)}</dd>
+      <dd className="nums text-fg">{fmtMoney(value)}</dd>
     </div>
   );
 }

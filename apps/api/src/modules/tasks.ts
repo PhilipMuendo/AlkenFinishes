@@ -31,6 +31,9 @@ const taskSchema = z.object({
  * database — see the tests there for what this protects against.
  */
 async function syncProjectProgress(projectId: string) {
+  // Deliberately unbounded: this is a weighted average over *every* task on the
+  // project. A `take` here would not just truncate a list, it would quietly
+  // compute the wrong completion percentage.
   const tasks = await prisma.task.findMany({
     where: { projectId },
     select: { completionPct: true, weight: true },
@@ -49,6 +52,7 @@ router.get(
       where: { projectId: req.params.projectId },
       include: { photos: true },
       orderBy: [{ phase: 'asc' }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
+      take: 500,
     });
     // The weighting summary comes from the server rather than being recomputed
     // in the browser: one implementation, one set of tests, no chance of the

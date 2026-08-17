@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { ProjectAnalytics } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { StatTile } from '@/components/charts/StatTile';
@@ -16,7 +17,7 @@ import { Empty } from '@/components/ui/table';
 
 export function FinancialsPanel({ projectId }: { projectId: string }) {
   const { data, isError } = useQuery({
-    queryKey: ['analytics', 'project', projectId],
+    queryKey: queryKeys.analytics.project(projectId),
     queryFn: () => api<ProjectAnalytics>(`/analytics/projects/${projectId}`),
   });
   if (isError) return <p className="text-sm text-red-600">Failed to load financials.</p>;
@@ -53,7 +54,7 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
                   {c.category.charAt(0) + c.category.slice(1).toLowerCase()}
                 </span>
                 <span className="flex items-center gap-2 text-xs text-fg-muted">
-                  <span className="tabular-nums">
+                  <span className="nums">
                     {fmtMoney(c.actual)} / {fmtMoney(c.allocated)}
                   </span>
                   <HealthBadge health={c.health} pct={c.consumedPct} />

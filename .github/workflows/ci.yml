@@ -8,6 +8,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # The unit tests import the env config, which refuses to load without
+    # these. Values are throwaway — nothing here touches a real database.
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      JWT_SECRET: ci-secret-ci-secret-ci-secret-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,4 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run db:generate -w @alken/api
       - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test -w @alken/api
       - run: npm run build -w @alken/web

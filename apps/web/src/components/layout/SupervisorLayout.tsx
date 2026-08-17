@@ -1,8 +1,9 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { Building2, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { cn } from '@/lib/utils';
+import { cn, focusRing } from '@/lib/utils';
 import { Wordmark } from '@/components/Wordmark';
+import { OfflineBanner } from '@/components/OfflineBanner';
 
 /**
  * Mobile-first supervisor shell: simple top bar + bottom navigation with
@@ -18,6 +19,7 @@ export function SupervisorLayout() {
   const { user, logout } = useAuth();
   return (
     <div className="flex min-h-screen flex-col bg-surface-muted pb-20">
+      <OfflineBanner />
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-hairline bg-surface/90 px-4 py-3 backdrop-blur">
         <div className="flex items-center gap-2.5">
           <img src="/favicon.svg" alt="" className="h-7 w-7" />
@@ -30,7 +32,10 @@ export function SupervisorLayout() {
           <button
             onClick={() => void logout()}
             aria-label="Sign out"
-            className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+            className={cn(
+              'rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg',
+              focusRing,
+            )}
           >
             <LogOut size={20} />
           </button>
@@ -44,7 +49,8 @@ export function SupervisorLayout() {
           to="/sites"
           className={({ isActive }) =>
             cn(
-              'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors',
+              'flex flex-col items-center gap-0.5 rounded-lg py-2.5 text-xs font-medium transition-colors',
+              focusRing,
               isActive ? 'text-brand-700' : 'text-fg-subtle',
             )
           }

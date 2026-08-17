@@ -33,7 +33,9 @@ const createSchema = z.object({
 router.get(
   '/',
   asyncHandler(async (_req, res) => {
-    res.json(await prisma.user.findMany({ select: userSelect, orderBy: { name: 'asc' } }));
+    res.json(
+      await prisma.user.findMany({ select: userSelect, orderBy: { name: 'asc' }, take: 500 }),
+    );
   }),
 );
 

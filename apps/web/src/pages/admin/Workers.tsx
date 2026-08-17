@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Upload } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast';
+import { FormError } from '@/components/ui/form-error';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge, StatusBadge } from '@/components/ui/badge';
+import { workerStatusTone } from '@/lib/tone';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { HardHat } from 'lucide-react';
@@ -22,7 +26,7 @@ function downloadImportTemplate() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'fundi-import-template.csv';
+  a.download = 'worker-import-template.csv';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -42,6 +46,7 @@ interface ImportResponse {
 
 export function WorkersPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importResult, setImportResult] = useState<ImportResponse | null>(null);
@@ -49,15 +54,15 @@ export function WorkersPage() {
   const [deleting, setDeleting] = useState<Worker | null>(null);
 
   const { data: workers } = useQuery({
-    queryKey: ['workers'],
+    queryKey: queryKeys.workers.all(),
     queryFn: () => api<Worker[]>('/workers'),
   });
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ['workers'] });
+  const invalidate = () => void qc.invalidateQueries({ queryKey: queryKeys.workers.all() });
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/workers', { body }),
@@ -93,6 +98,7 @@ export function WorkersPage() {
     mutationFn: (id: string) => api(`/workers/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       invalidate();
+      toast.success('Worker deleted');
       setDeleting(null);
     },
   });
@@ -101,7 +107,7 @@ export function WorkersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Workers"
-        description="Fundis and site workers across all projects"
+        description="Everyone on the tools, across every project"
         actions={
           <>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
@@ -120,7 +126,7 @@ export function WorkersPage() {
             <Empty icon={HardHat}>
               <p className="font-medium text-fg">No workers yet</p>
               <p className="mt-1 max-w-xs text-fg-muted">
-                Add fundis one at a time, or import a whole crew from a spreadsheet.
+                Add workers one at a time, or import a whole crew from a spreadsheet.
               </p>
               <div className="mt-3 flex gap-2">
                 <Button variant="outline" onClick={() => setImportOpen(true)}>
@@ -155,7 +161,7 @@ export function WorkersPage() {
                   <p className="text-xs text-fg-subtle">{w.phone ?? '—'}</p>
                 </Td>
                 <Td>{w.trade}</Td>
-                <Td className="text-right tabular-nums">{fmtMoney(Number(w.hourlyRate))}/hr</Td>
+                <Td className="text-right nums">{fmtMoney(Number(w.hourlyRate))}/hr</Td>
                 <Td>
                   {w.biometricId ? (
                     <Badge tone="green">Enrolled</Badge>
@@ -169,7 +175,7 @@ export function WorkersPage() {
                   )}
                 </Td>
                 <Td>
-                  <StatusBadge status={w.status} />
+                  <StatusBadge status={w.status} tones={workerStatusTone} />
                 </Td>
                 <Td className="text-right">
                   <div className="flex justify-end gap-1.5">
@@ -228,11 +234,7 @@ export function WorkersPage() {
           <Field label="Biometric ID (from fingerprint device)">
             <Input name="biometricId" placeholder="Device enrolment ID" />
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add worker'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed to add worker" />
           <Button type="submit" className="w-full" disabled={create.isPending}>
             Add worker
           </Button>
@@ -245,7 +247,7 @@ export function WorkersPage() {
           setImportOpen(false);
           setImportResult(null);
         }}
-        title="Import fundis"
+        title="Import workers"
       >
         {importResult ? (
           <div className="space-y-3">
@@ -290,7 +292,7 @@ export function WorkersPage() {
             className="space-y-3"
           >
             <p className="text-sm text-fg-muted">
-              Upload a CSV or Excel file with your fundi list — columns: Name, Phone, Trade,
+              Upload a CSV or Excel file with your worker list — columns: Name, Phone, Trade,
               Hourly Rate, and optionally Biometric ID.{' '}
               <button
                 type="button"
@@ -329,11 +331,11 @@ export function WorkersPage() {
           }}
           className="space-y-3"
         >
-          <Field label="Site / project">
+          <Field label="Project">
             <Combobox
               name="projectId"
-              placeholder="Search site…"
-              aria-label="Site / project"
+              placeholder="Search projects…"
+              aria-label="Project"
               options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))}
             />
           </Field>
@@ -358,13 +360,7 @@ export function WorkersPage() {
               and can&rsquo;t be undone. Workers with attendance history can&rsquo;t be deleted —
               unassign them from their site instead to preserve those records.
             </p>
-            {deleteWorker.isError && (
-              <p className="text-sm text-red-600">
-                {deleteWorker.error instanceof ApiRequestError
-                  ? deleteWorker.error.message
-                  : 'Failed to delete this worker'}
-              </p>
-            )}
+            <FormError error={deleteWorker.error} fallback="Failed to delete this worker" />
             <div className="flex gap-2">
               <Button
                 variant="outline"

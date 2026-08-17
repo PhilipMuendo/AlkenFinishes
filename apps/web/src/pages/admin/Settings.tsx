@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Fingerprint, Plus, RefreshCw, ScrollText } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type {
   AuditLogPage,
   CompanyProfile,
@@ -12,6 +13,7 @@ import type {
 } from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -19,6 +21,7 @@ import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
+import { useToast } from '@/components/ui/toast';
 
 /** "worker.delete" -> "worker delete", "auth.login_failed" -> "auth login failed" */
 function humanizeAction(action: string): string {
@@ -69,62 +72,41 @@ export function SettingsPage() {
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [deviceVendor, setDeviceVendor] = useState<DeviceVendor>('ZKTECO');
   const [newKey, setNewKey] = useState<string | null>(null);
-  const [yellowPct, setYellowPct] = useState('80');
-  const [redPct, setRedPct] = useState('100');
   const [auditPage, setAuditPage] = useState(1);
 
   const { data: finance } = useQuery({
-    queryKey: ['finance-settings'],
+    queryKey: queryKeys.settings.finance(),
     queryFn: () =>
       api<{ thresholds: { yellowPct: number; redPct: number }; labourCostSource: LabourSource }>(
         '/settings/finance',
       ),
   });
   const { data: devices } = useQuery({
-    queryKey: ['devices'],
+    queryKey: queryKeys.devices.all(),
     queryFn: () => api<Device[]>('/devices'),
   });
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
   const { data: auditLog, isLoading: auditLoading } = useQuery({
-    queryKey: ['audit-log', auditPage],
+    queryKey: queryKeys.settings.auditLog(auditPage),
     queryFn: () => api<AuditLogPage>(`/settings/audit-log?page=${auditPage}`),
-  });
-
-  useEffect(() => {
-    if (finance) {
-      setYellowPct(String(finance.thresholds.yellowPct));
-      setRedPct(String(finance.thresholds.redPct));
-    }
-  }, [finance]);
-
-  const saveThresholds = useMutation({
-    mutationFn: () =>
-      api('/settings/thresholds', {
-        method: 'PUT',
-        body: { yellowPct: Number(yellowPct), redPct: Number(redPct) },
-      }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['finance-settings'] });
-      void qc.invalidateQueries({ queryKey: ['analytics'] });
-    },
   });
 
   const saveLabourSource = useMutation({
     mutationFn: (labourCostSource: LabourSource) =>
       api('/settings/labour-source', { method: 'PUT', body: { labourCostSource } }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['finance-settings'] });
-      void qc.invalidateQueries({ queryKey: ['analytics'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.settings.finance() });
+      void qc.invalidateQueries({ queryKey: queryKeys.analytics.all() });
     },
   });
 
   const bindDevice = useMutation({
     mutationFn: ({ id, projectId }: { id: string; projectId: string | null }) =>
       api(`/devices/${id}`, { method: 'PATCH', body: { projectId } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.devices.all() }),
   });
 
   const createDevice = useMutation({
@@ -132,32 +114,32 @@ export function SettingsPage() {
     onSuccess: (data) => {
       if (data.vendor === 'ZKTECO') setNewKey(data.apiKey);
       else setDeviceOpen(false); // Suprema needs no key handoff screen
-      void qc.invalidateQueries({ queryKey: ['devices'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.devices.all() });
     },
   });
 
   const toggleDevice = useMutation({
     mutationFn: ({ id, active }: { id: string; active: boolean }) =>
       api(`/devices/${id}`, { method: 'PATCH', body: { active } }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.devices.all() }),
   });
 
   const syncDevice = useMutation({
     mutationFn: (id: string) => api<{ received: number; accepted: number }>(`/devices/${id}/sync`, { body: {} }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['devices'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.devices.all() }),
   });
 
   const { data: issues } = useQuery({
-    queryKey: ['sync-issues'],
+    queryKey: queryKeys.devices.syncIssues(),
     queryFn: () => api<SyncIssue[]>('/devices/issues'),
   });
   const { data: workers } = useQuery({
-    queryKey: ['workers'],
+    queryKey: queryKeys.workers.all(),
     queryFn: () => api<Worker[]>('/workers'),
   });
   const invalidateIssues = () => {
-    void qc.invalidateQueries({ queryKey: ['sync-issues'] });
-    void qc.invalidateQueries({ queryKey: ['workers'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.devices.syncIssues() });
+    void qc.invalidateQueries({ queryKey: queryKeys.workers.all() });
   };
   const resolveIssue = useMutation({
     mutationFn: (id: string) => api(`/devices/issues/${id}/resolve`, { method: 'POST' }),
@@ -176,45 +158,14 @@ export function SettingsPage() {
         description="Budget rules, documents, attendance devices and the audit trail"
       />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Budget health thresholds</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-fg-muted">
-            A category is <Badge tone="green">Healthy</Badge> below the watch threshold,{' '}
-            <Badge tone="yellow">Watch</Badge> once consumption reaches it, and{' '}
-            <Badge tone="red">At risk</Badge> at the risk threshold.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Watch threshold (%)">
-              <Input
-                type="number"
-                min="1"
-                max="200"
-                value={yellowPct}
-                onChange={(e) => setYellowPct(e.target.value)}
-              />
-            </Field>
-            <Field label="Risk threshold (%)">
-              <Input
-                type="number"
-                min="1"
-                max="300"
-                value={redPct}
-                onChange={(e) => setRedPct(e.target.value)}
-              />
-            </Field>
-          </div>
-          {saveThresholds.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-          {saveThresholds.isError && (
-            <p className="text-sm text-red-600">Risk threshold must exceed watch threshold</p>
-          )}
-          <Button onClick={() => saveThresholds.mutate()} disabled={saveThresholds.isPending}>
-            Save thresholds
-          </Button>
-        </CardContent>
-      </Card>
+      {/* Keyed on the stored thresholds so a save reseeds the inputs, rather
+          than an effect overwriting them mid-edit. */}
+      {finance && (
+        <ThresholdsCard
+          key={`${finance.thresholds.yellowPct}-${finance.thresholds.redPct}`}
+          thresholds={finance.thresholds}
+        />
+      )}
 
       <Card>
         <CardHeader>
@@ -555,13 +506,10 @@ export function SettingsPage() {
                 ))}
               </Select>
             </Field>
-            {createDevice.isError && (
-              <p className="text-sm text-red-600">
-                {createDevice.error instanceof ApiRequestError
-                  ? createDevice.error.message
-                  : "Couldn't register — is that serial number already in use?"}
-              </p>
-            )}
+            <FormError
+              error={createDevice.error}
+              fallback="Couldn’t register — is that serial number already in use?"
+            />
             <Button type="submit" className="w-full" disabled={createDevice.isPending}>
               Register device
             </Button>
@@ -573,6 +521,70 @@ export function SettingsPage() {
 }
 
 /**
+ * The two percentages that decide whether a budget category reads healthy,
+ * watch, or at risk. Its own component so the inputs seed from the saved
+ * values on mount instead of via an effect.
+ */
+function ThresholdsCard({ thresholds }: { thresholds: { yellowPct: number; redPct: number } }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [yellowPct, setYellowPct] = useState(String(thresholds.yellowPct));
+  const [redPct, setRedPct] = useState(String(thresholds.redPct));
+
+  const save = useMutation({
+    mutationFn: () =>
+      api('/settings/thresholds', {
+        method: 'PUT',
+        body: { yellowPct: Number(yellowPct), redPct: Number(redPct) },
+      }),
+    onSuccess: () => {
+      toast.success('Budget thresholds saved');
+      void qc.invalidateQueries({ queryKey: queryKeys.settings.finance() });
+      void qc.invalidateQueries({ queryKey: queryKeys.analytics.all() });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Budget health thresholds</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-fg-muted">
+          A category is <Badge tone="green">Healthy</Badge> below the watch threshold,{' '}
+          <Badge tone="yellow">Watch</Badge> once consumption reaches it, and{' '}
+          <Badge tone="red">At risk</Badge> at the risk threshold.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Watch threshold (%)">
+            <Input
+              type="number"
+              min="1"
+              max="200"
+              value={yellowPct}
+              onChange={(e) => setYellowPct(e.target.value)}
+            />
+          </Field>
+          <Field label="Risk threshold (%)">
+            <Input
+              type="number"
+              min="1"
+              max="300"
+              value={redPct}
+              onChange={(e) => setRedPct(e.target.value)}
+            />
+          </Field>
+        </div>
+        <FormError error={save.error} fallback="Risk threshold must exceed watch threshold" />
+        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          Save thresholds
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
  * Letterhead for generated invoices and receipts. These are legal identifiers,
  * so they are entered here rather than guessed — an invoice without a correct
  * registered name and KRA PIN is not a valid tax invoice.
@@ -580,17 +592,17 @@ export function SettingsPage() {
 function CompanyLetterheadCard() {
   const qc = useQueryClient();
   const { data } = useQuery({
-    queryKey: ['settings', 'company'],
+    queryKey: queryKeys.settings.company(),
     queryFn: () => api<CompanyProfile>('/settings/company'),
   });
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/settings/company', { method: 'PUT', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'company'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.settings.company() }),
   });
   const uploadLogo = useMutation({
     mutationFn: (formData: FormData) => api('/settings/company/logo', { formData }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'company'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.settings.company() }),
   });
 
   if (!data) return null;
@@ -657,13 +669,7 @@ function CompanyLetterheadCard() {
               />
             </Field>
           </div>
-          {uploadLogo.isError && (
-            <p className="text-sm text-red-600">
-              {uploadLogo.error instanceof ApiRequestError
-                ? uploadLogo.error.message
-                : 'Failed to upload the logo'}
-            </p>
-          )}
+          <FormError error={uploadLogo.error} fallback="Failed to upload the logo" />
 
           <Field label="Registered name">
             <Input name="name" defaultValue={data.name} required />
@@ -717,11 +723,7 @@ function CompanyLetterheadCard() {
           </div>
 
           {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-          {save.isError && (
-            <p className="text-sm text-red-600">
-              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={save.error} fallback="Failed to save" />
           <Button type="submit" disabled={save.isPending}>
             Save letterhead
           </Button>
@@ -734,15 +736,15 @@ function CompanyLetterheadCard() {
 function PipelineCard() {
   const qc = useQueryClient();
   const { data } = useQuery({
-    queryKey: ['settings', 'pipeline'],
+    queryKey: queryKeys.settings.pipeline(),
     queryFn: () => api<PipelineConfig>('/settings/pipeline'),
   });
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/settings/pipeline', { method: 'PUT', body }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['settings', 'pipeline'] });
-      void qc.invalidateQueries({ queryKey: ['settings', 'quotationDefaults'] });
+      void qc.invalidateQueries({ queryKey: queryKeys.settings.pipeline() });
+      void qc.invalidateQueries({ queryKey: queryKeys.settings.quotationDefaults() });
     },
   });
 
@@ -783,7 +785,7 @@ function PipelineCard() {
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs text-fg-subtle">{label}</dt>
-                <dd className="font-medium tabular-nums text-fg">{value}</dd>
+                <dd className="font-medium nums text-fg">{value}</dd>
               </div>
             ))}
           </dl>
@@ -839,14 +841,14 @@ function PipelineCard() {
 function InvoicingCard() {
   const qc = useQueryClient();
   const { data } = useQuery({
-    queryKey: ['settings', 'invoicing'],
+    queryKey: queryKeys.settings.invoicing(),
     queryFn: () => api<InvoicingConfig>('/settings/invoicing'),
   });
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       api('/settings/invoicing', { method: 'PUT', body }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['settings', 'invoicing'] }),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: queryKeys.settings.invoicing() }),
   });
 
   if (!data) return null;
@@ -883,11 +885,11 @@ function InvoicingCard() {
           <dl className="grid grid-cols-2 gap-3 rounded-lg border border-hairline bg-surface-muted/40 p-3 text-sm">
             <div>
               <dt className="text-xs text-fg-subtle">Next invoice number</dt>
-              <dd className="font-medium tabular-nums text-fg">{data.nextInvoiceNo}</dd>
+              <dd className="font-medium nums text-fg">{data.nextInvoiceNo}</dd>
             </div>
             <div>
               <dt className="text-xs text-fg-subtle">Next receipt number</dt>
-              <dd className="font-medium tabular-nums text-fg">{data.nextReceiptNo}</dd>
+              <dd className="font-medium nums text-fg">{data.nextReceiptNo}</dd>
             </div>
           </dl>
 
@@ -964,11 +966,7 @@ function InvoicingCard() {
           </Field>
 
           {save.isSuccess && <p className="text-sm text-green-700">Saved</p>}
-          {save.isError && (
-            <p className="text-sm text-red-600">
-              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
-            </p>
-          )}
+          <FormError error={save.error} fallback="Failed to save" />
           <Button type="submit" disabled={save.isPending}>
             Save invoicing settings
           </Button>

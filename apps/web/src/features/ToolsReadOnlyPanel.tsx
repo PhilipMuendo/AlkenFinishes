@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Tool } from '@/lib/types';
 import { Empty } from '@/components/ui/table';
 
@@ -9,7 +10,7 @@ import { Empty } from '@/components/ui/table';
  */
 export function ToolsReadOnlyPanel() {
   const { data: tools } = useQuery({
-    queryKey: ['tools'],
+    queryKey: queryKeys.tools.all(),
     queryFn: () => api<Tool[]>('/tools'),
   });
 
@@ -25,7 +26,7 @@ export function ToolsReadOnlyPanel() {
             <p className="font-medium text-fg">{t.name}</p>
             {t.category && <p className="text-xs text-fg-muted">{t.category}</p>}
           </div>
-          <p className="text-sm font-semibold tabular-nums text-fg">
+          <p className="text-sm font-semibold nums text-fg">
             {Number(t.quantity).toLocaleString()}{' '}
             <span className="font-normal text-fg-muted">{t.unit}</span>
           </p>

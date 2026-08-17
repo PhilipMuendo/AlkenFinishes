@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, focusRing } from '@/lib/utils';
 
 export function Dialog({
   open,
@@ -25,6 +25,10 @@ export function Dialog({
   }, [open]);
 
   return (
+    // Click-on-the-backdrop to dismiss. There is no keyboard equivalent to add
+    // here: a native <dialog> already closes on Escape, which fires the `close`
+    // event and so runs `onClose` below.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events
     <dialog
       ref={ref}
       onClose={onClose}
@@ -32,7 +36,7 @@ export function Dialog({
         if (e.target === ref.current) onClose();
       }}
       className={cn(
-        'flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-2xl border border-hairline bg-surface p-0 text-fg shadow-lg backdrop:bg-slate-950/40 backdrop:backdrop-blur-[2px] open:animate-fade-in',
+        'flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg flex-col rounded-2xl border border-hairline bg-surface p-0 text-fg shadow-lg backdrop:bg-scrim/40 backdrop:backdrop-blur-[2px] open:animate-fade-in',
         className,
       )}
     >
@@ -41,7 +45,10 @@ export function Dialog({
         <button
           onClick={onClose}
           aria-label="Close"
-          className="-mr-1 rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
+          className={cn(
+            '-mr-1 rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg',
+            focusRing,
+          )}
         >
           <X size={18} />
         </button>

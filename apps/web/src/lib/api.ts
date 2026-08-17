@@ -31,6 +31,23 @@ export class ApiRequestError extends Error {
   }
 }
 
+/**
+ * The message to show a user for a failed request.
+ *
+ * The API already returns human-readable `error` strings, so an
+ * `ApiRequestError` is worth surfacing verbatim — it says *which* rule was
+ * broken. Anything else (a network drop, a bug) is not, hence the fallback.
+ *
+ * Returns `null` for "no error", so it drops straight into a conditional
+ * render without a second truthiness check.
+ */
+export function errorMessage(err: unknown, fallback = 'Something went wrong'): string | null {
+  if (!err) return null;
+  if (err instanceof ApiRequestError) return err.message;
+  if (!navigator.onLine) return 'You appear to be offline. Check your connection and try again.';
+  return fallback;
+}
+
 async function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
   const res = await fetch(`${BASE}/auth/refresh`, {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Camera, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { thumbUrl } from '@/lib/format';
 import type { Task, TaskStatus, TasksResponse } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { StatusBadge } from '@/components/ui/badge';
+import { taskStatusTone } from '@/lib/tone';
 import { Progress } from '@/components/ui/progress';
 import { Empty } from '@/components/ui/table';
 
@@ -20,17 +22,17 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<Task | null>(null);
 
   const { data } = useQuery({
-    queryKey: ['tasks', projectId],
+    queryKey: queryKeys.tasks.byProject(projectId),
     queryFn: () => api<TasksResponse>(`/projects/${projectId}/tasks`),
   });
   const tasks = data?.tasks;
   const progress = data?.progress;
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['tasks', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
-    void qc.invalidateQueries({ queryKey: ['projects'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.tasks.byProject(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.project(projectId) });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
+    void qc.invalidateQueries({ queryKey: queryKeys.projects.all() });
   };
 
   const create = useMutation({
@@ -66,7 +68,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
       <div className="flex items-center justify-between gap-3">
         {progress && progress.taskCount > 0 ? (
           <p className="text-sm text-fg-muted">
-            <span className="font-semibold tabular-nums text-fg">{progress.pct}% complete</span>
+            <span className="font-semibold nums text-fg">{progress.pct}% complete</span>
             {progress.weighted ? (
               <> · weighted by task size</>
             ) : (
@@ -117,8 +119,8 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         return (
           <Card key={phase} className="p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-fg">{phase}</h3>
-              <span className="text-xs tabular-nums text-fg-muted">{avg}% complete</span>
+              <h2 className="font-semibold text-fg">{phase}</h2>
+              <span className="text-xs nums text-fg-muted">{avg}% complete</span>
             </div>
             <div className="space-y-2">
               {phaseTasks.map((t) => (
@@ -131,11 +133,11 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                     <p className="truncate text-sm font-medium text-fg">{t.name}</p>
                     <div className="mt-1.5 flex items-center gap-2">
                       <Progress value={t.completionPct} health="GREEN" className="max-w-[160px]" />
-                      <span className="text-xs tabular-nums text-fg-muted">
+                      <span className="text-xs nums text-fg-muted">
                         {t.completionPct}%
                       </span>
                       {t.weight !== 1 && (
-                        <span className="text-xs tabular-nums text-fg-subtle">
+                        <span className="text-xs nums text-fg-subtle">
                           size {t.weight.toLocaleString()}
                         </span>
                       )}
@@ -146,7 +148,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                       )}
                     </div>
                   </div>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={t.status} tones={taskStatusTone} />
                 </button>
               ))}
             </div>

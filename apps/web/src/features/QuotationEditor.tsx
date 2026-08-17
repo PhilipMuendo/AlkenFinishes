@@ -177,17 +177,17 @@ export function QuotationEditor({
         <dl className="space-y-1.5 text-sm">
           <div className="flex items-baseline justify-between">
             <dt className="text-fg-muted">Subtotal</dt>
-            <dd className="tabular-nums text-fg">{fmtMoney(totals.subtotal)}</dd>
+            <dd className="nums text-fg">{fmtMoney(totals.subtotal)}</dd>
           </div>
           {Number(vatRatePct) > 0 && (
             <div className="flex items-baseline justify-between">
               <dt className="text-fg-muted">VAT @ {Number(vatRatePct)}%</dt>
-              <dd className="tabular-nums text-fg">{fmtMoney(totals.vatAmount)}</dd>
+              <dd className="nums text-fg">{fmtMoney(totals.vatAmount)}</dd>
             </div>
           )}
           <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
             <dt className="font-medium text-fg">Quotation total</dt>
-            <dd className="text-base font-semibold tabular-nums text-fg">
+            <dd className="text-base font-semibold nums text-fg">
               {fmtMoney(totals.grossTotal)}
             </dd>
           </div>

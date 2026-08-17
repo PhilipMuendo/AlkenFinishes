@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type {
   AgingBucket,
   CompanyReceivables,
@@ -46,15 +47,15 @@ export function InvoicesPage() {
   const [overdue, setOverdue] = useState('');
 
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
   const { data: receivables } = useQuery({
-    queryKey: ['invoices', 'receivables'],
+    queryKey: queryKeys.invoices.receivables(),
     queryFn: () => api<CompanyReceivables>('/invoices/receivables'),
   });
   const { data: rows, isLoading } = useQuery({
-    queryKey: ['invoices', 'register', { projectId, status, overdue }],
+    queryKey: queryKeys.invoices.register({ projectId, status, overdue }),
     queryFn: () => {
       const params = new URLSearchParams();
       if (projectId) params.set('projectId', projectId);
@@ -80,14 +81,14 @@ export function InvoicesPage() {
             <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">
               Total outstanding
             </p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-fg">{fmtMoney(totalAr)}</p>
+            <p className="mt-1 text-2xl font-semibold nums text-fg">{fmtMoney(totalAr)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 sm:p-5">
             <p className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Overdue</p>
             <p
-              className={`mt-1 text-2xl font-semibold tabular-nums ${
+              className={`mt-1 text-2xl font-semibold nums ${
                 (receivables?.totalOverdue ?? 0) > 0 ? 'text-red-600' : 'text-fg'
               }`}
             >
@@ -118,7 +119,7 @@ export function InvoicesPage() {
               {BUCKET_ORDER.map((b) => (
                 <div key={b}>
                   <dt className="text-fg-subtle">{BUCKET_LABEL[b]}</dt>
-                  <dd className="font-medium tabular-nums text-fg">
+                  <dd className="font-medium nums text-fg">
                     {fmtMoney(receivables?.buckets[b] ?? 0)}
                   </dd>
                 </div>
@@ -211,8 +212,8 @@ export function InvoicesPage() {
                     {fmtDate(r.dueDate)}
                     {r.overdue && <p className="text-xs text-red-600">{r.daysOverdue}d late</p>}
                   </Td>
-                  <Td className="text-right tabular-nums">{fmtMoney(r.netPayable)}</Td>
-                  <Td className="text-right font-medium tabular-nums">
+                  <Td className="text-right nums">{fmtMoney(r.netPayable)}</Td>
+                  <Td className="text-right font-medium nums">
                     {r.status === 'VOID' ? (
                       <span className="text-fg-subtle">—</span>
                     ) : (

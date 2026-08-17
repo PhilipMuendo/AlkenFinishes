@@ -40,11 +40,26 @@ export class BiostarError extends Error {}
 const secureAgent = new UndiciAgent();
 const insecureAgent = new UndiciAgent({ connect: { rejectUnauthorized: false } });
 
+/** Narrows an unknown JSON body to something indexable, or undefined. */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** Reads a string property off a narrowed body, or undefined. */
+function stringAt(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
 async function biostarFetch(
   device: Pick<AttendanceDevice, 'biostarBaseUrl' | 'biostarInsecureTls'>,
   path: string,
   init: { method?: string; body?: unknown; sessionId?: string } = {},
-): Promise<{ json: any; sessionId?: string }> {
+  // BioStar 2's payloads are vendor-shaped and undocumented per-endpoint;
+  // callers narrow what they need rather than us modelling the whole API.
+): Promise<{ json: unknown; sessionId?: string }> {
   if (!device.biostarBaseUrl) throw new BiostarError('No BioStar 2 server address configured');
   const url = `${device.biostarBaseUrl.replace(/\/$/, '')}${path}`;
   const res = await undiciFetch(url, {
@@ -59,7 +74,7 @@ async function biostarFetch(
   if (!res.ok) {
     throw new BiostarError(`BioStar 2 request failed: ${init.method ?? 'GET'} ${path} -> ${res.status}`);
   }
-  const json: any = await res.json().catch(() => ({}));
+  const json: unknown = await res.json().catch(() => ({}));
   return { json, sessionId: res.headers.get(SESSION_HEADER) ?? undefined };
 }
 
@@ -75,7 +90,14 @@ export async function biostarLogin(
     method: 'POST',
     body: { User: { login_id: device.biostarLoginId, password } },
   });
-  const id = sessionId ?? json?.Response?.[SESSION_HEADER] ?? json?.[SESSION_HEADER];
+  // BioStar 2 has returned the session id in three different places across
+  // firmware versions, hence the ladder. `json` is unknown, so read it through
+  // a narrowing helper rather than trusting the shape.
+  const body = asRecord(json);
+  const id =
+    sessionId ??
+    stringAt(asRecord(body?.Response), SESSION_HEADER) ??
+    stringAt(body, SESSION_HEADER);
   if (!id) throw new BiostarError('BioStar 2 login did not return a session id');
   return id;
 }
@@ -111,7 +133,9 @@ async function fetchEventsSince(
       },
     },
   });
-  return (json?.Events ?? json?.EventList ?? []) as BiostarEvent[];
+  const body = asRecord(json);
+  const rows = body?.Events ?? body?.EventList;
+  return Array.isArray(rows) ? (rows as BiostarEvent[]) : [];
 }
 
 /**

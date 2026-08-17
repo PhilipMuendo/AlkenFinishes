@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { HardHat, Pencil, Plus, UserMinus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Worker } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
@@ -21,7 +23,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<Worker | null>(null);
 
   const { data: allWorkers } = useQuery({
-    queryKey: ['workers'],
+    queryKey: queryKeys.workers.all(),
     queryFn: () => api<Worker[]>('/workers'),
   });
   // GET /workers returns fundis across every site this supervisor covers;
@@ -30,7 +32,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
     w.assignments.some((a) => a.project.id === projectId),
   );
 
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ['workers'] });
+  const invalidate = () => void qc.invalidateQueries({ queryKey: queryKeys.workers.all() });
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/workers', { body: { ...body, projectId } }),
@@ -131,11 +133,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
           <Field label="Agreed hourly rate (KES)">
             <Input name="hourlyRate" type="number" min="0" max="5000" step="0.01" required />
           </Field>
-          {create.isError && (
-            <p className="text-sm text-red-600">
-              {create.error instanceof ApiRequestError ? create.error.message : 'Failed to add this fundi'}
-            </p>
-          )}
+          <FormError error={create.error} fallback="Failed to add this fundi" />
           <Button type="submit" size="lg" className="w-full" disabled={create.isPending}>
             Add to this site
           </Button>
@@ -181,11 +179,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
                 defaultValue={editing.hourlyRate}
               />
             </Field>
-            {update.isError && (
-              <p className="text-sm text-red-600">
-                {update.error instanceof ApiRequestError ? update.error.message : 'Failed to save'}
-              </p>
-            )}
+            <FormError error={update.error} fallback="Failed to save" />
             <Button type="submit" size="lg" className="w-full" disabled={update.isPending}>
               Save changes
             </Button>

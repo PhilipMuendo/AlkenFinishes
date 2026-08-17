@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, FileSignature, FileText, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Client, Lead, Quotation, QuotationStatus } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
+import { quotationStatusTone } from '@/lib/tone';
 import { Badge } from '@/components/ui/badge';
+import { useToast } from '@/components/ui/toast';
+import { FormError } from '@/components/ui/form-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -14,13 +18,6 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { QuotationEditor, type QuotationPayload } from '@/features/QuotationEditor';
 
-const STATUS_TONE: Record<QuotationStatus, 'slate' | 'blue' | 'green' | 'red' | 'yellow'> = {
-  DRAFT: 'slate',
-  SENT: 'blue',
-  ACCEPTED: 'green',
-  REJECTED: 'red',
-  EXPIRED: 'yellow',
-};
 
 interface Defaults {
   vatRatePct: number;
@@ -28,13 +25,9 @@ interface Defaults {
   termsText: string;
 }
 
-function errorMessage(err: unknown): string | null {
-  if (!err) return null;
-  return err instanceof ApiRequestError ? err.message : 'That action failed';
-}
-
 export function QuotationsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [status, setStatus] = useState<QuotationStatus | ''>('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<Quotation | null>(null);
@@ -43,23 +36,23 @@ export function QuotationsPage() {
   const [converting, setConverting] = useState<Quotation | null>(null);
 
   const { data: quotations, isLoading } = useQuery({
-    queryKey: ['quotations', status],
+    queryKey: queryKeys.quotations.list(status),
     queryFn: () => api<Quotation[]>(`/quotations${status ? `?status=${status}` : ''}`),
   });
   const { data: clients } = useQuery({
-    queryKey: ['clients', ''],
+    queryKey: queryKeys.clients.list(),
     queryFn: () => api<Client[]>('/clients'),
   });
-  const { data: leads } = useQuery({ queryKey: ['leads'], queryFn: () => api<Lead[]>('/leads') });
+  const { data: leads } = useQuery({ queryKey: queryKeys.leads.all(), queryFn: () => api<Lead[]>('/leads') });
   const { data: defaults } = useQuery({
-    queryKey: ['settings', 'quotationDefaults'],
+    queryKey: queryKeys.settings.quotationDefaults(),
     queryFn: () => api<Defaults>('/settings/quotation-defaults'),
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['quotations'] });
-    void qc.invalidateQueries({ queryKey: ['leads'] });
-    void qc.invalidateQueries({ queryKey: ['contracts'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.quotations.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.leads.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.contracts.all() });
   };
 
   const save = useMutation({
@@ -114,14 +107,13 @@ export function QuotationsPage() {
     mutationFn: (id: string) => api(`/quotations/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       invalidate();
+      toast.success('Quotation deleted');
       setViewing(null);
     },
   });
 
   // One line for whichever of the detail actions last failed — they are
   // mutually exclusive in practice, and three separate slots would be noise.
-  const actionError = errorMessage(send.error ?? decide.error ?? remove.error);
-
   const openPdf = async (q: Quotation) => {
     const { url } = await api<{ url: string }>(`/quotations/${q.id}/pdf`);
     window.open(url, '_blank', 'noopener');
@@ -152,7 +144,7 @@ export function QuotationsPage() {
             onChange={(e) => setStatus(e.target.value as QuotationStatus | '')}
           >
             <option value="">All quotations</option>
-            {(Object.keys(STATUS_TONE) as QuotationStatus[]).map((s) => (
+            {(Object.keys(quotationStatusTone) as QuotationStatus[]).map((s) => (
               <option key={s} value={s}>
                 {s.charAt(0) + s.slice(1).toLowerCase()}
               </option>
@@ -204,10 +196,10 @@ export function QuotationsPage() {
                   <Td className="max-w-[16rem] truncate">{q.title}</Td>
                   <Td className="whitespace-nowrap">{fmtDate(q.issueDate)}</Td>
                   <Td className="whitespace-nowrap">{fmtDate(q.validUntil)}</Td>
-                  <Td className="text-right tabular-nums">{fmtMoney(q.total)}</Td>
+                  <Td className="text-right nums">{fmtMoney(q.total)}</Td>
                   <Td>
                     <div className="flex flex-wrap gap-1">
-                      <Badge tone={STATUS_TONE[q.status]} className="capitalize">
+                      <Badge tone={quotationStatusTone[q.status]} className="capitalize">
                         {q.status.toLowerCase()}
                       </Badge>
                       {q.expired && <Badge tone="yellow">Lapsed</Badge>}
@@ -244,13 +236,7 @@ export function QuotationsPage() {
             leads={leads ?? []}
             defaults={defaults}
             submitting={save.isPending}
-            error={
-              save.isError && (
-                <p className="text-sm text-red-600">
-                  {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
-                </p>
-              )
-            }
+            error={<FormError error={save.error} fallback="Failed to save" />}
             onSubmit={(body) => save.mutate({ id: editing?.id, body })}
           />
         )}
@@ -272,7 +258,7 @@ export function QuotationsPage() {
                 {fmtDate(viewing.validUntil)}
               </p>
               <div className="mt-2 flex flex-wrap gap-1">
-                <Badge tone={STATUS_TONE[viewing.status]} className="capitalize">
+                <Badge tone={quotationStatusTone[viewing.status]} className="capitalize">
                   {viewing.status.toLowerCase()}
                 </Badge>
                 {viewing.expired && <Badge tone="yellow">Past its validity date</Badge>}
@@ -296,11 +282,11 @@ export function QuotationsPage() {
                         {l.description}
                         {!l.taxable && <span className="text-fg-subtle"> · zero-rated</span>}
                       </Td>
-                      <Td className="whitespace-nowrap text-right tabular-nums">
+                      <Td className="whitespace-nowrap text-right nums">
                         {l.quantity} {l.unit}
                       </Td>
-                      <Td className="text-right tabular-nums">{fmtMoney(l.unitPrice)}</Td>
-                      <Td className="text-right tabular-nums">{fmtMoney(l.lineTotal)}</Td>
+                      <Td className="text-right nums">{fmtMoney(l.unitPrice)}</Td>
+                      <Td className="text-right nums">{fmtMoney(l.lineTotal)}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -310,17 +296,17 @@ export function QuotationsPage() {
             <dl className="space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <dt className="text-fg-muted">Subtotal</dt>
-                <dd className="tabular-nums">{fmtMoney(viewing.subtotal)}</dd>
+                <dd className="nums">{fmtMoney(viewing.subtotal)}</dd>
               </div>
               {viewing.vatRatePct > 0 && (
                 <div className="flex justify-between">
                   <dt className="text-fg-muted">VAT @ {viewing.vatRatePct}%</dt>
-                  <dd className="tabular-nums">{fmtMoney(viewing.vatAmount)}</dd>
+                  <dd className="nums">{fmtMoney(viewing.vatAmount)}</dd>
                 </div>
               )}
               <div className="flex justify-between border-t border-hairline pt-1.5 font-semibold">
                 <dt>Quotation total</dt>
-                <dd className="tabular-nums">{fmtMoney(viewing.total)}</dd>
+                <dd className="nums">{fmtMoney(viewing.total)}</dd>
               </div>
             </dl>
 
@@ -336,7 +322,7 @@ export function QuotationsPage() {
               </p>
             )}
 
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            <FormError error={send.error ?? decide.error ?? remove.error} fallback="That action failed" />
 
             <div className="flex flex-wrap gap-2 border-t border-hairline pt-3">
               {viewing.status === 'DRAFT' && (
@@ -493,13 +479,7 @@ export function QuotationsPage() {
                 />
               </Field>
             </div>
-            {toContract.isError && (
-              <p className="text-sm text-red-600">
-                {toContract.error instanceof ApiRequestError
-                  ? toContract.error.message
-                  : 'Failed to raise the contract'}
-              </p>
-            )}
+            <FormError error={toContract.error} fallback="Failed to raise the contract" />
             <Button type="submit" className="w-full" disabled={toContract.isPending}>
               Raise contract
             </Button>

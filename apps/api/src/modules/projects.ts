@@ -41,6 +41,10 @@ router.get(
       where: projectScope(req.user!),
       include,
       orderBy: { createdAt: 'desc' },
+      // A safety valve, not pagination: the Projects page filters the whole
+      // list client-side, and 500 sites is far beyond anything real. Without
+      // it this grows without bound as the archive does.
+      take: 500,
     });
     res.json(projects);
   }),

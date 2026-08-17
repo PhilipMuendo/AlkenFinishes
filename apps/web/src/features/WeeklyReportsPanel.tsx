@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarRange, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { WeeklyReport } from '@/lib/types';
 import { fmtDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
@@ -36,14 +38,14 @@ export function WeeklyReportsPanel({
   const [open, setOpen] = useState(false);
 
   const { data: reports } = useQuery({
-    queryKey: ['weekly-reports', projectId],
+    queryKey: queryKeys.weeklyReports.byProject(projectId),
     queryFn: () => api<WeeklyReport[]>(`/projects/${projectId}/weekly-reports`),
   });
 
   const submit = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/weekly-reports`, { formData }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['weekly-reports', projectId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.weeklyReports.byProject(projectId) });
       setOpen(false);
     },
   });
@@ -137,11 +139,7 @@ export function WeeklyReportsPanel({
           <Field label="Photos (up to 6)">
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />
           </Field>
-          {submit.isError && (
-            <p className="text-sm text-red-600">
-              {submit.error instanceof ApiRequestError ? submit.error.message : 'Failed to submit report'}
-            </p>
-          )}
+          <FormError error={submit.error} fallback="Failed to submit report" />
           <Button type="submit" size="lg" className="w-full" disabled={submit.isPending}>
             Submit report
           </Button>

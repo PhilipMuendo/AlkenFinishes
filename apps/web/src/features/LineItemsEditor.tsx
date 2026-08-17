@@ -146,7 +146,7 @@ export function LineItemsEditor({
                   />
                   VAT
                 </label>
-                <span className="ml-auto whitespace-nowrap text-sm font-medium tabular-nums text-fg sm:ml-0 sm:min-w-[5.5rem] sm:text-right">
+                <span className="ml-auto whitespace-nowrap text-sm font-medium nums text-fg sm:ml-0 sm:min-w-[5.5rem] sm:text-right">
                   {fmtMoney(lineTotals[i] ?? 0)}
                 </span>
               </div>

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Download, Receipt } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Invoice } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -12,7 +13,7 @@ import { InvoiceStatusBadge } from './InvoicesPanel';
 /** Read-only view of an issued invoice, laid out to echo the printed document. */
 export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; invoiceId: string }) {
   const { data: inv, isLoading } = useQuery({
-    queryKey: ['invoice', invoiceId],
+    queryKey: queryKeys.invoices.detail(invoiceId),
     queryFn: () => api<Invoice>(`/projects/${projectId}/invoices/${invoiceId}`),
   });
 
@@ -82,10 +83,10 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
                   {l.description}
                   {!l.taxable && <span className="ml-1 text-xs text-fg-subtle">(zero-rated)</span>}
                 </Td>
-                <Td className="text-right tabular-nums">{Number(l.quantity)}</Td>
+                <Td className="text-right nums">{Number(l.quantity)}</Td>
                 <Td className="text-fg-muted">{l.unit}</Td>
-                <Td className="text-right tabular-nums">{fmtMoney(l.unitPrice)}</Td>
-                <Td className="text-right tabular-nums">{fmtMoney(l.lineTotal)}</Td>
+                <Td className="text-right nums">{fmtMoney(l.unitPrice)}</Td>
+                <Td className="text-right nums">{fmtMoney(l.lineTotal)}</Td>
               </tr>
             ))}
           </tbody>
@@ -105,7 +106,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
           )}
           <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
             <dt className="font-medium text-fg">Amount payable</dt>
-            <dd className="text-base font-semibold tabular-nums text-fg">
+            <dd className="text-base font-semibold nums text-fg">
               {fmtMoney(inv.netPayable)}
             </dd>
           </div>
@@ -115,7 +116,7 @@ export function InvoiceDetail({ projectId, invoiceId }: { projectId: string; inv
               <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
                 <dt className="font-medium text-fg">Balance</dt>
                 <dd
-                  className={`text-base font-semibold tabular-nums ${
+                  className={`text-base font-semibold nums ${
                     inv.overdue ? 'text-red-600' : 'text-fg'
                   }`}
                 >
@@ -191,7 +192,7 @@ function TotalRow({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-baseline justify-between">
       <dt className="text-fg-muted">{label}</dt>
-      <dd className="tabular-nums text-fg">{fmtMoney(value)}</dd>
+      <dd className="nums text-fg">{fmtMoney(value)}</dd>
     </div>
   );
 }

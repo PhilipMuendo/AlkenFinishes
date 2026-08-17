@@ -1,4 +1,4 @@
-import { cn } from '@/lib/utils';
+import { cn, focusRing } from '@/lib/utils';
 
 export function Tabs({
   tabs,
@@ -21,7 +21,8 @@ export function Tabs({
           aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
           className={cn(
-            'relative whitespace-nowrap border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors',
+            'relative whitespace-nowrap rounded-t-lg border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors',
+            focusRing,
             active === t.id
               ? 'border-brand-600 text-fg'
               : 'border-transparent text-fg-muted hover:text-fg',

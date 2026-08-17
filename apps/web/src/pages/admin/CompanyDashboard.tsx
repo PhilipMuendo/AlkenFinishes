@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   AlertOctagon,
-  AlertTriangle,
   ArrowRight,
   CalendarClock,
   CheckCircle2,
@@ -14,24 +13,40 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { AttentionDigest, PipelineDigest } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import { ErrorState } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
+import { cn, focusRing, focusRingOnMuted } from '@/lib/utils';
 
 type Tone = 'red' | 'amber' | 'blue';
-type Item = { id: string; name: string };
+type Groups = AttentionDigest['groups'];
 
+/** One rendered line: a project, and the one figure that explains why it is here. */
+interface Row {
+  id: string;
+  name: string;
+  detail: string;
+}
+
+/**
+ * Each section reduces its own slice of the digest to `Row`s.
+ *
+ * Holding a `rows` closure rather than a `detail(item)` callback is what keeps
+ * this typed: every group in the digest carries different fields, so the
+ * closure narrows against its own group's shape at the point it is written.
+ */
 interface Section {
-  key: keyof AttentionDigest['groups'];
+  key: keyof Groups;
   label: string;
   hint: string;
   icon: LucideIcon;
   tone: Tone;
-  detail: (item: any) => string;
+  rows: (groups: Groups) => Row[];
 }
 
 // Ordered by urgency: money first, then risk, then operational nudges.
@@ -42,7 +57,12 @@ const SECTIONS: Section[] = [
     hint: 'Money owed past the agreed date',
     icon: Clock,
     tone: 'red',
-    detail: (i) => `${fmtMoney(i.pendingBalance)} · ${i.daysOverdue}d overdue`,
+    rows: (g) =>
+      g.paymentOverdue.map((i) => ({
+        id: i.id,
+        name: i.name,
+        detail: `${fmtMoney(i.pendingBalance)} · ${i.daysOverdue}d overdue`,
+      })),
   },
   {
     key: 'overBudget',
@@ -50,7 +70,12 @@ const SECTIONS: Section[] = [
     hint: 'Spend has crossed the risk threshold',
     icon: AlertOctagon,
     tone: 'red',
-    detail: (i) => (i.consumedPct != null ? `${i.consumedPct}% of budget used` : 'Over budget'),
+    rows: (g) =>
+      g.overBudget.map((i) => ({
+        id: i.id,
+        name: i.name,
+        detail: i.consumedPct != null ? `${i.consumedPct}% of budget used` : 'Over budget',
+      })),
   },
   {
     key: 'unassigned',
@@ -58,7 +83,7 @@ const SECTIONS: Section[] = [
     hint: 'Active sites without anyone assigned',
     icon: UserX,
     tone: 'amber',
-    detail: () => 'Assign a supervisor',
+    rows: (g) => g.unassigned.map((i) => ({ id: i.id, name: i.name, detail: 'Assign a supervisor' })),
   },
   {
     key: 'wentQuiet',
@@ -66,7 +91,12 @@ const SECTIONS: Section[] = [
     hint: 'Active sites that have gone quiet',
     icon: FileText,
     tone: 'amber',
-    detail: (i) => (i.daysSince == null ? 'No reports yet' : `Last report ${i.daysSince}d ago`),
+    rows: (g) =>
+      g.wentQuiet.map((i) => ({
+        id: i.id,
+        name: i.name,
+        detail: i.daysSince == null ? 'No reports yet' : `Last report ${i.daysSince}d ago`,
+      })),
   },
   {
     key: 'finishingSoon',
@@ -74,7 +104,12 @@ const SECTIONS: Section[] = [
     hint: 'Deadlines within two weeks',
     icon: CalendarClock,
     tone: 'blue',
-    detail: (i) => (i.daysLeft === 0 ? 'Due today' : `${i.daysLeft}d to deadline`),
+    rows: (g) =>
+      g.finishingSoon.map((i) => ({
+        id: i.id,
+        name: i.name,
+        detail: i.daysLeft === 0 ? 'Due today' : `${i.daysLeft}d to deadline`,
+      })),
   },
   {
     key: 'pendingApprovals',
@@ -82,7 +117,8 @@ const SECTIONS: Section[] = [
     hint: 'Expense claims, material and attendance requests',
     icon: ClipboardCheck,
     tone: 'amber',
-    detail: (i) => `${i.total} pending`,
+    rows: (g) =>
+      g.pendingApprovals.map((i) => ({ id: i.id, name: i.name, detail: `${i.total} pending` })),
   },
 ];
 
@@ -97,7 +133,7 @@ const toneText: Record<Tone, string> = {
   blue: 'text-brand-600',
 };
 
-function AttentionSection({ section, items }: { section: Section; items: Item[] }) {
+function AttentionSection({ section, rows }: { section: Section; rows: Row[] }) {
   const { icon: Icon, tone } = section;
   return (
     <Card className="overflow-hidden">
@@ -108,22 +144,25 @@ function AttentionSection({ section, items }: { section: Section; items: Item[] 
         <div className="min-w-0">
           <p className="text-sm font-semibold text-fg">
             {section.label}{' '}
-            <span className="nums font-normal text-fg-subtle">({items.length})</span>
+            <span className="nums font-normal text-fg-subtle">({rows.length})</span>
           </p>
           <p className="text-xs text-fg-subtle">{section.hint}</p>
         </div>
       </div>
       <ul>
-        {items.map((item) => (
-          <li key={item.id}>
+        {rows.map((row) => (
+          <li key={row.id}>
             <Link
-              to={`/admin/projects/${item.id}`}
-              className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken"
+              to={`/admin/projects/${row.id}`}
+              className={cn(
+                'flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken',
+                focusRing,
+              )}
             >
-              <span className="truncate text-sm font-medium text-fg">{item.name}</span>
+              <span className="truncate text-sm font-medium text-fg">{row.name}</span>
               <span className="flex shrink-0 items-center gap-1.5">
                 <span className={`nums text-xs font-medium ${toneText[tone]}`}>
-                  {section.detail(item)}
+                  {row.detail}
                 </span>
                 <ChevronRight size={15} className="text-fg-subtle" />
               </span>
@@ -158,7 +197,7 @@ function OverviewSkeleton() {
  */
 function PipelineStrip() {
   const { data } = useQuery({
-    queryKey: ['analytics', 'pipeline'],
+    queryKey: queryKeys.analytics.pipeline(),
     queryFn: () => api<PipelineDigest>('/analytics/pipeline'),
   });
   if (!data) return null;
@@ -181,20 +220,23 @@ function PipelineStrip() {
         <Link
           key={t.label}
           to={t.to}
-          className="group rounded-xl border border-hairline bg-surface p-4 transition-colors hover:border-hairline-strong"
+          className={cn(
+            'group rounded-xl border border-hairline bg-surface p-4 transition-colors hover:border-hairline-strong',
+            focusRingOnMuted,
+          )}
         >
           <p className="text-xs font-medium text-fg-muted">{t.label}</p>
           {/* An empty stage is worth showing — it says the pipeline is dry —
               but it must not pull the eye the way a live figure does. */}
           <p
             className={cn(
-              'mt-1 text-2xl font-semibold tabular-nums',
+              'mt-1 text-2xl font-semibold nums',
               t.count > 0 ? 'text-fg' : 'text-fg-subtle/50',
             )}
           >
             {t.count}
           </p>
-          <p className="mt-0.5 text-xs tabular-nums text-fg-subtle">
+          <p className="mt-0.5 text-xs nums text-fg-subtle">
             {t.value > 0 ? fmtMoney(t.value) : '—'}
           </p>
         </Link>
@@ -204,8 +246,8 @@ function PipelineStrip() {
 }
 
 export function CompanyDashboard() {
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['analytics', 'attention'],
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: queryKeys.analytics.attention(),
     queryFn: () => api<AttentionDigest>('/analytics/attention'),
   });
 
@@ -215,26 +257,17 @@ export function CompanyDashboard() {
     return (
       <div className="space-y-6">
         <PageHeader title="Overview" description="What needs your attention" />
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
-              <AlertTriangle size={20} />
-            </div>
-            <p className="font-medium text-fg">Couldn&rsquo;t load your overview</p>
-            <button
-              className={buttonVariants({ variant: 'outline', size: 'sm' })}
-              onClick={() => void refetch()}
-            >
-              Retry
-            </button>
-          </CardContent>
-        </Card>
+        <ErrorState
+          title="Couldn’t load your overview"
+          error={error}
+          onRetry={() => void refetch()}
+        />
       </div>
     );
   }
 
-  const active = SECTIONS.map((s) => ({ section: s, items: data.groups[s.key] as Item[] })).filter(
-    (s) => s.items.length > 0,
+  const active = SECTIONS.map((section) => ({ section, rows: section.rows(data.groups) })).filter(
+    (s) => s.rows.length > 0,
   );
 
   return (
@@ -274,8 +307,8 @@ export function CompanyDashboard() {
         </Card>
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-2">
-          {active.map(({ section, items }) => (
-            <AttentionSection key={section.key} section={section} items={items} />
+          {active.map(({ section, rows }) => (
+            <AttentionSection key={section.key} section={section} rows={rows} />
           ))}
         </div>
       )}

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Upload } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { ProjectDocument } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +20,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
   const [filter, setFilter] = useState('');
 
   const { data: docs } = useQuery({
-    queryKey: ['documents', projectId, filter],
+    queryKey: queryKeys.documents.filtered(projectId, filter),
     queryFn: () =>
       api<ProjectDocument[]>(
         `/projects/${projectId}/documents${filter ? `?type=${filter}` : ''}`,
@@ -28,7 +30,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
   const uploadDoc = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/documents`, { formData }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['documents', projectId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.documents.byProject(projectId) });
       setOpen(false);
     },
   });
@@ -85,7 +87,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
                 </Td>
                 <Td>{d.uploadedBy.name}</Td>
                 <Td className="whitespace-nowrap">{fmtDate(d.createdAt)}</Td>
-                <Td className="tabular-nums">{(d.sizeBytes / 1024).toFixed(0)} KB</Td>
+                <Td className="nums">{(d.sizeBytes / 1024).toFixed(0)} KB</Td>
               </tr>
             ))}
           </tbody>
@@ -115,11 +117,7 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
           <Field label="File">
             <Input name="file" type="file" required accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" />
           </Field>
-          {uploadDoc.isError && (
-            <p className="text-sm text-red-600">
-              {uploadDoc.error instanceof ApiRequestError ? uploadDoc.error.message : 'Upload failed'}
-            </p>
-          )}
+          <FormError error={uploadDoc.error} fallback="Upload failed" />
           <Button type="submit" className="w-full" disabled={uploadDoc.isPending}>
             Upload
           </Button>

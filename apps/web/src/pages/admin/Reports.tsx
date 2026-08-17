@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { CalendarRange, ClipboardList, FileText } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Project, ReportFeedItem } from '@/lib/types';
 import { fmtDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -86,7 +87,7 @@ export function ReportsPage() {
   const [to, setTo] = useState('');
 
   const { data: projects } = useQuery({
-    queryKey: ['projects'],
+    queryKey: queryKeys.projects.all(),
     queryFn: () => api<Project[]>('/projects'),
   });
 
@@ -97,7 +98,7 @@ export function ReportsPage() {
     hasNextPage,
     fetchNextPage,
   } = useInfiniteQuery({
-    queryKey: ['reports', { projectId, type, from, to }],
+    queryKey: queryKeys.reports.feed({ projectId, type, from, to }),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }: { pageParam: string | null }) => {
       const params = new URLSearchParams();

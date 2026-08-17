@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertOctagon,
@@ -15,9 +14,13 @@ import {
   Wrench,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { Project } from '@/lib/types';
-import { cn } from '@/lib/utils';
+import { cn, focusRingOnMuted } from '@/lib/utils';
 import { StatusBadge } from '@/components/ui/badge';
+import { projectStatusTone } from '@/lib/tone';
+import { QueryState } from '@/components/ui/query-state';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TasksPanel } from '@/features/TasksPanel';
 import { ExpensesPanel } from '@/features/ExpensesPanel';
 import { AttendancePanel } from '@/features/AttendancePanel';
@@ -35,7 +38,7 @@ import { CommandCentrePanel } from '@/features/CommandCentrePanel';
  * Optimized for one-handed phone use on site — no financials here.
  */
 const ACTIONS = [
-  { id: 'fundis', label: 'Fundis', hint: 'Add and manage workers', icon: HardHat, chip: 'bg-rose-50 text-rose-600' },
+  { id: 'fundis', label: 'Fundis', hint: 'Add and manage fundis', icon: HardHat, chip: 'bg-rose-50 text-rose-600' },
   {
     id: 'attendance',
     label: 'Attendance',
@@ -79,31 +82,52 @@ const ACTIONS = [
 
 type ActionId = (typeof ACTIONS)[number]['id'];
 
+const ACTION_IDS = new Set<string>(ACTIONS.map((a) => a.id));
+
 export function SiteDetailPage() {
   const { projectId = '' } = useParams();
-  const [view, setView] = useState<ActionId | null>(null);
+  /**
+   * The open action lives in the URL, not in state. On a phone — which is the
+   * only place this page is used — the hardware back button is how people go
+   * back, and with local state it would leave the site entirely instead of
+   * returning to the tile grid.
+   */
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('view');
+  const view: ActionId | null =
+    requested && ACTION_IDS.has(requested) ? (requested as ActionId) : null;
 
-  const { data: project } = useQuery({
-    queryKey: ['project', projectId],
+  // A push, not a replace: each step should cost exactly one press to undo.
+  const openView = (id: ActionId) => setParams({ view: id });
+  const closeView = () => setParams({});
+
+  const query = useQuery({
+    queryKey: queryKeys.projects.detail(projectId),
     queryFn: () => api<Project>(`/projects/${projectId}`),
   });
 
-  if (!project) return <p className="text-sm text-fg-muted">Loading site…</p>;
-
   return (
+    <QueryState query={query} errorTitle="Couldn’t load this site" skeleton={<SiteSkeleton />}>
+      {(project) => (
     <div className="space-y-4">
       <div>
         {view ? (
           <button
-            onClick={() => setView(null)}
-            className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
+            onClick={closeView}
+            className={cn(
+              'mb-2 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-fg-muted transition-colors hover:text-fg',
+              focusRingOnMuted,
+            )}
           >
             <ChevronLeft size={16} /> {project.name}
           </button>
         ) : (
           <Link
             to="/sites"
-            className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
+            className={cn(
+              'mb-2 inline-flex items-center gap-1 rounded-lg text-sm font-medium text-fg-muted transition-colors hover:text-fg',
+              focusRingOnMuted,
+            )}
           >
             <ChevronLeft size={16} /> My Sites
           </Link>
@@ -112,7 +136,7 @@ export function SiteDetailPage() {
           <h1 className="text-xl font-semibold tracking-tight text-fg">
             {view ? ACTIONS.find((a) => a.id === view)?.label : project.name}
           </h1>
-          {!view && <StatusBadge status={project.status} />}
+          {!view && <StatusBadge status={project.status} tones={projectStatusTone} />}
         </div>
         {!view && <p className="mt-0.5 text-sm text-fg-muted">{project.location}</p>}
       </div>
@@ -127,8 +151,11 @@ export function SiteDetailPage() {
           {ACTIONS.map(({ id, label, hint, icon: Icon, chip }) => (
             <button
               key={id}
-              onClick={() => setView(id)}
-              className="flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left shadow-sm transition-all active:scale-[0.98] active:bg-surface-sunken"
+              onClick={() => openView(id)}
+              className={cn(
+                'flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left shadow-sm transition-all active:scale-[0.98] active:bg-surface-sunken',
+                focusRingOnMuted,
+              )}
             >
               <span className={cn('flex h-11 w-11 items-center justify-center rounded-xl', chip)}>
                 <Icon size={22} />
@@ -152,6 +179,22 @@ export function SiteDetailPage() {
       {view === 'tools' && <ToolsReadOnlyPanel />}
       {view === 'snags' && <SnagsPanel projectId={projectId} />}
       {view === 'safety' && <SafetyPanel projectId={projectId} />}
+    </div>
+      )}
+    </QueryState>
+  );
+}
+
+function SiteSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-7 w-2/5" />
+      <Skeleton className="h-32 w-full rounded-xl" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Skeleton key={i} className="h-28 w-full rounded-2xl" />
+        ))}
+      </div>
     </div>
   );
 }

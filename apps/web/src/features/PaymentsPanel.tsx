@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Plus, Receipt } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
-import type { Invoice, Payment, PaymentMethod, PaymentsSummary } from '@/lib/types';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
+import { cn } from '@/lib/utils';
+import { useToast } from '@/components/ui/toast';
+import type { Health, Invoice, Payment, PaymentMethod, PaymentsSummary } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FormError } from '@/components/ui/form-error';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
@@ -26,35 +31,34 @@ const NEEDS_REFERENCE: PaymentMethod[] = ['BANK_TRANSFER', 'MPESA', 'CHEQUE'];
 export function PaymentsPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
-  const [dueDate, setDueDate] = useState('');
   const [method, setMethod] = useState<PaymentMethod>('BANK_TRANSFER');
   const [invoiceId, setInvoiceId] = useState('');
   const [amount, setAmount] = useState('');
   const [voiding, setVoiding] = useState<Payment | null>(null);
+  const [deleting, setDeleting] = useState<Payment | null>(null);
+  const toast = useToast();
 
   const { data: summary } = useQuery({
-    queryKey: ['payments', 'summary', projectId],
+    queryKey: queryKeys.payments.summary(projectId),
     queryFn: () => api<PaymentsSummary>(`/projects/${projectId}/payments/summary`),
   });
 
   // Open invoices, so a payment can be applied to what it actually settles.
   const { data: invoices } = useQuery({
-    queryKey: ['invoices', projectId],
+    queryKey: queryKeys.invoices.byProject(projectId),
     queryFn: () => api<Invoice[]>(`/projects/${projectId}/invoices`),
   });
   const openInvoices = (invoices ?? []).filter(
     (i) => i.status === 'ISSUED' || i.status === 'PARTIALLY_PAID',
   );
 
-  useEffect(() => {
-    setDueDate(summary?.balanceDueDate ? summary.balanceDueDate.slice(0, 10) : '');
-  }, [summary?.balanceDueDate]);
-
   const invalidateAll = () => {
-    void qc.invalidateQueries({ queryKey: ['payments', 'summary', projectId] });
-    void qc.invalidateQueries({ queryKey: ['invoices'] });
-    void qc.invalidateQueries({ queryKey: ['invoice'] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
+    void qc.invalidateQueries({ queryKey: queryKeys.payments.summary(projectId) });
+    // One key now covers the project list, the register and every invoice
+    // detail — previously this had to name `['invoices']` and `['invoice']`
+    // separately, and the second never matched anything.
+    void qc.invalidateQueries({ queryKey: queryKeys.invoices.all() });
+    void qc.invalidateQueries({ queryKey: queryKeys.analytics.company() });
   };
 
   const createPayment = useMutation({
@@ -65,18 +69,13 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
     },
   });
 
-  const saveDueDate = useMutation({
-    mutationFn: () =>
-      api(`/projects/${projectId}/payments/due-date`, {
-        method: 'PUT',
-        body: { balanceDueDate: dueDate || null },
-      }),
-    onSuccess: invalidateAll,
-  });
-
   const deletePayment = useMutation({
     mutationFn: (id: string) => api(`/projects/${projectId}/payments/${id}`, { method: 'DELETE' }),
-    onSuccess: invalidateAll,
+    onSuccess: () => {
+      invalidateAll();
+      toast.success('Payment deleted');
+      setDeleting(null);
+    },
   });
 
   const voidPayment = useMutation({
@@ -113,7 +112,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <CardTitle>Contract &amp; deposit</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p className="text-lg font-semibold tabular-nums text-fg">
+          <p className="text-lg font-semibold nums text-fg">
             {fmtMoney(summary?.contractValue ?? 0)}
           </p>
           {summary?.deposit ? (
@@ -139,7 +138,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <CardTitle>Balance on contract</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-2xl font-semibold tabular-nums text-fg">
+          <p className="text-2xl font-semibold nums text-fg">
             {fmtMoney(summary?.pendingBalance ?? 0)}
           </p>
           <Progress value={percentPaid} health="GREEN" />
@@ -160,15 +159,18 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
             <Stat label="Retention held" value={summary?.retentionHeld ?? 0} />
           </dl>
 
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Balance due date (as per contract)">
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </Field>
-            <Button onClick={() => saveDueDate.mutate()} disabled={saveDueDate.isPending}>
-              Save due date
-            </Button>
-            {summary && <HealthBadge health={summary.dueDateHealth} />}
-          </div>
+          {summary && (
+            /* Keyed on the stored value so a save (or a project switch)
+               reseeds the field from the server, without an effect racing
+               whatever the user is typing. */
+            <BalanceDueDateForm
+              key={summary.balanceDueDate ?? 'unset'}
+              projectId={projectId}
+              initial={summary.balanceDueDate ? summary.balanceDueDate.slice(0, 10) : ''}
+              health={summary.dueDateHealth}
+              onSaved={invalidateAll}
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -207,7 +209,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                     )}
                   </Td>
                   <Td
-                    className={`text-right font-medium tabular-nums ${
+                    className={`text-right font-medium nums ${
                       p.voidedAt ? 'line-through' : ''
                     }`}
                   >
@@ -230,8 +232,10 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => deletePayment.mutate(p.id)}
-                        disabled={deletePayment.isPending}
+                        onClick={() => setDeleting(p)}
+                        // Only this row's button greys out — one shared
+                        // `isPending` disabled every Delete in the table.
+                        disabled={deletePayment.isPending && deletePayment.variables === p.id}
                       >
                         Delete
                       </Button>
@@ -333,13 +337,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           <p className="text-xs text-fg-subtle">
             An official numbered receipt is generated automatically once you save.
           </p>
-          {createPayment.isError && (
-            <p className="text-sm text-red-600">
-              {createPayment.error instanceof ApiRequestError
-                ? createPayment.error.message
-                : 'Failed to save payment'}
-            </p>
-          )}
+          <FormError error={createPayment.error} fallback="Failed to save payment" />
           <Button type="submit" size="lg" className="w-full" disabled={createPayment.isPending}>
             Save payment
           </Button>
@@ -371,13 +369,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
               the series is not broken.
             </p>
             <Textarea name="reason" required minLength={3} placeholder="Why is this being voided?" />
-            {voidPayment.isError && (
-              <p className="text-sm text-red-600">
-                {voidPayment.error instanceof ApiRequestError
-                  ? voidPayment.error.message
-                  : 'Failed to void this payment'}
-              </p>
-            )}
+            <FormError error={voidPayment.error} fallback="Failed to void this payment" />
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -399,6 +391,25 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => deleting && deletePayment.mutate(deleting.id)}
+        title="Delete this payment?"
+        confirmLabel="Delete payment"
+        pending={deletePayment.isPending}
+        error={deletePayment.error}
+        body={
+          deleting && (
+            <>
+              <strong className="font-medium text-fg">{fmtMoney(Number(deleting.amount))}</strong>{' '}
+              recorded on {fmtDate(deleting.paymentDate)} will be removed, and the contract balance
+              will go back up by that amount. This cannot be undone.
+            </>
+          )
+        }
+      />
     </div>
   );
 }
@@ -456,12 +467,60 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'ne
     <div>
       <dt className="text-fg-subtle">{label}</dt>
       <dd
-        className={`font-medium tabular-nums ${
-          tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg'
-        }`}
+        className={cn(
+          'nums font-medium',
+          tone === 'negative' && value > 0 ? 'text-red-600' : 'text-fg',
+        )}
       >
         {fmtMoney(value)}
       </dd>
+    </div>
+  );
+}
+
+/**
+ * The contractual balance due date. Its own component so the input can be
+ * seeded by `useState` from the loaded summary rather than by an effect that
+ * would overwrite what the user is typing on every background refetch.
+ */
+function BalanceDueDateForm({
+  projectId,
+  initial,
+  health,
+  onSaved,
+}: {
+  projectId: string;
+  initial: string;
+  health: Health;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [dueDate, setDueDate] = useState(initial);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/projects/${projectId}/payments/due-date`, {
+        method: 'PUT',
+        body: { balanceDueDate: dueDate || null },
+      }),
+    onSuccess: () => {
+      toast.success('Balance due date saved');
+      onSaved();
+    },
+  });
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label="Balance due date (as per contract)">
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </Field>
+        <Button onClick={() => save.mutate()} disabled={save.isPending}>
+          Save due date
+        </Button>
+        <HealthBadge health={health} />
+      </div>
+      <FormError error={save.error} fallback="Failed to save the due date" />
     </div>
   );
 }

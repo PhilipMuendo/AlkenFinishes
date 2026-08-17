@@ -298,11 +298,30 @@ router.get(
       lastReportByProject.set(w.projectId, Math.max(lastReportByProject.get(w.projectId) ?? 0, t));
     }
 
-    const paymentOverdue: unknown[] = [];
-    const overBudget: unknown[] = [];
-    const unassigned: unknown[] = [];
-    const wentQuiet: unknown[] = [];
-    const finishingSoon: unknown[] = [];
+    // Typed rather than `unknown[]`: these shapes are the wire contract the
+    // Overview page renders, and `unknown` meant the sorts below had to be
+    // cast to compile at all.
+    const paymentOverdue: {
+      id: string;
+      name: string;
+      pendingBalance: number;
+      balanceDueDate: Date;
+      daysOverdue: number;
+    }[] = [];
+    const overBudget: { id: string; name: string; consumedPct: number | null }[] = [];
+    const unassigned: { id: string; name: string }[] = [];
+    const wentQuiet: {
+      id: string;
+      name: string;
+      lastReportAt: Date | null;
+      daysSince: number | null;
+    }[] = [];
+    const finishingSoon: {
+      id: string;
+      name: string;
+      expectedCompletion: Date;
+      daysLeft: number;
+    }[] = [];
     let activeCount = 0;
 
     for (const p of projects) {
@@ -384,8 +403,8 @@ router.get(
       .filter((r) => r.balance > 0)
       .sort((a, b) => b.daysOverdue - a.daysOverdue);
 
-    paymentOverdue.sort((a: any, b: any) => b.daysOverdue - a.daysOverdue);
-    finishingSoon.sort((a: any, b: any) => a.daysLeft - b.daysLeft);
+    paymentOverdue.sort((a, b) => b.daysOverdue - a.daysOverdue);
+    finishingSoon.sort((a, b) => a.daysLeft - b.daysLeft);
 
     // Things sitting on the owner's desk waiting for a yes/no — grouped by
     // project so "3 pending" points somewhere rather than being a bare count.

@@ -3,7 +3,9 @@ import { ArrowRight } from 'lucide-react';
 import type { ProjectStatus } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { StatusBadge } from '@/components/ui/badge';
+import { projectStatusTone } from '@/lib/tone';
 import { Progress } from '@/components/ui/progress';
+import { cn, focusRingOnMuted } from '@/lib/utils';
 
 export interface ProjectCardData {
   id: string;
@@ -28,7 +30,10 @@ export function ProjectCard({
   return (
     <Link
       to={`/admin/projects/${project.id}`}
-      className="group flex h-full flex-col rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-hairline-strong hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted"
+      className={cn(
+        'group flex h-full flex-col rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-hairline-strong hover:shadow-md',
+        focusRingOnMuted,
+      )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -37,7 +42,7 @@ export function ProjectCard({
             {project.clientName} · {project.location}
           </p>
         </div>
-        <StatusBadge status={project.status} />
+        <StatusBadge status={project.status} tones={projectStatusTone} />
       </div>
 
       <p className="nums mt-3 text-lg font-semibold tracking-tight text-fg">

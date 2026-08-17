@@ -430,7 +430,10 @@ router.post(
       })
       .parse(req.body);
 
-    const [invoicing, pipeline] = await Promise.all([getInvoicingConfig(), getPipelineConfig()]);
+    // Project codes pad to 4 unconditionally (see `nextNumber` below), unlike
+    // contract numbers which honour `invoicing.numberPadding` — so there is no
+    // invoicing config to fetch here.
+    const pipeline = await getPipelineConfig();
 
     const project = await prisma.$transaction(async (tx) => {
       const c = await tx.contract.findUniqueOrThrow({

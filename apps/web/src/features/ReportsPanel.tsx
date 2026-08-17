@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus } from 'lucide-react';
-import { api, ApiRequestError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { DailyReport } from '@/lib/types';
 import { fmtDate, thumbUrl, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { FormError } from '@/components/ui/form-error';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
@@ -34,14 +36,14 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
   const [open, setOpen] = useState(false);
 
   const { data: reports } = useQuery({
-    queryKey: ['daily-reports', projectId],
+    queryKey: queryKeys.dailyReports.byProject(projectId),
     queryFn: () => api<DailyReport[]>(`/projects/${projectId}/daily-reports`),
   });
 
   const submit = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/daily-reports`, { formData }),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['daily-reports', projectId] });
+      void qc.invalidateQueries({ queryKey: queryKeys.dailyReports.byProject(projectId) });
       setOpen(false);
     },
   });
@@ -168,11 +170,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
           <Field label="Photos (up to 6)">
             <Input name="photos" type="file" accept="image/*" capture="environment" multiple />
           </Field>
-          {submit.isError && (
-            <p className="text-sm text-red-600">
-              {submit.error instanceof ApiRequestError ? submit.error.message : 'Failed to submit report'}
-            </p>
-          )}
+          <FormError error={submit.error} fallback="Failed to submit report" />
           <Button type="submit" size="lg" className="w-full" disabled={submit.isPending}>
             Submit report
           </Button>

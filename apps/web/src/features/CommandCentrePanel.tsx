@@ -19,8 +19,9 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import type { CommandCentreData, Health, Insight, InsightSeverity } from '@/lib/types';
-import { fmtDate, fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtTime } from '@/lib/format';
 import { Badge, HealthBadge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -60,11 +61,11 @@ function Panel({
   return (
     <Card className={cn('flex flex-col p-4', className)}>
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[11px] font-semibold tabular-nums text-fg-subtle">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[11px] font-semibold nums text-fg-subtle">
           {n}
         </span>
         <Icon size={15} className="shrink-0 text-brand-600" />
-        <h3 className="truncate text-sm font-semibold text-fg">{title}</h3>
+        <h2 className="truncate text-sm font-semibold text-fg">{title}</h2>
       </div>
       <div className="flex-1">{children}</div>
       {to && (
@@ -100,7 +101,7 @@ function Row({
   return (
     <div className="flex items-baseline justify-between gap-3 py-0.5 text-sm">
       <span className="truncate text-fg-muted">{label}</span>
-      <span className={cn('shrink-0 font-medium tabular-nums', toneClass)}>{value}</span>
+      <span className={cn('shrink-0 font-medium nums', toneClass)}>{value}</span>
     </div>
   );
 }
@@ -108,7 +109,7 @@ function Row({
 function Big({ value, sub }: { value: React.ReactNode; sub?: React.ReactNode }) {
   return (
     <div>
-      <p className="text-2xl font-semibold tabular-nums text-fg">{value}</p>
+      <p className="text-2xl font-semibold nums text-fg">{value}</p>
       {sub && <p className="mt-0.5 text-xs text-fg-subtle">{sub}</p>}
     </div>
   );
@@ -118,8 +119,8 @@ function Muted({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-fg-subtle">{children}</p>;
 }
 
-const time = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
+/** Same locale rules as every other time in the app; '—' for "not yet". */
+const time = (iso: string | null) => (iso ? fmtTime(iso) : '—');
 
 // ---------------------------------------------------------------------------
 
@@ -136,7 +137,7 @@ export function CommandCentrePanel({
   linked?: boolean;
 }) {
   const { data, isLoading } = useQuery({
-    queryKey: ['command-centre', projectId],
+    queryKey: queryKeys.commandCentre.byProject(projectId),
     queryFn: () => api<CommandCentreData>(`/projects/${projectId}/command-centre`),
   });
 
@@ -175,14 +176,15 @@ export function CommandCentrePanel({
 
   // Cards are numbered to match the agreed layout, and keep their number even
   // when a card is hidden — the numbering describes the design, not the array.
-  let n = 0;
-  const next = () => (n += 1);
+  // Hence literals: a running counter renumbered every card below a hidden one,
+  // so a supervisor (who sees no money cards) got a different set of numbers
+  // from the office for the very same cards.
 
   return (
     <div className="space-y-4">
       <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {/* 1 — Progress against programme */}
-        <Panel n={next()} title="Progress against programme" icon={TrendingUp} to={tabHref('tasks')} linkLabel="View programme">
+        <Panel n={1} title="Progress against programme" icon={TrendingUp} to={tabHref('tasks')} linkLabel="View programme">
           <Big
             value={`${programme.actualPct}%`}
             sub={
@@ -215,7 +217,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 2 — Today's attendance */}
-        <Panel n={next()} title="Today's attendance" icon={HardHat} to={tabHref('attendance')} linkLabel="View attendance">
+        <Panel n={2} title="Today's attendance" icon={HardHat} to={tabHref('attendance')} linkLabel="View attendance">
           <div className="grid grid-cols-4 gap-1.5 text-center">
             {[
               { label: 'Workers', value: attendance.assignedWorkers, cls: 'text-fg' },
@@ -228,7 +230,7 @@ export function CommandCentrePanel({
               },
             ].map((c) => (
               <div key={c.label} className="rounded-lg bg-surface-sunken px-1 py-2">
-                <p className={cn('text-lg font-semibold tabular-nums', c.cls)}>{c.value}</p>
+                <p className={cn('text-lg font-semibold nums', c.cls)}>{c.value}</p>
                 <p className="text-[11px] text-fg-subtle">{c.label}</p>
               </div>
             ))}
@@ -236,11 +238,11 @@ export function CommandCentrePanel({
           <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-center">
             <div className="rounded-lg border border-hairline px-1 py-1.5">
               <p className="text-[11px] text-fg-subtle">First in</p>
-              <p className="text-sm font-medium tabular-nums text-fg">{time(attendance.firstCheckIn)}</p>
+              <p className="text-sm font-medium nums text-fg">{time(attendance.firstCheckIn)}</p>
             </div>
             <div className="rounded-lg border border-hairline px-1 py-1.5">
               <p className="text-[11px] text-fg-subtle">Last out</p>
-              <p className="text-sm font-medium tabular-nums text-fg">{time(attendance.lastCheckOut)}</p>
+              <p className="text-sm font-medium nums text-fg">{time(attendance.lastCheckOut)}</p>
             </div>
           </div>
           <p className="mt-2 text-[11px] text-fg-subtle">Day starts {attendance.dayStart}</p>
@@ -248,7 +250,7 @@ export function CommandCentrePanel({
 
         {/* 3 — Materials consumed vs budget (money) */}
         {canSeeMoney && (
-          <Panel n={next()} title="Materials vs budget" icon={Package} to={tabHref('stock')} linkLabel="View materials">
+          <Panel n={3} title="Materials vs budget" icon={Package} to={tabHref('stock')} linkLabel="View materials">
             {materials && materials.allocated > 0 ? (
               <>
                 <Big
@@ -272,7 +274,7 @@ export function CommandCentrePanel({
 
         {/* 4 — Budget spent vs remaining (money) */}
         {canSeeMoney && financials && (
-          <Panel n={next()} title="Budget spent vs remaining" icon={Wallet} to={tabHref('budget')} linkLabel="View budget">
+          <Panel n={4} title="Budget spent vs remaining" icon={Wallet} to={tabHref('budget')} linkLabel="View budget">
             <Big
               value={financials.overallConsumedPct != null ? `${financials.overallConsumedPct}%` : '—'}
               sub={<HealthBadge health={financials.overallHealth} />}
@@ -294,7 +296,7 @@ export function CommandCentrePanel({
 
         {/* 5 — Profit to date (money) */}
         {canSeeMoney && profit && (
-          <Panel n={next()} title="Profit to date" icon={TrendingUp} to={tabHref('financials')} linkLabel="View P&L">
+          <Panel n={5} title="Profit to date" icon={TrendingUp} to={tabHref('financials')} linkLabel="View P&L">
             <Big
               value={fmtMoney(profit.grossProfit)}
               sub={profit.marginPct != null ? `${profit.marginPct}% margin` : 'Margin not yet meaningful'}
@@ -313,7 +315,7 @@ export function CommandCentrePanel({
 
         {/* 6 — Outstanding invoices (money) */}
         {canSeeMoney && invoices && (
-          <Panel n={next()} title="Outstanding invoices" icon={Receipt} to={tabHref('invoices')} linkLabel="View invoices">
+          <Panel n={6} title="Outstanding invoices" icon={Receipt} to={tabHref('invoices')} linkLabel="View invoices">
             <Big
               value={fmtMoney(invoices.outstanding)}
               sub={invoices.overdueCount > 0 ? `${invoices.overdueCount} overdue` : 'Nothing overdue'}
@@ -334,7 +336,7 @@ export function CommandCentrePanel({
         )}
 
         {/* 7 — Daily photos */}
-        <Panel n={next()} title="Site photos" icon={ImageIcon} to={tabHref('documents')} linkLabel="View all photos">
+        <Panel n={7} title="Site photos" icon={ImageIcon} to={tabHref('documents')} linkLabel="View all photos">
           {photos.length === 0 ? (
             <Muted>No site photos uploaded yet.</Muted>
           ) : (
@@ -357,7 +359,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 8 — Open defects */}
-        <Panel n={next()} title="Open defects" icon={AlertOctagon} to={tabHref('snags')} linkLabel="View defects">
+        <Panel n={8} title="Open defects" icon={AlertOctagon} to={tabHref('snags')} linkLabel="View defects">
           <Big
             value={snags.open}
             sub={snags.overdue > 0 ? `${snags.overdue} past the fix date` : 'None overdue'}
@@ -380,7 +382,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 9 — Equipment status */}
-        <Panel n={next()} title="Equipment status" icon={Wrench} to={href('/admin/tools')} linkLabel="View equipment">
+        <Panel n={9} title="Equipment status" icon={Wrench} to={href('/admin/tools')} linkLabel="View equipment">
           {equipment.total === 0 ? (
             <Muted>No equipment is assigned to this site.</Muted>
           ) : (
@@ -406,7 +408,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 10 — Safety */}
-        <Panel n={next()} title="Safety" icon={ShieldAlert} to={tabHref('safety')} linkLabel="View safety log">
+        <Panel n={10} title="Safety" icon={ShieldAlert} to={tabHref('safety')} linkLabel="View safety log">
           <Big
             value={safety.total}
             sub={`Incidents in the last ${safety.windowDays} days`}
@@ -427,7 +429,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 11 — Awaiting a decision */}
-        <Panel n={next()} title="Awaiting a decision" icon={ClipboardCheck} to={tabHref('expenses')} linkLabel="View approvals">
+        <Panel n={11} title="Awaiting a decision" icon={ClipboardCheck} to={tabHref('expenses')} linkLabel="View approvals">
           <Big value={totalPending} sub={totalPending === 0 ? 'Nothing pending' : 'Items on your desk'} />
           <div className="mt-2.5">
             <Row label="Expense claims" value={pendingApprovals.expenses} />
@@ -437,7 +439,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 12 — Next 14 days */}
-        <Panel n={next()} title="Next 14 days" icon={CalendarClock} to={href('/admin/calendar')} linkLabel="View calendar">
+        <Panel n={12} title="Next 14 days" icon={CalendarClock} to={href('/admin/calendar')} linkLabel="View calendar">
           {upcomingEvents.length === 0 ? (
             <Muted>Nothing on the calendar.</Muted>
           ) : (
@@ -445,7 +447,7 @@ export function CommandCentrePanel({
               {upcomingEvents.slice(0, 5).map((e) => (
                 <li key={e.id} className="flex items-baseline justify-between gap-2 text-sm">
                   <span className="truncate text-fg">{e.title}</span>
-                  <span className="shrink-0 text-xs tabular-nums text-fg-subtle">{fmtDate(e.date)}</span>
+                  <span className="shrink-0 text-xs nums text-fg-subtle">{fmtDate(e.date)}</span>
                 </li>
               ))}
             </ul>
@@ -454,7 +456,7 @@ export function CommandCentrePanel({
       </div>
 
       {/* 13 — Insights, full width: it reads across every card above it. */}
-      <InsightsPanel n={next()} insights={insights} />
+      <InsightsPanel n={13} insights={insights} />
     </div>
   );
 }
@@ -480,11 +482,11 @@ function InsightsPanel({ n, insights }: { n: number; insights: Insight[] }) {
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[11px] font-semibold tabular-nums text-fg-subtle">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[11px] font-semibold nums text-fg-subtle">
           {n}
         </span>
         <Lightbulb size={15} className="shrink-0 text-brand-600" />
-        <h3 className="text-sm font-semibold text-fg">Recommendations</h3>
+        <h2 className="text-sm font-semibold text-fg">Recommendations</h2>
         <Badge tone="blue" className="ml-auto">
           From this site&rsquo;s own figures
         </Badge>
