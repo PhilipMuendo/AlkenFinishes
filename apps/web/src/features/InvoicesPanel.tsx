@@ -6,8 +6,10 @@ import type { Invoice, InvoiceStatus, InvoicingConfig, ProjectReceivables } from
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 import { Textarea } from '@/components/ui/input';
@@ -43,11 +45,13 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
   const [claimOpen, setClaimOpen] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
   const [voiding, setVoiding] = useState<Invoice | null>(null);
+  const [deleting, setDeleting] = useState<Invoice | null>(null);
 
-  const { data: invoices, isLoading } = useQuery({
+  const invoicesQuery = useQuery({
     queryKey: ['invoices', projectId],
     queryFn: () => api<Invoice[]>(`/projects/${projectId}/invoices`),
   });
+  const { data: invoices, isLoading } = invoicesQuery;
   const { data: summary } = useQuery({
     queryKey: ['invoices', 'summary', projectId],
     queryFn: () => api<ProjectReceivables>(`/projects/${projectId}/invoices/summary`),
@@ -117,6 +121,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
     onSuccess: () => {
       toast.success('Draft invoice deleted.');
       invalidateAll();
+      setDeleting(null);
     },
     onError: (e) => toast.error(errText(e, 'The draft was not deleted.')),
   });
@@ -163,17 +168,15 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={invoicesQuery} rows={3} noun="invoices" />
+
       {!isLoading && invoices?.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Empty icon={FileText}>
-              <p className="font-medium text-fg">No invoices yet</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Raise a progress claim to bill the client for work completed so far.
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={FileText}>
+          <p className="font-medium text-fg">No invoices yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Raise a progress claim to bill the client for work completed so far.
+          </p>
+        </Empty>
       ) : (
         <Card className="overflow-hidden">
           <Table>
@@ -239,7 +242,7 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => remove.mutate(inv.id)}
+                            onClick={() => setDeleting(inv)}
                             disabled={remove.isPending}
                           >
                             Delete
@@ -402,6 +405,24 @@ export function InvoicesPanel({ projectId }: { projectId: string }) {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+        title="Delete this draft invoice?"
+        description={
+          deleting
+            ? `The draft for ${fmtMoney(deleting.grossTotal)} to ${deleting.clientName} will be discarded, along with its ${deleting.lines.length} line${deleting.lines.length === 1 ? '' : 's'}. It has no number yet, so nothing is left behind on the register.`
+            : undefined
+        }
+        confirmLabel="Delete draft"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The draft was not deleted.') : null}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
     </div>
   );
 }

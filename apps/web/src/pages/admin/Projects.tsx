@@ -4,7 +4,6 @@ import { Building2, Plus } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser, Project } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
@@ -54,11 +53,11 @@ export function ProjectsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Projects"
+        title="Sites"
         description="Construction sites and contracts"
         actions={
           <Button onClick={() => setOpen(true)}>
-            <Plus size={16} /> New project
+            <Plus size={16} /> New site
           </Button>
         }
       />
@@ -72,19 +71,15 @@ export function ProjectsPage() {
       )}
 
       {!isLoading && projects?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={Building2}>
-              <p className="font-medium text-fg">No projects yet</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Create your first project to start tracking budgets, payments, and progress.
-              </p>
-              <Button className="mt-3" onClick={() => setOpen(true)}>
-                <Plus size={16} /> New project
-              </Button>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={Building2}>
+          <p className="font-medium text-fg">No projects yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Create your first site to start tracking budgets, payments, and progress.
+          </p>
+          <Button className="mt-3" onClick={() => setOpen(true)}>
+            <Plus size={16} /> New site
+          </Button>
+        </Empty>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -93,9 +88,9 @@ export function ProjectsPage() {
         ))}
       </div>
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="New project">
+      <Dialog open={open} onClose={() => setOpen(false)} title="New site">
         <form onSubmit={onSubmit} className="space-y-3">
-          <Field label="Project name">
+          <Field label="Site name">
             <Input name="name" required placeholder="Karen Residence" />
           </Field>
           <Field label="Client name">
@@ -137,7 +132,7 @@ export function ProjectsPage() {
             </p>
           )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
-            Create project
+            Create site
           </Button>
         </form>
       </Dialog>

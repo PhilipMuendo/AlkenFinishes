@@ -102,16 +102,12 @@ export function TodayPage() {
 
   if (!projects?.length) {
     return (
-      <Card>
-        <CardContent>
-          <Empty icon={Building2}>
-            <p className="font-medium text-fg">No sites assigned yet</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Once an administrator assigns you to a site, today&rsquo;s work will show up here.
-            </p>
-          </Empty>
-        </CardContent>
-      </Card>
+      <Empty icon={Building2}>
+        <p className="font-medium text-fg">No sites assigned yet</p>
+        <p className="mt-1 max-w-xs text-fg-muted">
+          Once an administrator assigns you to a site, today&rsquo;s work will show up here.
+        </p>
+      </Empty>
     );
   }
 
@@ -215,7 +211,7 @@ export function TodayPage() {
           to={`/sites/${site.id}?view=attendance`}
           icon={Fingerprint}
           label="Attendance"
-          hint="Clock workers in and out"
+          hint="Clock fundis in and out"
         />
         <QuickAction
           to={`/sites/${site.id}?view=snags`}

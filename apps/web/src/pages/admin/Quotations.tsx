@@ -6,7 +6,8 @@ import type { Client, Lead, Quotation, QuotationStatus } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
@@ -42,6 +43,7 @@ export function QuotationsPage() {
   const [viewing, setViewing] = useState<Quotation | null>(null);
   const [rejecting, setRejecting] = useState<Quotation | null>(null);
   const [converting, setConverting] = useState<Quotation | null>(null);
+  const [deleting, setDeleting] = useState<Quotation | null>(null);
 
   const { data: quotations, isLoading } = useQuery({
     queryKey: ['quotations', status],
@@ -179,19 +181,15 @@ export function QuotationsPage() {
       {isLoading && <Skeleton className="h-64 w-full rounded-xl" />}
 
       {!isLoading && quotations?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={FileText}>
-              <p className="font-medium text-fg">
-                {status ? 'Nothing at that status' : 'No quotations yet'}
-              </p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Price a job here. Once the client accepts, the contract is raised from it without
-                retyping anything.
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={FileText}>
+          <p className="font-medium text-fg">
+            {status ? 'Nothing at that status' : 'No quotations yet'}
+          </p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Price a job here. Once the client accepts, the contract is raised from it without
+            retyping anything.
+          </p>
+        </Empty>
       )}
 
       {!isLoading && !!quotations?.length && (
@@ -373,7 +371,7 @@ export function QuotationsPage() {
                   <Button
                     variant="destructive"
                     disabled={remove.isPending}
-                    onClick={() => remove.mutate(viewing.id)}
+                    onClick={() => setDeleting(viewing)}
                   >
                     Delete draft
                   </Button>
@@ -521,6 +519,24 @@ export function QuotationsPage() {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+        title="Delete this draft quotation?"
+        description={
+          deleting
+            ? `"${deleting.title}" for ${deleting.client.name} — ${fmtMoney(deleting.total)} across ${deleting.lines.length} line${deleting.lines.length === 1 ? '' : 's'} — will be discarded. It was never sent, so the client has seen nothing.`
+            : undefined
+        }
+        confirmLabel="Delete draft"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The quotation was not deleted.') : null}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
     </div>
   );
 }

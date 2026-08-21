@@ -9,6 +9,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -20,13 +21,14 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
   const [filter, setFilter] = useState('');
   const [deleting, setDeleting] = useState<ProjectDocument | null>(null);
 
-  const { data: docs } = useQuery({
+  const docsQuery = useQuery({
     queryKey: ['documents', projectId, filter],
     queryFn: () =>
       api<ProjectDocument[]>(
         `/projects/${projectId}/documents${filter ? `?type=${filter}` : ''}`,
       ),
   });
+  const { data: docs } = docsQuery;
 
   const uploadDoc = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/documents`, { formData }),
@@ -68,6 +70,8 @@ export function DocumentsPanel({ projectId }: { projectId: string }) {
           <Upload size={16} /> Upload document
         </Button>
       </div>
+
+      <QueryState query={docsQuery} rows={3} noun="documents" />
 
       {docs?.length === 0 ? (
         <Empty>No documents in this repository yet</Empty>

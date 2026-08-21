@@ -5,10 +5,11 @@ import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Project, Tool, ToolTransfer } from '@/lib/types';
 import { fmtDate, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { toast } from '@/components/ui/toast';
@@ -19,10 +20,11 @@ export function ToolsPage() {
   const [transferring, setTransferring] = useState<Tool | null>(null);
   const [historyTool, setHistoryTool] = useState<Tool | null>(null);
 
-  const { data: tools } = useQuery({
+  const toolsQuery = useQuery({
     queryKey: ['tools'],
     queryFn: () => api<Tool[]>('/tools'),
   });
+  const { data: tools } = toolsQuery;
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
@@ -59,7 +61,7 @@ export function ToolsPage() {
     mutationFn: ({ id, status }: { id: string; status: Tool['status'] }) =>
       api(`/tools/${id}`, { method: 'PATCH', body: { status } }),
     onSuccess: () => {
-      toast.success('Tool status updated.');
+      toast.success('Equipment status updated.');
       void qc.invalidateQueries({ queryKey: ['tools'] });
     },
     onError: (e) => toast.error(errText(e, 'The status was not updated.')),
@@ -68,7 +70,7 @@ export function ToolsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Tools"
+        title="Equipment"
         description="Company equipment and where it currently sits"
         actions={
           <Button onClick={() => setAddOpen(true)}>
@@ -77,20 +79,18 @@ export function ToolsPage() {
         }
       />
 
+      <QueryState query={toolsQuery} rows={4} noun="equipment" />
+
       {tools?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={Wrench}>
-              <p className="font-medium text-fg">No tools registered yet</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Add equipment to track where it sits and move it between sites with photo proof.
-              </p>
-              <Button className="mt-3" onClick={() => setAddOpen(true)}>
-                <Plus size={16} /> New tool
-              </Button>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={Wrench}>
+          <p className="font-medium text-fg">No tools registered yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Add equipment to track where it sits and move it between sites with photo proof.
+          </p>
+          <Button className="mt-3" onClick={() => setAddOpen(true)}>
+            <Plus size={16} /> New tool
+          </Button>
+        </Empty>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -171,7 +171,7 @@ export function ToolsPage() {
             <Input name="name" required placeholder="Paint brush set" />
           </Field>
           <Field label="Category (optional)">
-            <Input name="category" placeholder="Hand tools, Power tools…" />
+            <Input name="category" placeholder="Hand equipment, Power equipment…" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Quantity">

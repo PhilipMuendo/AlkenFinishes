@@ -85,7 +85,7 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
             {expenseSeries.length ? (
               <ExpenseTrendChart data={expenseSeries} />
             ) : (
-              <Empty>No expenses yet</Empty>
+              <Empty variant="inline">No expenses yet</Empty>
             )}
           </CardContent>
         </Card>
@@ -105,7 +105,7 @@ export function FinancialsPanel({ projectId }: { projectId: string }) {
             {expenseSeries.length ? (
               <CumulativeCostChart data={expenseSeries} />
             ) : (
-              <Empty>No expenses yet</Empty>
+              <Empty variant="inline">No expenses yet</Empty>
             )}
           </CardContent>
         </Card>

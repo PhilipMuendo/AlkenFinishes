@@ -123,11 +123,11 @@ export function ClaimBuilder({
 
   if (!data?.hasSchedule) {
     return (
-      <Empty icon={FileText}>
+      <Empty variant="inline" icon={FileText}>
         <p className="font-medium text-fg">Nothing to claim against</p>
         <p className="mt-1 max-w-sm text-fg-muted">
           A progress claim is measured against the priced schedule the client agreed to. Link this
-          project to a contract with an accepted quotation, then come back — the items will be here
+          site to a contract with an accepted quotation, then come back — the items will be here
           with their contract values already filled in.
         </p>
       </Empty>

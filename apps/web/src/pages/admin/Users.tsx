@@ -4,9 +4,11 @@ import { KeyRound, Plus, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th } from '@/components/ui/table';
 import { Card } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/page-header';
@@ -18,10 +20,11 @@ export function UsersPage() {
   const [resetting, setResetting] = useState<AppUser | null>(null);
   const [deleting, setDeleting] = useState<AppUser | null>(null);
 
-  const { data: users } = useQuery({
+  const usersQuery = useQuery({
     queryKey: ['users'],
     queryFn: () => api<AppUser[]>('/users'),
   });
+  const { data: users } = usersQuery;
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/users', { body }),
@@ -74,6 +77,8 @@ export function UsersPage() {
           </Button>
         }
       />
+
+      <QueryState query={usersQuery} rows={4} noun="the team" />
 
       <Card className="overflow-hidden">
       <Table>
@@ -213,52 +218,23 @@ export function UsersPage() {
         )}
       </Dialog>
 
-      <Dialog
-        open={!!deleting}
+      <ConfirmDialog
+        open={Boolean(deleting)}
         onClose={() => {
           setDeleting(null);
           deleteUser.reset();
         }}
         title={deleting ? `Delete ${deleting.name}?` : ''}
-      >
-        {deleting && (
-          <div className="space-y-3">
-            <p className="text-sm text-fg-muted">
-              This permanently removes <span className="font-medium text-fg">{deleting.email}</span>.
-              This can&rsquo;t be undone. If you might need this account again, use{' '}
-              <span className="font-medium text-fg">Disable</span> instead — it blocks sign-in but
-              keeps their history.
-            </p>
-            {deleteUser.isError && (
-              <p className="text-sm text-danger-fg">
-                {deleteUser.error instanceof ApiRequestError
-                  ? deleteUser.error.message
-                  : 'Failed to delete this account'}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setDeleting(null);
-                  deleteUser.reset();
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                disabled={deleteUser.isPending}
-                onClick={() => deleteUser.mutate(deleting.id)}
-              >
-                Delete permanently
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
+        description={
+          deleting
+            ? `This permanently removes ${deleting.email}, and cannot be undone. If you might need the account again, disable it instead — that blocks sign-in but keeps their history.`
+            : undefined
+        }
+        confirmLabel="Delete permanently"
+        pending={deleteUser.isPending}
+        error={deleteUser.isError ? errText(deleteUser.error, 'The account was not deleted.') : null}
+        onConfirm={() => deleting && deleteUser.mutate(deleting.id)}
+      />
     </div>
   );
 }

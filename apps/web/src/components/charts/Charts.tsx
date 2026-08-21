@@ -147,7 +147,7 @@ export function CategoryBreakdownChart({ data }: { data: CategoryFinancials[] })
   );
 }
 
-/** Progress vs cost consumed per project — grouped %, one axis. */
+/** Progress vs cost consumed per site — grouped %, one axis. */
 export function ProgressVsCostChart({
   data,
 }: {

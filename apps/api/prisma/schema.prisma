@@ -1057,6 +1057,9 @@ model WeeklyReport {
   submittedById String
   submittedBy   User     @relation(fields: [submittedById], references: [id])
   createdAt     DateTime @default(now())
+  // Filing twice for the same week revises the first report in place, so the
+  // card has to be able to say the summary was rewritten after it was filed.
+  updatedAt     DateTime @default(now()) @updatedAt
 
   @@unique([projectId, weekEnding])
   @@index([projectId, weekEnding])

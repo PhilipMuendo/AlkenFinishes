@@ -19,6 +19,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { Notice } from '@/components/ui/notice';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -63,11 +64,12 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
     enabled: canBrowse,
   });
 
-  const { data: expenses } = useQuery({
+  const expensesQuery = useQuery({
     queryKey: ['expenses', projectId],
     queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses`),
     enabled: canBrowse,
   });
+  const { data: expenses } = expensesQuery;
   const { data: mine } = useQuery({
     queryKey: ['expenses', projectId, 'mine'],
     queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses/mine`),
@@ -126,7 +128,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   });
 
   // Supervisors can log a purchase (money leaves their hand on site and needs
-  // a receipt captured there) but don't get the project's full ledger — that's
+  // a receipt captured there) but don't get the site's full ledger — that's
   // office-only. They see their own claims and whether the office accepted
   // them, so a rejection doesn't vanish without a trace.
   if (!canBrowse) {
@@ -201,8 +203,10 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={expensesQuery} rows={4} noun="expenses" />
+
       {expenses?.length === 0 ? (
-        <Empty>No expenses recorded for this project</Empty>
+        <Empty>No expenses recorded for this site</Empty>
       ) : (
         <Table>
           <thead>

@@ -32,7 +32,7 @@ import { cn } from '@/lib/utils';
 /**
  * Find anything by name.
  *
- * Seventeen admin pages, and every record nested under a project — so reaching
+ * Seventeen admin pages, and every record nested under a site — so reaching
  * a contract meant already knowing which screen owned it. This asks for the
  * name instead of the location.
  *
@@ -54,18 +54,18 @@ interface Hit {
 /** Destinations, so the palette also works as navigation. */
 const PAGES: Hit[] = [
   { id: 'p-overview', label: 'Overview', group: 'Go to', icon: Building2, to: '/admin' },
-  { id: 'p-projects', label: 'Projects', group: 'Go to', icon: Building2, to: '/admin/projects' },
+  { id: 'p-projects', label: 'Projects', group: 'Go to', icon: Building2, to: '/admin/sites' },
   { id: 'p-clients', label: 'Clients', group: 'Go to', icon: Contact, to: '/admin/clients' },
   { id: 'p-leads', label: 'Leads', group: 'Go to', icon: FileText, to: '/admin/leads' },
   { id: 'p-quotes', label: 'Quotations', group: 'Go to', icon: FileText, to: '/admin/quotations' },
   { id: 'p-contracts', label: 'Contracts', group: 'Go to', icon: FileSignature, to: '/admin/contracts' },
-  { id: 'p-recv', label: 'Receivables', group: 'Go to', icon: FileText, to: '/admin/invoices' },
-  { id: 'p-pay', label: 'Payables', group: 'Go to', icon: Truck, to: '/admin/suppliers' },
+  { id: 'p-recv', label: 'Receivables', group: 'Go to', icon: FileText, to: '/admin/receivables' },
+  { id: 'p-pay', label: 'Payables', group: 'Go to', icon: Truck, to: '/admin/payables' },
   { id: 'p-payroll', label: 'Payroll', group: 'Go to', icon: HardHat, to: '/admin/payroll' },
   { id: 'p-tax', label: 'Tax position', group: 'Go to', icon: FileText, to: '/admin/tax' },
-  { id: 'p-workers', label: 'Workers', group: 'Go to', icon: HardHat, to: '/admin/workers' },
+  { id: 'p-workers', label: 'Fundis', group: 'Go to', icon: HardHat, to: '/admin/workers' },
   { id: 'p-reports', label: 'Reports', group: 'Go to', icon: FileText, to: '/admin/reports' },
-  { id: 'p-team', label: 'Team', group: 'Go to', icon: Contact, to: '/admin/users' },
+  { id: 'p-team', label: 'Team', group: 'Go to', icon: Contact, to: '/admin/team' },
   { id: 's-company', label: 'Settings — company letterhead', group: 'Go to', icon: FileText, to: '/admin/settings/company' },
   { id: 's-docs', label: 'Settings — quotations, contracts & invoicing', group: 'Go to', icon: FileText, to: '/admin/settings/documents' },
   { id: 's-money', label: 'Settings — budgets, tax & payroll rates', group: 'Go to', icon: FileText, to: '/admin/settings/money' },
@@ -141,7 +141,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         detail: [p.code, p.clientName, p.location].filter(Boolean).join(' · '),
         group: 'Sites',
         icon: Building2,
-        to: `/admin/projects/${p.id}`,
+        to: `/admin/sites/${p.id}`,
       })),
       ...(contracts ?? []).map((c) => ({
         id: `co-${c.id}`,
@@ -171,7 +171,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         id: `wo-${w.id}`,
         label: w.name,
         detail: [w.trade, w.assignments[0]?.project.name].filter(Boolean).join(' · '),
-        group: 'Workers',
+        group: 'Fundis',
         icon: HardHat,
         to: '/admin/workers',
       })),
@@ -181,7 +181,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         detail: s.contactName ?? s.phone ?? undefined,
         group: 'Suppliers',
         icon: Truck,
-        to: '/admin/suppliers',
+        to: '/admin/payables',
       })),
       ...(leads ?? [])
         .filter((l) => l.stage !== 'WON' && l.stage !== 'LOST')
@@ -199,7 +199,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         detail: [i.clientName, i.project.name].filter(Boolean).join(' · '),
         group: 'Invoices',
         icon: Receipt,
-        to: `/admin/projects/${i.project.id}?tab=financials`,
+        to: `/admin/sites/${i.project.id}?tab=financials`,
       })),
       ...(tools ?? []).map((t) => ({
         id: `to-${t.id}`,
@@ -207,7 +207,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         detail: [t.category, t.currentProject?.name ?? 'Central store'].filter(Boolean).join(' · '),
         group: 'Equipment',
         icon: Wrench,
-        to: '/admin/tools',
+        to: '/admin/equipment',
       })),
       ...PAGES,
     ];
@@ -285,7 +285,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search sites, leads, invoices, contracts, clients, workers, equipment…"
+            placeholder="Search sites, leads, invoices, contracts, clients, fundis, equipment…"
             className="w-full bg-transparent py-3.5 text-base text-fg outline-none placeholder:text-fg-subtle sm:text-sm"
           />
           <kbd className="hidden shrink-0 rounded border border-hairline-strong px-1.5 py-0.5 text-[10px] font-medium text-fg-subtle sm:block">

@@ -2,23 +2,29 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import type { PaymentMethodValue, Worker, WorkerPaymentSuggestion } from '@/lib/types';
+import type {
+  PaymentMethodValue,
+  Worker,
+  WorkerPayment,
+  WorkerPaymentSuggestion,
+} from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Notice } from '@/components/ui/notice';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 /**
- * Paying a casual/contracted worker, in part or in full.
+ * Paying a casual/contracted fundi, in part or in full.
  *
  * Mirrors SupplierPaymentDialog: the figure that matters is what SETTLES the
  * balance, which is cash sent plus any tax withheld from it. Withholding is
  * shown adding up as it is typed, for the same reason — the mistake this
  * screen exists to prevent is treating withheld tax as still owed and paying
- * it to the worker a second time.
+ * it to the fundi a second time.
  */
 
 const METHODS: { value: PaymentMethodValue; label: string }[] = [
@@ -48,6 +54,7 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
   const [paymentDate, setPaymentDate] = useState(todayISO());
   const [referenceNo, setReferenceNo] = useState('');
   const [whtCertNo, setWhtCertNo] = useState('');
+  const [deleting, setDeleting] = useState<WorkerPayment | null>(null);
   const [notes, setNotes] = useState('');
   const [proof, setProof] = useState<File | null>(null);
   const [overpayAccepted, setOverpayAccepted] = useState(false);
@@ -99,9 +106,10 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
     mutationFn: (paymentId: string) =>
       api(`/workers/${worker.id}/payments/${paymentId}`, { method: 'DELETE' }),
     onSuccess: () => {
-      toast.success('Payment removed. The balance is owed again in full.');
+      toast.success('Payment removed. That amount is owed again.');
       void qc.invalidateQueries({ queryKey: ['workers'] });
       void qc.invalidateQueries({ queryKey: ['workers', worker.id, 'payment-suggestion'] });
+      setDeleting(null);
     },
     onError: (e) => toast.error(errText(e, 'The payment was not removed.')),
   });
@@ -127,7 +135,7 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
       </div>
 
       {position.settled ? (
-        <Notice tone="good">This worker is fully settled. Nothing further is owed.</Notice>
+        <Notice tone="good">This fundi is fully settled. Nothing further is owed.</Notice>
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -171,7 +179,7 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
               Tax withheld and paid to KRA
             </p>
             <p className="mb-2 mt-1 text-xs text-fg-muted">
-              Withheld tax settles this balance just as cash does — the worker is paid in full
+              Withheld tax settles this balance just as cash does — the fundi is paid in full
               without it. Leave at zero if you did not withhold.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -198,7 +206,7 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
           </div>
 
           <div className="rounded-lg border border-hairline bg-surface-muted p-3 text-sm">
-            <Row label="Cash to worker" value={num(amount)} muted />
+            <Row label="Cash to fundi" value={num(amount)} muted />
             <Row label="Tax to KRA" value={num(wht)} muted />
             <div className="mt-1 border-t border-hairline pt-1">
               <Row label="Settles" value={settles} strong />
@@ -314,9 +322,10 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
                   {!p.whtRemittedAt && (
                     <button
                       type="button"
-                      onClick={() => remove.mutate(p.id)}
+                      onClick={() => setDeleting(p)}
                       disabled={remove.isPending}
                       className="text-fg-subtle hover:text-danger-fg"
+                      aria-label={`Remove the ${fmtMoney(p.amount)} payment of ${fmtDate(p.paymentDate)}`}
                       title="Remove this payment"
                     >
                       <Trash2 size={15} />
@@ -335,6 +344,30 @@ export function WorkerPaymentDialog({ worker, onDone }: { worker: Worker; onDone
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+        title="Remove this payment?"
+        description={
+          deleting
+            ? `${fmtMoney(deleting.amount)} paid to ${worker.name} on ${fmtDate(
+                deleting.paymentDate,
+              )} will be struck from the record${
+                deleting.whtAmount > 0
+                  ? `, along with the ${fmtMoney(deleting.whtAmount)} withheld against it`
+                  : ''
+              }. They will be owed that amount again.`
+            : undefined
+        }
+        confirmLabel="Remove payment"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The payment was not removed.') : null}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
     </div>
   );
 }

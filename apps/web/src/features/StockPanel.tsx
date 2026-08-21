@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 import { MaterialRequestsPanel } from './MaterialRequestsPanel';
@@ -19,10 +20,11 @@ export function StockPanel({ projectId }: { projectId: string }) {
   const [movement, setMovement] = useState<{ item: StockItem; type: 'IN' | 'OUT' } | null>(null);
   const [historyItem, setHistoryItem] = useState<StockItem | null>(null);
 
-  const { data: items } = useQuery({
+  const itemsQuery = useQuery({
     queryKey: ['stock', projectId],
     queryFn: () => api<StockItem[]>(`/projects/${projectId}/stock`),
   });
+  const { data: items } = itemsQuery;
 
   const { data: history } = useQuery({
     queryKey: ['stock-history', historyItem?.id],
@@ -63,18 +65,18 @@ export function StockPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={itemsQuery} rows={3} noun="site stock" />
+
       {items?.length === 0 && (
-        <div className="rounded-xl border border-hairline bg-surface shadow-sm">
-          <Empty icon={Boxes}>
-            <p className="font-medium text-fg">No materials tracked yet</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Add a material first (e.g. &ldquo;Tiles&rdquo;, unit &ldquo;pieces&rdquo;) — then use{' '}
-              <span className="font-medium text-fg">Received</span> and{' '}
-              <span className="font-medium text-fg">Used</span> on it to log deliveries and usage.
-              Every change is recorded and visible in its history.
-            </p>
-          </Empty>
-        </div>
+        <Empty variant="inline" icon={Boxes}>
+          <p className="font-medium text-fg">No materials tracked yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Add a material first (e.g. &ldquo;Tiles&rdquo;, unit &ldquo;pieces&rdquo;) — then use{' '}
+            <span className="font-medium text-fg">Received</span> and{' '}
+            <span className="font-medium text-fg">Used</span> on it to log deliveries and usage.
+            Every change is recorded and visible in its history.
+          </p>
+        </Empty>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -210,7 +212,7 @@ export function StockPanel({ projectId }: { projectId: string }) {
         title={historyItem ? `${historyItem.name} — history` : ''}
       >
         <div className="max-h-80 space-y-2 overflow-y-auto">
-          {history?.length === 0 && <Empty>No movements yet</Empty>}
+          {history?.length === 0 && <Empty variant="inline">No movements yet</Empty>}
           {history?.map((m) => (
             <div key={m.id} className="flex items-center justify-between rounded-lg border border-hairline p-3">
               <div>

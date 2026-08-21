@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import type { Expense, PaymentMethodValue, PaymentSuggestion } from '@/lib/types';
+import type {
+  Expense,
+  PaymentMethodValue,
+  PaymentSuggestion,
+  SupplierPayment,
+} from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Notice } from '@/components/ui/notice';
 import { toast } from '@/components/ui/toast';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -61,6 +67,7 @@ export function SupplierPaymentDialog({
   const [whtCertNo, setWhtCertNo] = useState('');
   const [notes, setNotes] = useState('');
   const [proof, setProof] = useState<File | null>(null);
+  const [deleting, setDeleting] = useState<SupplierPayment | null>(null);
   const [overpayAccepted, setOverpayAccepted] = useState(false);
 
   // Default to settling the bill in full, with withholding already worked out
@@ -119,12 +126,13 @@ export function SupplierPaymentDialog({
         method: 'DELETE',
       }),
     onSuccess: () => {
-      toast.success('Payment removed. The bill is owed again in full.');
+      toast.success('Payment removed. That amount is owed again.');
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['suppliers'] });
       void qc.invalidateQueries({
         queryKey: ['expenses', projectId, expense.id, 'payment-suggestion'],
       });
+      setDeleting(null);
     },
     onError: (e) => toast.error(errText(e, 'The payment was not removed.')),
   });
@@ -361,9 +369,10 @@ export function SupplierPaymentDialog({
                   {!p.whtRemittedAt && (
                     <button
                       type="button"
-                      onClick={() => remove.mutate(p.id)}
+                      onClick={() => setDeleting(p)}
                       disabled={remove.isPending}
                       className="text-fg-subtle hover:text-danger-fg"
+                      aria-label={`Remove the ${fmtMoney(p.amount)} payment of ${fmtDate(p.paymentDate)}`}
                       title="Remove this payment"
                     >
                       <Trash2 size={15} />
@@ -382,6 +391,32 @@ export function SupplierPaymentDialog({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+        title="Remove this payment?"
+        description={
+          deleting
+            ? `${fmtMoney(deleting.amount)} paid on ${fmtDate(
+                deleting.paymentDate,
+              )} will be struck from the record${
+                deleting.whtAmount + deleting.whtVatAmount > 0
+                  ? `, along with the ${fmtMoney(
+                      deleting.whtAmount + deleting.whtVatAmount,
+                    )} withheld against it`
+                  : ''
+              }. The bill goes back to being owed in full.`
+            : undefined
+        }
+        confirmLabel="Remove payment"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The payment was not removed.') : null}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@ export interface ComboboxOption {
 
 /**
  * A searchable drop-in replacement for a native <select> with long option
- * lists (worker/site pickers at 200+ entries). Renders a hidden input so it
+ * lists (fundi/site pickers at 200+ entries). Renders a hidden input so it
  * still participates in a plain `new FormData(form)` submit the same way a
  * <select name="..."> would — callers can swap one for the other directly.
  */

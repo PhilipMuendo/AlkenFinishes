@@ -19,6 +19,7 @@ import { fmtMoney } from '@/lib/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { buttonVariants } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
+import { QueryState } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -117,7 +118,7 @@ function AttentionSection({ section, items }: { section: Section; items: Item[] 
         {items.map((item) => (
           <li key={item.id}>
             <Link
-              to={`/admin/projects/${item.id}`}
+              to={`/admin/sites/${item.id}`}
               className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken"
             >
               <span className="truncate text-sm font-medium text-fg">{item.name}</span>
@@ -157,11 +158,12 @@ function OverviewSkeleton() {
  * here is to go and look at what is behind it.
  */
 function PipelineStrip() {
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['analytics', 'pipeline'],
     queryFn: () => api<PipelineDigest>('/analytics/pipeline'),
   });
-  if (!data) return null;
+  const { data } = query;
+  if (!data) return <QueryState query={query} rows={1} noun="the pipeline" />;
 
   const tiles = [
     { label: 'Leads open', to: '/admin/leads', ...data.openLeads },
@@ -203,7 +205,7 @@ function PipelineStrip() {
   );
 }
 
-export function CompanyDashboard() {
+export function CompanyDashboardPage() {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['analytics', 'attention'],
     queryFn: () => api<AttentionDigest>('/analytics/attention'),
@@ -244,7 +246,7 @@ export function CompanyDashboard() {
         description={`${data.activeCount} active · ${data.portfolioCount} in portfolio`}
         actions={
           <Link
-            to="/admin/projects"
+            to="/admin/sites"
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             All projects <ArrowRight size={15} />
@@ -267,8 +269,8 @@ export function CompanyDashboard() {
                 up here the moment they appear.
               </p>
             </div>
-            <Link to="/admin/projects" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
-              View all projects
+            <Link to="/admin/sites" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+              View all sites
             </Link>
           </CardContent>
         </Card>

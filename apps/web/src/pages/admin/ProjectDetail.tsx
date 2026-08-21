@@ -18,6 +18,8 @@ import { AttendancePanel } from '@/features/AttendancePanel';
 import { StockPanel } from '@/features/StockPanel';
 import { DocumentsPanel } from '@/features/DocumentsPanel';
 import { ReportsPanel } from '@/features/ReportsPanel';
+import { WeeklyReportsPanel } from '@/features/WeeklyReportsPanel';
+import { PhotosPanel } from '@/features/PhotosPanel';
 import { InvoicesPanel } from '@/features/InvoicesPanel';
 import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
@@ -40,8 +42,10 @@ const GROUPS = [
     tabs: [
       { id: 'tasks', label: 'Tasks & programme' },
       { id: 'reports', label: 'Daily reports' },
+      { id: 'weekly', label: 'Weekly summaries' },
       { id: 'attendance', label: 'Attendance' },
-      { id: 'documents', label: 'Photos & documents' },
+      { id: 'photos', label: 'Photos' },
+      { id: 'documents', label: 'Documents' },
     ],
   },
   {
@@ -172,7 +176,7 @@ export function ProjectDetailPage() {
     <div className="space-y-5">
       <div>
         <Link
-          to="/admin/projects"
+          to="/admin/sites"
           className="mb-3 inline-flex items-center gap-1 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
         >
           <ChevronLeft size={16} /> Projects
@@ -184,7 +188,7 @@ export function ProjectDetailPage() {
               value={project.status}
               onChange={(e) => setStatus.mutate(e.target.value as ProjectStatus)}
               className="h-9 w-auto text-sm"
-              aria-label="Project status"
+              aria-label="Site status"
               disabled={setStatus.isPending}
             >
               {STATUSES.map((s) => (
@@ -267,6 +271,8 @@ export function ProjectDetailPage() {
       {tab === 'stock' && <StockPanel projectId={projectId} />}
       {tab === 'documents' && <DocumentsPanel projectId={projectId} />}
       {tab === 'reports' && <ReportsPanel projectId={projectId} canSubmit={false} />}
+      {tab === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit={false} />}
+      {tab === 'photos' && <PhotosPanel projectId={projectId} />}
       {tab === 'snags' && <SnagsPanel projectId={projectId} />}
       {tab === 'safety' && <SafetyPanel projectId={projectId} />}
       {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}

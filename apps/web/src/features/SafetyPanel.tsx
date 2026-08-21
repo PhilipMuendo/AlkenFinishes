@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -32,10 +33,11 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState<SafetyIncident | null>(null);
 
-  const { data: incidents } = useQuery({
+  const incidentsQuery = useQuery({
     queryKey: ['safety-incidents', projectId],
     queryFn: () => api<SafetyIncident[]>(`/projects/${projectId}/safety-incidents`),
   });
+  const { data: incidents } = incidentsQuery;
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['safety-incidents', projectId] });
 
@@ -67,16 +69,16 @@ export function SafetyPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={incidentsQuery} rows={3} noun="safety records" />
+
       {incidents?.length === 0 && (
-        <Card className="p-8">
-          <Empty icon={HardHat}>
-            <p className="font-medium text-fg">Nothing logged</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Near misses are worth recording too — the pattern in these is what prevents the
-              serious one.
-            </p>
-          </Empty>
-        </Card>
+        <Empty icon={HardHat}>
+          <p className="font-medium text-fg">Nothing logged</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Near misses are worth recording too — the pattern in these is what prevents the
+            serious one.
+          </p>
+        </Empty>
       )}
 
       <div className="space-y-2">

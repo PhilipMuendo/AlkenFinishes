@@ -8,8 +8,10 @@ import { fmtDate, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -35,6 +37,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [rejecting, setRejecting] = useState<MaterialRequest | null>(null);
   const [editing, setEditing] = useState<MaterialRequest | null>(null);
+  const [withdrawing, setWithdrawing] = useState<MaterialRequest | null>(null);
 
   // Shared by the create and edit forms: pick an existing StockItem by id,
   // or NEW_ITEM to name (and unit) one that doesn't exist yet.
@@ -46,10 +49,11 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
     return { itemName: picked?.name ?? customName, unit: picked?.unit ?? customUnit };
   };
 
-  const { data: requests } = useQuery({
+  const requestsQuery = useQuery({
     queryKey: ['material-requests', projectId],
     queryFn: () => api<MaterialRequest[]>(`/projects/${projectId}/material-requests`),
   });
+  const { data: requests } = requestsQuery;
 
   // Shares its cache with StockPanel's own fetch (same key), so mounting
   // both costs one request, not two. Existing names are offered as a
@@ -146,12 +150,12 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={requestsQuery} rows={3} noun="material requests" />
+
       {requests?.length === 0 && (
-        <Card className="p-4">
-          <Empty icon={ClipboardList}>
-            <p className="text-sm text-fg-muted">Nothing requested yet.</p>
-          </Empty>
-        </Card>
+        <Empty icon={ClipboardList}>
+          <p className="text-sm text-fg-muted">Nothing requested yet.</p>
+        </Empty>
       )}
 
       {open_.length > 0 && (
@@ -209,7 +213,7 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
                     size="sm"
                     variant="outline"
                     disabled={withdraw.isPending}
-                    onClick={() => withdraw.mutate(r.id)}
+                    onClick={() => setWithdrawing(r)}
                   >
                     Withdraw
                   </Button>
@@ -405,6 +409,24 @@ export function MaterialRequestsPanel({ projectId }: { projectId: string }) {
           </Button>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(withdrawing)}
+        onClose={() => {
+          setWithdrawing(null);
+          withdraw.reset();
+        }}
+        title="Withdraw this request?"
+        description={
+          withdrawing
+            ? `The request for ${withdrawing.quantity} ${withdrawing.unit} of ${withdrawing.itemName} will be taken back before the office decides on it. You can raise it again at any time.`
+            : undefined
+        }
+        confirmLabel="Withdraw request"
+        pending={withdraw.isPending}
+        error={withdraw.isError ? errText(withdraw.error, 'The request was not withdrawn.') : null}
+        onConfirm={() => withdrawing && withdraw.mutate(withdrawing.id)}
+      />
     </div>
   );
 }

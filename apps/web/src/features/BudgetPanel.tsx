@@ -16,10 +16,11 @@ interface BudgetLine {
 
 export function BudgetPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const budgetQuery = useQuery({
     queryKey: ['budget', projectId],
     queryFn: () => api<BudgetLine[]>(`/projects/${projectId}/budget`),
   });
+  const { data } = budgetQuery;
   const [values, setValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
   return (
     <Card className="max-w-xl">
       <CardHeader>
-        <CardTitle>Project budget allocation (KES)</CardTitle>
+        <CardTitle>Site budget allocation (KES)</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {CATEGORIES.map((cat) => (

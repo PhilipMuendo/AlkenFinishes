@@ -36,48 +36,56 @@ import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
  * Optimized for one-handed phone use on site — no financials here.
+ *
+ * Every tile carries the same neutral chip. They used to carry eleven
+ * different colours, two of them borrowed from the status palette — so
+ * Expenses sat permanently amber and Safety permanently red whether or not
+ * anything was wrong. Amber and red mean something in this app; spending them
+ * on navigation leaves a real warning competing with a menu.
  */
+const CHIP = 'bg-surface-sunken text-fg-muted';
+
 const ACTIONS = [
-  { id: 'fundis', label: 'Fundis', hint: 'Add and manage workers', icon: HardHat, chip: 'bg-rose-50 text-rose-600' },
+  { id: 'fundis', label: 'Fundis', hint: 'Add and manage fundis', icon: HardHat, chip: CHIP },
   {
     id: 'attendance',
     label: 'Attendance',
-    hint: 'Clock workers in',
+    hint: 'Clock fundis in',
     icon: Fingerprint,
-    chip: 'bg-brand-50 text-brand-600',
+    chip: CHIP,
   },
-  { id: 'stock', label: 'Stock', hint: 'Materials on site', icon: Boxes, chip: 'bg-good-surface text-good-fg' },
-  { id: 'expenses', label: 'Expenses', hint: 'Log spending', icon: Receipt, chip: 'bg-warn-surface text-warn-fg' },
-  { id: 'tasks', label: 'Tasks', hint: 'Track progress', icon: ListChecks, chip: 'bg-violet-50 text-violet-600' },
+  { id: 'stock', label: 'Stock', hint: 'Materials on site', icon: Boxes, chip: CHIP },
+  { id: 'expenses', label: 'Expenses', hint: 'Log spending', icon: Receipt, chip: CHIP },
+  { id: 'tasks', label: 'Tasks', hint: 'Track progress', icon: ListChecks, chip: CHIP },
   {
     id: 'report',
     label: 'Daily report',
     hint: "Submit today's update",
     icon: ClipboardList,
-    chip: 'bg-indigo-50 text-indigo-600',
+    chip: CHIP,
   },
   {
     id: 'weekly',
     label: 'Weekly report',
     hint: 'Summarise the week',
     icon: CalendarRange,
-    chip: 'bg-sky-50 text-sky-600',
+    chip: CHIP,
   },
-  { id: 'tools', label: 'Tools', hint: 'Equipment on site', icon: Wrench, chip: 'bg-teal-50 text-teal-600' },
-  { id: 'photos', label: 'Photos', hint: 'Site photo gallery', icon: Camera, chip: 'bg-pink-50 text-pink-600' },
+  { id: 'tools', label: 'Equipment', hint: 'What is on site right now', icon: Wrench, chip: CHIP },
+  { id: 'photos', label: 'Photos', hint: 'Site photo gallery', icon: Camera, chip: CHIP },
   {
     id: 'snags',
     label: 'Snag list',
     hint: 'Report a defect',
     icon: AlertOctagon,
-    chip: 'bg-orange-50 text-orange-600',
+    chip: CHIP,
   },
   {
     id: 'safety',
     label: 'Safety',
     hint: 'Log an incident',
     icon: ShieldAlert,
-    chip: 'bg-danger-surface text-danger-fg',
+    chip: CHIP,
   },
 ] as const;
 

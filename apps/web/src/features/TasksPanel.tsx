@@ -29,10 +29,11 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState<Task | null>(null);
   const [deleting, setDeleting] = useState<Task | null>(null);
 
-  const { data } = useQuery({
+  const tasksQuery = useQuery({
     queryKey: ['tasks', projectId],
     queryFn: () => api<TasksResponse>(`/projects/${projectId}/tasks`),
   });
+  const { data } = tasksQuery;
   const tasks = data?.tasks;
   const progress = data?.progress;
 
@@ -134,7 +135,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
 
       {phases.map((phase) => {
         const phaseTasks = (tasks ?? []).filter((t) => t.phase === phase);
-        // Same rule as the project figure: a phase is as done as its weight is.
+        // Same rule as the site figure: a phase is as done as its weight is.
         const phaseWeight = phaseTasks.reduce((s, t) => s + (t.weight > 0 ? t.weight : 0), 0);
         const avg =
           phaseWeight > 0

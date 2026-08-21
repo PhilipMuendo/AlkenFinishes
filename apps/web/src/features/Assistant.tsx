@@ -22,7 +22,7 @@ import { Notice } from '@/components/ui/notice';
 const SUGGESTIONS_OFFICE = [
   'Which sites are active?',
   'Who do we owe the most money to?',
-  'How many workers do we have?',
+  'How many fundis do we have?',
   'What needs my attention?',
 ];
 const SUGGESTIONS_SITE = [
@@ -223,7 +223,7 @@ export function Assistant({ office }: { office: boolean }) {
         <button
           ref={launcherRef}
           onClick={() => setOpen(true)}
-          aria-label="Ask about your projects"
+          aria-label="Ask about your sites"
           className={`fixed right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand-600 px-4 text-sm font-medium text-white shadow-lg transition-transform hover:bg-brand-700 active:scale-95 ${
             // Clear of the supervisor's bottom navigation, which the office
             // shell does not have.

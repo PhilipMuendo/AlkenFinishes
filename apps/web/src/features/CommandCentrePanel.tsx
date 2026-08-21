@@ -30,7 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 /**
- * Mission control for one project.
+ * Mission control for one site.
  *
  * Every card is a summary of a tab that owns the underlying data, and links
  * there — nothing here is a second place any of it lives. Money cards are
@@ -172,7 +172,7 @@ export function CommandCentrePanel({
 
   // `undefined` makes Panel drop its footer link entirely.
   const href = (path: string) => (linked ? path : undefined);
-  const tabHref = (tab: string) => href(`/admin/projects/${projectId}?tab=${tab}`);
+  const tabHref = (tab: string) => href(`/admin/sites/${projectId}?tab=${tab}`);
   const totalPending =
     pendingApprovals.expenses + pendingApprovals.materialRequests + pendingApprovals.attendanceOverrides;
 
@@ -245,7 +245,7 @@ export function CommandCentrePanel({
         <Panel n={next()} title="Today's attendance" icon={HardHat} to={tabHref('attendance')} linkLabel="View attendance">
           <div className="grid grid-cols-4 gap-1.5 text-center">
             {[
-              { label: 'Workers', value: attendance.assignedWorkers, cls: 'text-fg' },
+              { label: 'Fundis', value: attendance.assignedWorkers, cls: 'text-fg' },
               { label: 'Present', value: attendance.checkedInToday, cls: 'text-fg' },
               { label: 'Late', value: attendance.late, cls: attendance.late > 0 ? 'text-warn-fg' : 'text-fg-subtle' },
               {
@@ -407,7 +407,7 @@ export function CommandCentrePanel({
         </Panel>
 
         {/* 9 — Equipment status */}
-        <Panel n={next()} title="Equipment status" icon={Wrench} to={href('/admin/tools')} linkLabel="View equipment">
+        <Panel n={next()} title="Equipment status" icon={Wrench} to={href('/admin/equipment')} linkLabel="View equipment">
           {equipment.total === 0 ? (
             <Muted>No equipment is assigned to this site.</Muted>
           ) : (
@@ -500,7 +500,7 @@ const SEVERITY_STYLE: Record<
 
 /**
  * Rule-engine output. Deliberately not styled as a chat bubble: every line is
- * a figure computed from this project's own records, and dressing it up as a
+ * a figure computed from this site's own records, and dressing it up as a
  * conversation would suggest a judgement call that nothing here is making.
  */
 function InsightsPanel({ n, insights }: { n: number; insights: Insight[] }) {

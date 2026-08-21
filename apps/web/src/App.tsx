@@ -1,6 +1,7 @@
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useAuth } from './lib/auth';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './pages/Login';
 
 // Route-level code splitting: supervisors never download the admin bundle
@@ -11,8 +12,8 @@ const AdminLayout = lazy(() =>
 const SupervisorLayout = lazy(() =>
   import('./components/layout/SupervisorLayout').then((m) => ({ default: m.SupervisorLayout })),
 );
-const CompanyDashboard = lazy(() =>
-  import('./pages/admin/CompanyDashboard').then((m) => ({ default: m.CompanyDashboard })),
+const CompanyDashboardPage = lazy(() =>
+  import('./pages/admin/CompanyDashboard').then((m) => ({ default: m.CompanyDashboardPage })),
 );
 const ProjectsPage = lazy(() =>
   import('./pages/admin/Projects').then((m) => ({ default: m.ProjectsPage })),
@@ -74,6 +75,19 @@ function Loading() {
   );
 }
 
+/**
+ * Old paths still resolve.
+ *
+ * The admin routes were renamed to match what the navigation has always called
+ * them (Sites, Equipment, Receivables, Payables, Team). Anything already
+ * bookmarked, pasted into a WhatsApp thread or sitting in someone's history
+ * still has to land, so the previous path redirects instead of 404ing.
+ */
+function RedirectSite() {
+  const { projectId } = useParams();
+  return <Navigate to={`/admin/sites/${projectId}`} replace />;
+}
+
 export default function App() {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
@@ -88,43 +102,56 @@ export default function App() {
   }
 
   return (
-    <Suspense fallback={<Loading />}>
-      {user.role === 'SUPERADMIN' ? (
-        <Routes>
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<CompanyDashboard />} />
-            <Route path="clients" element={<ClientsPage />} />
-            <Route path="leads" element={<LeadsPage />} />
-            <Route path="quotations" element={<QuotationsPage />} />
-            <Route path="contracts" element={<ContractsPage />} />
-            <Route path="projects" element={<ProjectsPage />} />
-            <Route path="projects/:projectId" element={<ProjectDetailPage />} />
-            <Route path="workers" element={<WorkersPage />} />
-            <Route path="tools" element={<ToolsPage />} />
-            <Route path="invoices" element={<InvoicesPage />} />
-            <Route path="suppliers" element={<SuppliersPage />} />
-            <Route path="tax" element={<TaxPage />} />
-            <Route path="payroll" element={<PayrollPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="calendar" element={<CalendarPage />} />
-            <Route path="users" element={<UsersPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            {/* Sections are addressable, so a specific card can be linked to. */}
-            <Route path="settings/:section" element={<SettingsPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/admin" replace />} />
-        </Routes>
-      ) : (
-        <Routes>
-          <Route element={<SupervisorLayout />}>
-            <Route path="/today" element={<TodayPage />} />
-            <Route path="/sites" element={<MySitesPage />} />
-            <Route path="/sites/:projectId" element={<SiteDetailPage />} />
-          </Route>
-          {/* Today, not the site list: the job is almost always today's job. */}
-          <Route path="*" element={<Navigate to="/today" replace />} />
-        </Routes>
-      )}
-    </Suspense>
+    // One unexpected null used to unmount the whole app — including the
+    // navigation out of it, which in a standalone PWA leaves a white rectangle
+    // and no way back. Panels carry their own boundaries; this is the backstop.
+    <ErrorBoundary variant="page" label="Alken Decor">
+      <Suspense fallback={<Loading />}>
+        {user.role === 'SUPERADMIN' ? (
+          <Routes>
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<CompanyDashboardPage />} />
+              <Route path="clients" element={<ClientsPage />} />
+              <Route path="leads" element={<LeadsPage />} />
+              <Route path="quotations" element={<QuotationsPage />} />
+              <Route path="contracts" element={<ContractsPage />} />
+              <Route path="sites" element={<ProjectsPage />} />
+              <Route path="sites/:projectId" element={<ProjectDetailPage />} />
+              <Route path="workers" element={<WorkersPage />} />
+              <Route path="equipment" element={<ToolsPage />} />
+              <Route path="receivables" element={<InvoicesPage />} />
+              <Route path="payables" element={<SuppliersPage />} />
+              <Route path="tax" element={<TaxPage />} />
+              <Route path="payroll" element={<PayrollPage />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="calendar" element={<CalendarPage />} />
+              <Route path="team" element={<UsersPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              {/* Sections are addressable, so a specific card can be linked to. */}
+              <Route path="settings/:section" element={<SettingsPage />} />
+
+              {/* Renamed routes — see RedirectSite. */}
+              <Route path="projects" element={<Navigate to="/admin/sites" replace />} />
+              <Route path="projects/:projectId" element={<RedirectSite />} />
+              <Route path="tools" element={<Navigate to="/admin/equipment" replace />} />
+              <Route path="invoices" element={<Navigate to="/admin/receivables" replace />} />
+              <Route path="suppliers" element={<Navigate to="/admin/payables" replace />} />
+              <Route path="users" element={<Navigate to="/admin/team" replace />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/admin" replace />} />
+          </Routes>
+        ) : (
+          <Routes>
+            <Route element={<SupervisorLayout />}>
+              <Route path="/today" element={<TodayPage />} />
+              <Route path="/sites" element={<MySitesPage />} />
+              <Route path="/sites/:projectId" element={<SiteDetailPage />} />
+            </Route>
+            {/* Today, not the site list: the job is almost always today's job. */}
+            <Route path="*" element={<Navigate to="/today" replace />} />
+          </Routes>
+        )}
+      </Suspense>
+    </ErrorBoundary>
   );
 }

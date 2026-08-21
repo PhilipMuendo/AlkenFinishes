@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { factsFor, parseWeeklyDraft, type WeekSummary } from './weeklyReportDraft';
+import { endOfWeek, factsFor, parseWeeklyDraft, type WeekSummary } from './weeklyReportDraft';
 
 const week = (over: Partial<WeekSummary> = {}): WeekSummary => ({
   weekEnding: new Date(2026, 7, 16),
@@ -63,6 +63,30 @@ test('safety wording is readable rather than an enum', () => {
     week({ safetyIncidents: [{ severity: 'NEAR_MISS', description: 'Scaffold board loose' }] }),
   );
   assert.match(f, /near miss — Scaffold board loose/);
+});
+
+// ---- Which week a date belongs to ----
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+test('a midweek date snaps forward to the Sunday that closes its week', () => {
+  // Wed 12 Aug 2026 -> Sun 16 Aug 2026
+  assert.equal(iso(endOfWeek(new Date('2026-08-12T00:00:00Z'))), '2026-08-16');
+});
+
+test('a Sunday is already the end of its week and does not move', () => {
+  assert.equal(iso(endOfWeek(new Date('2026-08-16T00:00:00Z'))), '2026-08-16');
+});
+
+test('the Monday after belongs to the next week, not the one just closed', () => {
+  assert.equal(iso(endOfWeek(new Date('2026-08-17T00:00:00Z'))), '2026-08-23');
+});
+
+test('every day of one week snaps to the same Sunday, so a week has one report', () => {
+  const days = ['10', '11', '12', '13', '14', '15', '16'].map((d) =>
+    iso(endOfWeek(new Date(`2026-08-${d}T00:00:00Z`))),
+  );
+  assert.deepEqual(new Set(days), new Set(['2026-08-16']));
 });
 
 // ---- Parsing the reply ----

@@ -11,9 +11,11 @@ import type {
 import { fmtDate, todayISO } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { toast } from '@/components/ui/toast';
@@ -65,14 +67,16 @@ export function CalendarPage() {
   const qc = useQueryClient();
   const [projectId, setProjectId] = useState('');
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState<CalendarEvent | null>(null);
 
-  const { data: events, isLoading } = useQuery({
+  const eventsQuery = useQuery({
     queryKey: ['calendar', projectId],
     queryFn: () =>
       api<CalendarEvent[]>(
         `/calendar?from=${startOfToday()}${projectId ? `&projectId=${projectId}` : ''}`,
       ),
   });
+  const { data: events, isLoading } = eventsQuery;
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
@@ -135,18 +139,16 @@ export function CalendarPage() {
         </Field>
       </div>
 
+      <QueryState query={eventsQuery} rows={3} noun="the calendar" />
+
       {!isLoading && groups.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={CalendarDays}>
-              <p className="font-medium text-fg">Nothing coming up</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Add a milestone, inspection or delivery date to keep it off the "did anyone tell
-                me" list.
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={CalendarDays}>
+          <p className="font-medium text-fg">Nothing coming up</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Add a milestone, inspection or delivery date to keep it off the "did anyone tell
+            me" list.
+          </p>
+        </Empty>
       )}
 
       <div className="space-y-4">
@@ -177,7 +179,7 @@ export function CalendarPage() {
                       deadline is to move the deadline. */}
                   {!e.derived && (
                     <button
-                      onClick={() => remove.mutate(e.id)}
+                      onClick={() => setDeleting(e)}
                       aria-label={`Delete ${e.title}`}
                       className="shrink-0 rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
                     >
@@ -247,6 +249,26 @@ export function CalendarPage() {
           </Button>
         </form>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+        title="Remove this event?"
+        description={
+          deleting
+            ? `"${deleting.title}" on ${fmtDate(deleting.date)}${
+                deleting.project ? ` for ${deleting.project.name}` : ''
+              } will be taken off the calendar. Nobody is notified.`
+            : undefined
+        }
+        confirmLabel="Remove event"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The event was not removed.') : null}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import type { Project, ReportFeedItem } from '@/lib/types';
 import { fmtDate, thumbUrl } from '@/lib/format';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Field, Select, Input } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
@@ -152,18 +152,14 @@ export function ReportsPage() {
       )}
 
       {!isLoading && reports?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={FileText}>
-              <p className="font-medium text-fg">No reports found</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                {projectId || type || from || to
-                  ? 'Try widening the filters above.'
-                  : 'Reports submitted by supervisors will appear here.'}
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={FileText}>
+          <p className="font-medium text-fg">No reports found</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            {projectId || type || from || to
+              ? 'Try widening the filters above.'
+              : 'Reports submitted by supervisors will appear here.'}
+          </p>
+        </Empty>
       )}
 
       <div className="space-y-3">

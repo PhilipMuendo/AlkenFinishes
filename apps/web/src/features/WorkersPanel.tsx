@@ -5,26 +5,30 @@ import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Worker } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
 /**
- * Supervisor-facing fundi roster for a single site: add a casual worker,
+ * Supervisor-facing fundi roster for a single site: add a casual fundi,
  * edit their contact details, or take them off this site. No hourly-rate
  * visibility restriction — the site rate is something a supervisor agrees
- * with the fundi directly, unlike project-level budget/financials.
+ * with the fundi directly, unlike site-level budget/financials.
  */
 export function WorkersPanel({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Worker | null>(null);
+  const [removing, setRemoving] = useState<Worker | null>(null);
 
-  const { data: allWorkers } = useQuery({
+  const allWorkersQuery = useQuery({
     queryKey: ['workers'],
     queryFn: () => api<Worker[]>('/workers'),
   });
+  const { data: allWorkers } = allWorkersQuery;
   // GET /workers returns fundis across every site this supervisor covers;
   // narrow to the one being viewed right now.
   const workers = allWorkers?.filter((w) =>
@@ -36,7 +40,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/workers', { body: { ...body, projectId } }),
     onSuccess: () => {
-      toast.success('Fundi added to this site.');
+      toast.success('Fundi put on this site. Their hours here now accrue against its budget.');
       invalidate();
       setAddOpen(false);
     },
@@ -57,8 +61,9 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
   const remove = useMutation({
     mutationFn: (id: string) => api(`/workers/${id}/unassign`, { method: 'POST' }),
     onSuccess: () => {
-      toast.success('Fundi removed from this site. Their record and history are kept.');
+      toast.success('Fundi taken off this site. Their record and history are kept.');
       invalidate();
+      setRemoving(null);
     },
     onError: (e) => toast.error(errText(e, 'The fundi was not removed.')),
   });
@@ -71,15 +76,15 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={allWorkersQuery} rows={3} noun="the fundi list" />
+
       {workers?.length === 0 && (
-        <div className="rounded-xl border border-hairline bg-surface shadow-sm">
-          <Empty icon={HardHat}>
-            <p className="font-medium text-fg">No fundis on this site yet</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Add a casual worker to start tracking their attendance and hours here.
-            </p>
-          </Empty>
-        </div>
+        <Empty icon={HardHat}>
+          <p className="font-medium text-fg">No fundis on this site yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Add a casual fundi to start tracking their attendance and hours here.
+          </p>
+        </Empty>
       )}
 
       <div className="space-y-2">
@@ -100,7 +105,7 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
                 <Pencil size={16} />
               </button>
               <button
-                onClick={() => remove.mutate(w.id)}
+                onClick={() => setRemoving(w)}
                 aria-label={`Remove ${w.name} from this site`}
                 disabled={remove.isPending}
                 className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-danger-surface hover:text-danger-fg"
@@ -190,6 +195,24 @@ export function WorkersPanel({ projectId }: { projectId: string }) {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(removing)}
+        onClose={() => {
+          setRemoving(null);
+          remove.reset();
+        }}
+        title="Take this fundi off the site?"
+        description={
+          removing
+            ? `${removing.name} stops appearing on this site’s roster and cannot be clocked in here. Everything already recorded — their attendance, hours and pay — is kept, and the office can put them back on at any time.`
+            : undefined
+        }
+        confirmLabel="Take off site"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The fundi was not removed.') : null}
+        onConfirm={() => removing && remove.mutate(removing.id)}
+      />
     </div>
   );
 }

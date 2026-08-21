@@ -6,10 +6,12 @@ import type { Invoice, Payment, PaymentMethod, PaymentsSummary } from '@/lib/typ
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge, HealthBadge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -34,11 +36,13 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
   const [wht, setWht] = useState('0');
   const [whtVat, setWhtVat] = useState('0');
   const [voiding, setVoiding] = useState<Payment | null>(null);
+  const [deleting, setDeleting] = useState<Payment | null>(null);
 
-  const { data: summary } = useQuery({
+  const summaryQuery = useQuery({
     queryKey: ['payments', 'summary', projectId],
     queryFn: () => api<PaymentsSummary>(`/projects/${projectId}/payments/summary`),
   });
+  const summary = summaryQuery.data;
 
   // Open invoices, so a payment can be applied to what it actually settles.
   const { data: invoices } = useQuery({
@@ -96,6 +100,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
     onSuccess: () => {
       toast.success('Receipt deleted.');
       invalidateAll();
+      setDeleting(null);
     },
     onError: (e) => toast.error(errText(e, 'The receipt was not deleted.')),
   });
@@ -210,8 +215,10 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={summaryQuery} rows={3} noun="payments" />
+
       {summary && summary.installments.length === 0 ? (
-        <Empty>No subsequent payments recorded yet</Empty>
+        <Empty variant="inline">No subsequent payments recorded yet</Empty>
       ) : (
         <Card className="overflow-hidden">
           <Table>
@@ -262,7 +269,7 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => deletePayment.mutate(p.id)}
+                        onClick={() => setDeleting(p)}
                         disabled={deletePayment.isPending}
                       >
                         Delete
@@ -492,6 +499,28 @@ export function PaymentsPanel({ projectId }: { projectId: string }) {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          deletePayment.reset();
+        }}
+        title="Delete this payment?"
+        description={
+          deleting
+            ? `${fmtMoney(deleting.amount)} received ${fmtDate(deleting.paymentDate)} by ${
+                METHOD_LABEL[deleting.method]
+              } will be removed from the record entirely, and the balance owed goes back up by that amount. This cannot be undone — void it instead if you want the receipt kept and marked cancelled.`
+            : undefined
+        }
+        confirmLabel="Delete payment"
+        pending={deletePayment.isPending}
+        error={
+          deletePayment.isError ? errText(deletePayment.error, 'The payment was not deleted.') : null
+        }
+        onConfirm={() => deleting && deletePayment.mutate(deleting.id)}
+      />
     </div>
   );
 }

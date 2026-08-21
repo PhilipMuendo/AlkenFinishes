@@ -27,7 +27,7 @@ export function ProjectCard({
 }) {
   return (
     <Link
-      to={`/admin/projects/${project.id}`}
+      to={`/admin/sites/${project.id}`}
       className="group flex h-full flex-col rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-hairline-strong hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-muted"
     >
       <div className="flex items-start justify-between gap-2">

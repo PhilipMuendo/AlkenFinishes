@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
@@ -43,6 +44,12 @@ export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  // This app is read-heavy and its readers are on Kenyan mobile data. The
+  // responses are JSON — highly repetitive keys, long prose fields — which
+  // gzips to roughly a fifth of its size. Nothing else on this list buys as
+  // much for as little. Uploads are already-compressed images and PDFs, and
+  // sit above this middleware, so they are not run through it twice.
+  app.use(compression());
   app.use(cors({ origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(',') }));
   app.use(express.json({ limit: '2mb' }));
   app.use(pinoHttp({ logger, autoLogging: env.NODE_ENV === 'production' }));

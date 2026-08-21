@@ -160,18 +160,14 @@ export function InvoicesPage() {
       {isLoading && <Skeleton className="h-64 w-full rounded-xl" />}
 
       {!isLoading && rows?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={FileText}>
-              <p className="font-medium text-fg">No invoices match</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                {projectId || status || overdue
-                  ? 'Try widening the filters above.'
-                  : 'Invoices raised on a project will appear here.'}
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={FileText}>
+          <p className="font-medium text-fg">No invoices match</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            {projectId || status || overdue
+              ? 'Try widening the filters above.'
+              : 'Invoices raised on a site will appear here.'}
+          </p>
+        </Empty>
       )}
 
       {!isLoading && rows && rows.length > 0 && (
@@ -200,7 +196,7 @@ export function InvoicesPage() {
                   </Td>
                   <Td>
                     <Link
-                      to={`/admin/projects/${r.project.id}`}
+                      to={`/admin/sites/${r.project.id}`}
                       className="text-brand-700 hover:underline"
                     >
                       {r.project.name}

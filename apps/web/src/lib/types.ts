@@ -730,6 +730,9 @@ export interface WeeklyReport {
   nextWeekPlan: string | null;
   photoUrls: string[];
   submittedBy: { id: string; name: string };
+  createdAt: string;
+  /** Later than `createdAt` when the week's report was filed again and revised. */
+  updatedAt: string;
 }
 
 // Unified cross-site feed item from GET /reports (super admin).

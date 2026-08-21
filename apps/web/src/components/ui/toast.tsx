@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -111,6 +111,13 @@ function ToastRow({ t }: { t: Toast }) {
  * the assistant launcher (3rem tall, bottom-right); the supervisor shell adds
  * its navigation bar under that. `aboveNav` picks the taller of the two
  * clearances.
+ *
+ * The `popover` attribute is what puts it above an open dialog. `Dialog` uses
+ * native `showModal()`, which promotes it to the browser's top layer — above
+ * every z-index there is — so a toast fired from inside a form used to appear
+ * behind the very dialog that raised it. Errors were the ones this hit, since
+ * they fire while the dialog is still open. A manual popover joins the same
+ * top layer, so the last one shown wins, and that is the toast.
  */
 export function Toaster({ aboveNav = false }: { aboveNav?: boolean }) {
   const items = useSyncExternalStore(
@@ -122,12 +129,32 @@ export function Toaster({ aboveNav = false }: { aboveNav?: boolean }) {
     () => toasts,
   );
 
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Show it as a popover only while something is in it: an empty popover in the
+  // top layer would sit over the page swallowing nothing, and `showPopover`
+  // throws if it is already open.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof el.showPopover !== 'function') return;
+    try {
+      if (items.length > 0) el.showPopover();
+      else el.hidePopover();
+    } catch {
+      // Already in the requested state, or popovers unsupported. Either way the
+      // element still renders normally — it just loses the top-layer promotion.
+    }
+  }, [items.length]);
+
   return (
     <div
+      ref={ref}
+      // React 18's types predate the popover attribute; the DOM understands it.
+      {...({ popover: 'manual' } as Record<string, string>)}
       aria-live="polite"
       aria-atomic="false"
       className={cn(
-        'pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 p-4 sm:inset-x-auto sm:right-0 sm:items-end',
+        'pointer-events-none fixed inset-x-0 inset-y-auto bottom-0 z-[60] m-0 flex max-h-none w-full max-w-none flex-col items-center gap-2 border-0 bg-transparent p-4 sm:inset-x-auto sm:right-0 sm:items-end',
         aboveNav
           ? // nav (4.75rem) + launcher (3rem) + gap
             'pb-[calc(8.5rem+env(safe-area-inset-bottom))]'

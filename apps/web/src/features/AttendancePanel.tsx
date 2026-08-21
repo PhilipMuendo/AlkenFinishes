@@ -11,6 +11,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -40,10 +41,11 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
   const [capturing, setCapturing] = useState(false);
   const [rejecting, setRejecting] = useState<AttendanceOverrideRequest | null>(null);
 
-  const { data: records } = useQuery({
+  const recordsQuery = useQuery({
     queryKey: ['attendance', projectId],
     queryFn: () => api<AttendanceRecord[]>(`/projects/${projectId}/attendance`),
   });
+  const { data: records } = recordsQuery;
   const { data: workers } = useQuery({
     queryKey: ['workers', projectId],
     queryFn: () => api<Worker[]>(`/workers?projectId=${projectId}`),
@@ -173,6 +175,8 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
         </div>
       )}
 
+      <QueryState query={recordsQuery} rows={3} noun="attendance" />
+
       {records?.length === 0 ? (
         <Empty>
           No attendance records yet.
@@ -183,7 +187,7 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           <thead>
             <tr>
               <Th>Date</Th>
-              <Th>Worker</Th>
+              <Th>Fundi</Th>
               <Th>In</Th>
               <Th>Out</Th>
               <Th className="text-right">Hours</Th>
@@ -312,11 +316,11 @@ export function AttendancePanel({ projectId }: { projectId: string }) {
           }}
           className="space-y-3"
         >
-          <Field label="Worker">
+          <Field label="Fundi">
             <Combobox
               name="workerId"
-              placeholder="Search worker…"
-              aria-label="Worker"
+              placeholder="Search fundi…"
+              aria-label="Fundi"
               options={(workers ?? []).map((w) => ({ value: w.id, label: `${w.name} — ${w.trade}` }))}
             />
           </Field>

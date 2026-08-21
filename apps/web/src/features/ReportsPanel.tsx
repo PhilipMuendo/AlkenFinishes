@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -61,10 +62,11 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
       ? ((writeDraft.error.details as { reason?: string } | undefined)?.reason ?? null)
       : null;
 
-  const { data: reports } = useQuery({
+  const reportsQuery = useQuery({
     queryKey: ['daily-reports', projectId],
     queryFn: () => api<DailyReport[]>(`/projects/${projectId}/daily-reports`),
   });
+  const { data: reports } = reportsQuery;
 
   const submit = useMutation({
     mutationFn: (formData: FormData) => api(`/projects/${projectId}/daily-reports`, { formData }),
@@ -86,6 +88,8 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
         </div>
       )}
 
+      <QueryState query={reportsQuery} rows={3} noun="daily reports" />
+
       {reports?.length === 0 && (
         <Empty icon={ClipboardList}>No daily reports submitted yet</Empty>
       )}
@@ -96,7 +100,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
             <div className="flex items-center justify-between">
               <p className="font-semibold text-fg">{fmtDate(r.date)}</p>
               <p className="text-xs text-fg-muted">
-                {r.submittedBy.name} · {r.workersPresent} workers present
+                {r.submittedBy.name} · {r.workersPresent} fundis present
               </p>
             </div>
             <dl className="mt-2 space-y-2 text-sm">
@@ -247,7 +251,7 @@ export function ReportsPanel({ projectId, canSubmit }: { projectId: string; canS
               defaultValue={draft?.draft.workCompleted ?? ''}
             />
           </Field>
-          <Field label="Workers present" hint={draft ? 'Counted from attendance' : undefined}>
+          <Field label="Fundis present" hint={draft ? 'Counted from attendance' : undefined}>
             <Input
               name="workersPresent"
               type="number"

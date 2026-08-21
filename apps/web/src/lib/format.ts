@@ -53,6 +53,43 @@ export const addDays = (iso: string, days: number) => {
   return isoDate(d);
 };
 
+/**
+ * The calendar day inside whatever the API sent for a date-only column.
+ *
+ * Postgres `date` columns arrive as full ISO timestamps at UTC midnight, and
+ * handing that to `new Date()` shifts it a day in half the world. Reading the
+ * YYYY-MM-DD off the front keeps the day the database meant.
+ */
+export const dayOf = (d: string | Date) =>
+  typeof d === 'string' ? d.slice(0, 10) : isoDate(d);
+
+/**
+ * The Sunday that closes the week containing this date.
+ *
+ * Weekly reports are unique per site per week, so the week a report belongs to
+ * has to be the same whether the supervisor picked the Monday or the Friday.
+ * The API snaps the same way; this is here so the form can show which week it
+ * landed on before anything is filed.
+ */
+export const weekEndingOf = (d: string | Date) => {
+  const out = parseISODate(dayOf(d));
+  const day = out.getDay(); // 0 = Sunday
+  if (day !== 0) out.setDate(out.getDate() + (7 - day));
+  return isoDate(out);
+};
+
+/** The Monday–Sunday span a weekly report covers, e.g. "10 – 16 Aug 2026". */
+export const fmtWeekRange = (weekEnding: string | Date) => {
+  const end = parseISODate(dayOf(weekEnding));
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  const from = start.toLocaleDateString('en-KE', {
+    day: 'numeric',
+    ...(start.getMonth() === end.getMonth() ? {} : { month: 'short' }),
+  });
+  return `${from} – ${fmtDate(end)}`;
+};
+
 /** `datetime-local` wants local wall-clock time, never UTC. */
 export const nowLocalDateTime = () => {
   const d = new Date();

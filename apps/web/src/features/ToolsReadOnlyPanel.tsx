@@ -5,6 +5,7 @@ import type { Tool } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 
 /**
@@ -16,17 +17,18 @@ import { Empty } from '@/components/ui/table';
  * detail here, not less.
  */
 export function ToolsReadOnlyPanel() {
-  const { data: tools } = useQuery({
+  const toolsQuery = useQuery({
     queryKey: ['tools'],
     queryFn: () => api<Tool[]>('/tools'),
   });
+  const { data: tools } = toolsQuery;
 
   return (
     <div className="space-y-2">
+      <QueryState query={toolsQuery} rows={2} noun="equipment" />
+
       {tools?.length === 0 && (
-        <Card>
-          <Empty icon={Wrench}>No tools currently at this site</Empty>
-        </Card>
+        <Empty icon={Wrench}>No tools currently at this site</Empty>
       )}
       {tools?.map((t) => {
         const overdue = t.nextServiceDate != null && new Date(t.nextServiceDate) < new Date();

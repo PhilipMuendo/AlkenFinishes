@@ -34,14 +34,12 @@ export function MySitesPage() {
       )}
 
       {!isLoading && projects?.length === 0 && (
-        <div className="rounded-xl border border-hairline bg-surface shadow-sm">
-          <Empty icon={Building2}>
-            <p className="font-medium text-fg">No sites assigned yet</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Once an administrator assigns you to a site, it&rsquo;ll appear here.
-            </p>
-          </Empty>
-        </div>
+        <Empty icon={Building2}>
+          <p className="font-medium text-fg">No sites assigned yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Once an administrator assigns you to a site, it&rsquo;ll appear here.
+          </p>
+        </Empty>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

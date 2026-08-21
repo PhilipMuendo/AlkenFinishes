@@ -1654,9 +1654,17 @@ export const LOOKUPS: Lookup[] = [
 
       if (metric === 'budget') {
         const projects = await prisma.project.findMany({ where: scope, select: { id: true, name: true } });
+        // Read the finance settings once and hand them down. Without this,
+        // every site in the ranking re-read the same two Setting rows before
+        // doing its own four queries — six per site, for two values that are
+        // the same on all of them.
+        const settings = await getFinanceSettings();
         const rows = (
           await Promise.all(
-            projects.map(async (p) => ({ name: p.name, fin: await projectFinancials(p.id) })),
+            projects.map(async (p) => ({
+              name: p.name,
+              fin: await projectFinancials(p.id, settings),
+            })),
           )
         )
           .filter((r) => r.fin.overallConsumedPct != null)

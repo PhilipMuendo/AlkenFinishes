@@ -8,8 +8,9 @@ import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
@@ -37,6 +38,10 @@ export function ContractsPage() {
   const [status, setStatus] = useState<ContractStatus | ''>('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
+  const [removingAttachment, setRemovingAttachment] = useState<{
+    id: string;
+    field: 'boq' | 'specs';
+  } | null>(null);
   const [varying, setVarying] = useState(false);
   const [converting, setConverting] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -127,7 +132,7 @@ export function ContractsPage() {
       invalidate();
       setConverting(false);
       setOpenId(null);
-      navigate(`/admin/projects/${project.id}`);
+      navigate(`/admin/sites/${project.id}`);
     },
     onError: (e) => toast.error(errText(e, 'The site was not created.')),
   });
@@ -140,7 +145,7 @@ export function ContractsPage() {
       invalidate();
       setAttaching(false);
       setOpenId(null);
-      navigate(`/admin/projects/${project.id}`);
+      navigate(`/admin/sites/${project.id}`);
     },
     onError: (e) => toast.error(errText(e, 'The contract was not linked.')),
   });
@@ -161,6 +166,7 @@ export function ContractsPage() {
     onSuccess: () => {
       toast.success('Attachment removed.');
       invalidate();
+      setRemovingAttachment(null);
     },
     onError: (e) => toast.error(errText(e, 'The attachment was not removed.')),
   });
@@ -195,19 +201,15 @@ export function ContractsPage() {
       {isLoading && <Skeleton className="h-64 w-full rounded-xl" />}
 
       {!isLoading && contracts?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={FileSignature}>
-              <p className="font-medium text-fg">
-                {status ? 'Nothing at that status' : 'No contracts yet'}
-              </p>
-              <p className="mt-1 max-w-sm text-fg-muted">
-                Contracts are raised from an accepted quotation, which carries the client, the job
-                and the priced schedule across for you.
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty variant="inline" icon={FileSignature}>
+          <p className="font-medium text-fg">
+            {status ? 'Nothing at that status' : 'No contracts yet'}
+          </p>
+          <p className="mt-1 max-w-sm text-fg-muted">
+            Contracts are raised from an accepted quotation, which carries the client, the job
+            and the priced schedule across for you.
+          </p>
+        </Empty>
       )}
 
       {!isLoading && !!contracts?.length && (
@@ -339,7 +341,7 @@ export function ContractsPage() {
               contract={contract}
               onOpenPdf={() => void openPdf(contract.id)}
               onUpload={(formData) => uploadAttachments.mutate({ id: contract.id, formData })}
-              onRemove={(field) => removeAttachment.mutate({ id: contract.id, field })}
+              onRemove={(field) => setRemovingAttachment({ id: contract.id, field })}
               busy={uploadAttachments.isPending || removeAttachment.isPending}
               error={errorMessage(uploadAttachments.error ?? removeAttachment.error) ?? undefined}
             />
@@ -349,7 +351,7 @@ export function ContractsPage() {
                 Running as site{' '}
                 <button
                   className="font-medium underline"
-                  onClick={() => navigate(`/admin/projects/${contract.project!.id}`)}
+                  onClick={() => navigate(`/admin/sites/${contract.project!.id}`)}
                 >
                   {contract.project.code ?? contract.project.name}
                 </button>
@@ -469,7 +471,7 @@ export function ContractsPage() {
         </form>
       </Dialog>
 
-      {/* ---- Convert to project ---- */}
+      {/* ---- Convert to site ---- */}
       {/* ---- Link an existing site ---- */}
       <Dialog
         open={attaching}
@@ -508,7 +510,7 @@ export function ContractsPage() {
             className="space-y-3"
           >
             <p className="text-sm text-fg-muted">
-              This creates the project your supervisors will work against. The client, dates and
+              This creates the site your supervisors will work against. The client, dates and
               contract value come from{' '}
               <span className="font-medium text-fg">{contract.contractNo}</span>.
             </p>
@@ -537,6 +539,30 @@ export function ContractsPage() {
           </form>
         )}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(removingAttachment)}
+        onClose={() => {
+          setRemovingAttachment(null);
+          removeAttachment.reset();
+        }}
+        title="Remove this attachment?"
+        description={
+          removingAttachment
+            ? `The ${
+                removingAttachment.field === 'boq' ? 'priced bill of quantities' : 'specification'
+              } will be deleted from the contract file and from storage. Upload it again if you need it back.`
+            : undefined
+        }
+        confirmLabel="Remove file"
+        pending={removeAttachment.isPending}
+        error={
+          removeAttachment.isError
+            ? errText(removeAttachment.error, 'The attachment was not removed.')
+            : null
+        }
+        onConfirm={() => removingAttachment && removeAttachment.mutate(removingAttachment)}
+      />
     </div>
   );
 }
@@ -852,7 +878,7 @@ function AttachProjectForm({
   if (projects?.length === 0) {
     return (
       <div className="space-y-3">
-        <Empty icon={HardHat}>
+        <Empty variant="inline" icon={HardHat}>
           <p className="font-medium text-fg">No site to link</p>
           <p className="mt-1 max-w-sm text-fg-muted">
             Every one of {clientName}&rsquo;s sites already has a contract, or belongs to another

@@ -6,9 +6,11 @@ import type { AgingBucket, PayablesReport, Supplier } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -32,12 +34,13 @@ export function SuppliersPage() {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
+  const [retiring, setRetiring] = useState<Supplier | null>(null);
 
   const { data: payables } = useQuery({
     queryKey: ['suppliers', 'payables'],
     queryFn: () => api<PayablesReport>('/suppliers/payables'),
   });
-  const { data: suppliers, isLoading } = useQuery({
+  const suppliersQuery = useQuery({
     // Its own key. This list includes retired suppliers; the pickers elsewhere
     // fetch active-only from `/suppliers`. Sharing one key meant whichever
     // screen fetched last won, and the retired rows — the only ones with a
@@ -45,6 +48,7 @@ export function SuppliersPage() {
     queryKey: ['suppliers', 'all'],
     queryFn: () => api<Supplier[]>('/suppliers?includeInactive=true'),
   });
+  const { data: suppliers, isLoading } = suppliersQuery;
 
   const invalidate = () => {
     void qc.invalidateQueries({ queryKey: ['suppliers'] });
@@ -206,17 +210,17 @@ export function SuppliersPage() {
         <CardHeader className="pb-1">
           <CardTitle className="text-sm">Supplier list</CardTitle>
         </CardHeader>
+        <QueryState query={suppliersQuery} rows={4} noun="suppliers" />
+
         {!isLoading && suppliers?.length === 0 ? (
-          <CardContent>
-            <Empty icon={Truck}>
-              <p className="font-medium text-fg">No suppliers yet</p>
-              <p className="mt-1 max-w-sm text-fg-muted">
-                Add the merchants you buy from. Once a purchase names a supplier it goes on the
-                payables list, and you can record what you pay against it — in parts, if that is
-                how it was paid.
-              </p>
-            </Empty>
-          </CardContent>
+          <Empty icon={Truck}>
+            <p className="font-medium text-fg">No suppliers yet</p>
+            <p className="mt-1 max-w-sm text-fg-muted">
+              Add the merchants you buy from. Once a purchase names a supplier it goes on the
+              payables list, and you can record what you pay against it — in parts, if that is
+              how it was paid.
+            </p>
+          </Empty>
         ) : (
           <Table>
             <thead>
@@ -254,7 +258,7 @@ export function SuppliersPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => retire.mutate(sup.id)}
+                          onClick={() => setRetiring(sup)}
                           disabled={retire.isPending}
                         >
                           Retire
@@ -303,6 +307,28 @@ export function SuppliersPage() {
           onSubmit={(body) => save.mutate({ id: editing?.id, body })}
         />
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(retiring)}
+        onClose={() => {
+          setRetiring(null);
+          retire.reset();
+        }}
+        title="Retire this supplier?"
+        description={
+          retiring
+            ? `${retiring.name} stops appearing when a new bill is entered. Their history and any balance owed${
+                retiring.position?.outstanding
+                  ? ` — currently ${fmtMoney(retiring.position.outstanding)}`
+                  : ''
+              } stay exactly as they are, and they can be brought back at any time.`
+            : undefined
+        }
+        confirmLabel="Retire supplier"
+        pending={retire.isPending}
+        error={retire.isError ? errText(retire.error, 'The supplier was not retired.') : null}
+        onConfirm={() => retiring && retire.mutate(retiring.id)}
+      />
     </div>
   );
 }

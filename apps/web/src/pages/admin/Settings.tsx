@@ -23,6 +23,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { Tabs } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/ui/page-header';
@@ -193,7 +194,7 @@ export function SettingsPage() {
     mutationFn: (id: string) => api<{ received: number; accepted: number }>(`/devices/${id}/sync`, { body: {} }),
     onSuccess: (r) => {
       // Received and accepted differ whenever a punch could not be matched to
-      // a worker, and that gap is the whole reason to look at this screen.
+      // a fundi, and that gap is the whole reason to look at this screen.
       toast.success(
         r.received === r.accepted
           ? `${r.accepted} punches synced.`
@@ -463,7 +464,7 @@ export function SettingsPage() {
             <CardContent className="space-y-3">
               {auditLoading && <p className="text-sm text-fg-muted">Loading…</p>}
               {!auditLoading && auditLog?.items.length === 0 && (
-                <Empty icon={ScrollText}>No activity recorded yet</Empty>
+                <Empty variant="inline" icon={ScrollText}>No activity recorded yet</Empty>
               )}
               <div className="divide-y divide-hairline">
                 {auditLog?.items.map((entry) => {
@@ -792,10 +793,11 @@ function AssistantCard() {
  */
 function CompanyLetterheadCard() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['settings', 'company'],
     queryFn: () => api<CompanyProfile>('/settings/company'),
   });
+  const { data } = query;
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/settings/company', { method: 'PUT', body }),
@@ -814,7 +816,7 @@ function CompanyLetterheadCard() {
     onError: (e) => toast.error(errText(e, 'The logo was not uploaded.')),
   });
 
-  if (!data) return null;
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
 
   return (
     <Card>
@@ -960,10 +962,11 @@ function CompanyLetterheadCard() {
  */
 function PurchaseTaxCard() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['settings', 'purchase-tax'],
     queryFn: () => api<PurchaseTaxConfig>('/settings/purchase-tax'),
   });
+  const { data } = query;
   const [agent, setAgent] = useState<boolean | null>(null);
 
   const save = useMutation({
@@ -976,7 +979,7 @@ function PurchaseTaxCard() {
     onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
   });
 
-  if (!data) return null;
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
   const isAgent = agent ?? data.withholdingAgent;
 
   return (
@@ -1092,16 +1095,17 @@ function PurchaseTaxCard() {
  * Tax on what we pay casual/contracted staff.
  *
  * Its own rate, not shared with purchase tax: a supplier's withholding rate
- * and a worker's are not the same fact about the company. For staff run
+ * and a fundi's are not the same fact about the company. For staff run
  * through formal Payroll (see below), this does not apply — PAYE and
  * withholding are alternative treatments of the same income, never both.
  */
 function StaffTaxCard() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['settings', 'staff-tax'],
     queryFn: () => api<StaffTaxConfig>('/settings/staff-tax'),
   });
+  const { data } = query;
   const [agent, setAgent] = useState<boolean | null>(null);
 
   const save = useMutation({
@@ -1113,7 +1117,7 @@ function StaffTaxCard() {
     onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
   });
 
-  if (!data) return null;
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
   const isAgent = agent ?? data.withholdingAgent;
 
   return (
@@ -1121,7 +1125,7 @@ function StaffTaxCard() {
       <CardHeader>
         <CardTitle>Tax on staff payments</CardTitle>
         <p className="text-xs text-fg-muted">
-          For fundis paid for hours worked rather than employed on PAYE terms — the Workers screen
+          For fundis paid for hours worked rather than employed on PAYE terms — the Fundis screen
           suggests this rate when you record a payment, and it can be overridden.
         </p>
       </CardHeader>
@@ -1151,7 +1155,7 @@ function StaffTaxCard() {
               <span className="font-medium text-fg">We withhold tax from staff payments</span>
               <span className="mt-0.5 block text-xs text-fg-muted">
                 Leave this off unless you actually withhold. When off, no tax is ever suggested
-                for deduction from a worker payment.
+                for deduction from a fundi payment.
               </span>
             </span>
           </label>
@@ -1191,10 +1195,11 @@ function StaffTaxCard() {
  */
 function PayrollCard() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['settings', 'payroll'],
     queryFn: () => api<PayrollConfig>('/settings/payroll'),
   });
+  const { data } = query;
   const [bands, setBands] = useState<PayeBand[] | null>(null);
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
@@ -1208,7 +1213,7 @@ function PayrollCard() {
     onError: (e) => toast.error(errText(e, 'The rates were not saved.')),
   });
 
-  if (!data) return null;
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
   const rows = bands ?? data.payeBands;
   const on = enabled ?? data.enabled;
 
@@ -1254,7 +1259,7 @@ function PayrollCard() {
             <span>
               <span className="font-medium text-fg">Apply statutory deductions</span>
               <span className="mt-0.5 block text-xs text-fg-muted">
-                Off means every worker is paid their full wage and nothing is withheld — which is
+                Off means every fundi is paid their full wage and nothing is withheld — which is
                 what a company paying casuals in cash and filing nothing should see.
               </span>
             </span>
@@ -1393,10 +1398,11 @@ function PayrollCard() {
 
 function PipelineCard() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['settings', 'pipeline'],
     queryFn: () => api<PipelineConfig>('/settings/pipeline'),
   });
+  const { data } = query;
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/settings/pipeline', { method: 'PUT', body }),
@@ -1408,7 +1414,7 @@ function PipelineCard() {
     onError: (e) => toast.error(errText(e, 'The defaults were not saved.')),
   });
 
-  if (!data) return null;
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
 
   return (
     <Card>
@@ -1457,7 +1463,7 @@ function PipelineCard() {
             <Field label="Contract prefix">
               <Input name="contractPrefix" defaultValue={data.contractPrefix} required />
             </Field>
-            <Field label="Project prefix">
+            <Field label="Site prefix">
               <Input name="projectPrefix" defaultValue={data.projectPrefix} required />
             </Field>
             <Field label="Valid for (days)">
@@ -1499,10 +1505,11 @@ function PipelineCard() {
 
 function InvoicingCard() {
   const qc = useQueryClient();
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['settings', 'invoicing'],
     queryFn: () => api<InvoicingConfig>('/settings/invoicing'),
   });
+  const { data } = query;
 
   const save = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
@@ -1514,7 +1521,7 @@ function InvoicingCard() {
     onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
   });
 
-  if (!data) return null;
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
 
   return (
     <Card>
@@ -1684,9 +1691,9 @@ function IssueRow({
           <Combobox
             value={workerId}
             onChange={setWorkerId}
-            placeholder="Link to worker…"
+            placeholder="Link to fundi…"
             className="h-9 w-56 text-xs"
-            aria-label="Link fingerprint to worker"
+            aria-label="Link fingerprint to fundi"
             options={workers.map((w) => ({ value: w.id, label: `${w.name} · ${w.trade}` }))}
           />
           <Button size="sm" disabled={!workerId || busy} onClick={() => onLink(workerId)}>

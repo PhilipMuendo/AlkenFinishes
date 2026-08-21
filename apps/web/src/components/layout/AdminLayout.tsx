@@ -26,14 +26,19 @@ import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Wordmark } from '@/components/Wordmark';
+import { ConnectionBar } from '@/components/ConnectionBar';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Toaster } from '@/components/ui/toast';
 import { CommandPalette, useCommandPalette } from '@/components/CommandPalette';
 import { Assistant } from '@/features/Assistant';
 
 /**
  * Grouped in the order work actually moves through the business: win it, agree
- * it, run it, get paid for it. Without the headings this is thirteen
+ * it, run it, get paid for it. Without the headings this is sixteen
  * undifferentiated links, which is where a sidebar stops being navigable.
+ *
+ * Every label matches its own route, so the address bar confirms where the
+ * click landed rather than contradicting it.
  */
 type NavEntry = { heading: string } | { to: string; label: string; icon: LucideIcon; end?: boolean };
 
@@ -45,18 +50,18 @@ const nav: NavEntry[] = [
   { to: '/admin/quotations', label: 'Quotations', icon: FileText },
   { to: '/admin/contracts', label: 'Contracts', icon: FileSignature },
   { heading: 'On site' },
-  { to: '/admin/projects', label: 'Projects', icon: Building2 },
-  { to: '/admin/workers', label: 'Workers', icon: HardHat },
-  { to: '/admin/tools', label: 'Tools', icon: Wrench },
+  { to: '/admin/sites', label: 'Sites', icon: Building2 },
+  { to: '/admin/workers', label: 'Fundis', icon: HardHat },
+  { to: '/admin/equipment', label: 'Equipment', icon: Wrench },
   { to: '/admin/reports', label: 'Reports', icon: ClipboardList },
   { to: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
   { heading: 'Money' },
-  { to: '/admin/invoices', label: 'Receivables', icon: ReceiptText },
-  { to: '/admin/suppliers', label: 'Payables', icon: Truck },
+  { to: '/admin/receivables', label: 'Receivables', icon: ReceiptText },
+  { to: '/admin/payables', label: 'Payables', icon: Truck },
   { to: '/admin/payroll', label: 'Payroll', icon: Banknote },
   { to: '/admin/tax', label: 'Tax', icon: Landmark },
   { heading: 'Admin' },
-  { to: '/admin/users', label: 'Team', icon: Users },
+  { to: '/admin/team', label: 'Team', icon: Users },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -221,8 +226,14 @@ export function AdminLayout() {
           </>
         )}
 
+        <ConnectionBar />
+
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6 lg:p-8">
-          <Outlet />
+          {/* Per page, so a broken Payroll screen costs the reader that screen
+              and not the sidebar they would use to leave it. */}
+          <ErrorBoundary label="This page">
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
 

@@ -11,6 +11,7 @@ import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -95,10 +96,11 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
   const [deleting, setDeleting] = useState<SnagItem | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: snags } = useQuery({
+  const snagsQuery = useQuery({
     queryKey: ['snags', projectId, statusFilter],
     queryFn: () => api<SnagItem[]>(`/projects/${projectId}/snags${statusFilter ? `?status=${statusFilter}` : ''}`),
   });
+  const { data: snags } = snagsQuery;
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['snags', projectId] });
 
@@ -185,16 +187,16 @@ export function SnagsPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={snagsQuery} rows={3} noun="the defect list" />
+
       {snags?.length === 0 && (
-        <Card className="p-8">
-          <Empty icon={AlertOctagon}>
-            <p className="font-medium text-fg">No defects logged</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Photograph a defect and pin exactly where it is — the office can verify the fix
-              without a return visit.
-            </p>
-          </Empty>
-        </Card>
+        <Empty icon={AlertOctagon}>
+          <p className="font-medium text-fg">No defects logged</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Photograph a defect and pin exactly where it is — the office can verify the fix
+            without a return visit.
+          </p>
+        </Empty>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

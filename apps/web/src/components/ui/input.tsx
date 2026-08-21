@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { Children, cloneElement, forwardRef, isValidElement, useId } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -64,6 +64,19 @@ export function Label({ className, ...props }: React.LabelHTMLAttributes<HTMLLab
   );
 }
 
+/**
+ * A labelled control.
+ *
+ * The label and the control are siblings, so the association has to be made
+ * explicitly: without it the label is decoration — a screen reader announces
+ * the field as blank, and tapping the label does not focus it, which on a
+ * phone is a miss every time. So `Field` mints an id, points the label at it,
+ * and clones it onto whichever child is the control. `hint` is wired up the
+ * same way, so it is read out with the field rather than stranded after it.
+ *
+ * A child that already carries an `id` keeps its own — this never overwrites
+ * a caller who wired it up themselves.
+ */
 export function Field({
   label,
   hint,
@@ -74,11 +87,31 @@ export function Field({
   hint?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+
+  // Only the first element child is treated as the control; anything else
+  // (a wrapper with two inputs, say) is left exactly as it was passed.
+  let wired = false;
+  const controls = Children.map(children, (child) => {
+    if (wired || !isValidElement(child)) return child;
+    wired = true;
+    const props = child.props as { id?: string; 'aria-describedby'?: string };
+    return cloneElement(child as React.ReactElement<Record<string, unknown>>, {
+      id: props.id ?? id,
+      'aria-describedby': hint ? (props['aria-describedby'] ?? hintId) : props['aria-describedby'],
+    });
+  });
+
   return (
     <div>
-      <Label>{label}</Label>
-      {children}
-      {hint && <p className="mt-1 text-xs text-fg-subtle">{hint}</p>}
+      <Label htmlFor={id}>{label}</Label>
+      {controls}
+      {hint && (
+        <p id={hintId} className="mt-1 text-xs text-fg-subtle">
+          {hint}
+        </p>
+      )}
     </div>
   );
 }

@@ -6,7 +6,6 @@ import type { Client, Lead, LeadStage } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Combobox } from '@/components/ui/combobox';
 import { Dialog } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -142,20 +141,16 @@ export function LeadsPage() {
       )}
 
       {!isLoading && leads?.length === 0 && (
-        <Card>
-          <CardContent>
-            <Empty icon={Target}>
-              <p className="font-medium text-fg">No leads yet</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Log an enquiry here and it carries through to the quotation without retyping the
-                client.
-              </p>
-              <Button className="mt-3" onClick={() => setCreating(true)}>
-                <Plus size={16} /> Add lead
-              </Button>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={Target}>
+          <p className="font-medium text-fg">No leads yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Log an enquiry here and it carries through to the quotation without retyping the
+            client.
+          </p>
+          <Button className="mt-3" onClick={() => setCreating(true)}>
+            <Plus size={16} /> Add lead
+          </Button>
+        </Empty>
       )}
 
       {!isLoading && !!leads?.length && (

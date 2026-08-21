@@ -5,14 +5,16 @@ import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Project, Worker } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
 import { Combobox } from '@/components/ui/combobox';
 import { Badge, StatusBadge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { HardHat } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { toast } from '@/components/ui/toast';
 import { WorkerPaymentDialog } from '@/features/WorkerPaymentDialog';
 
@@ -52,10 +54,11 @@ export function WorkersPage() {
   const [editing, setEditing] = useState<Worker | null>(null);
   const [paying, setPaying] = useState<Worker | null>(null);
 
-  const { data: workers } = useQuery({
+  const workersQuery = useQuery({
     queryKey: ['workers'],
     queryFn: () => api<Worker[]>('/workers'),
   });
+  const { data: workers } = workersQuery;
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
@@ -90,7 +93,7 @@ export function WorkersPage() {
     mutationFn: ({ workerId, projectId }: { workerId: string; projectId: string }) =>
       api(`/workers/${workerId}/assign`, { body: { projectId } }),
     onSuccess: () => {
-      toast.success('Fundi assigned to the site.');
+      toast.success('Fundi put on the site. Their hours there now accrue against its budget.');
       invalidate();
       setAssigning(null);
     },
@@ -100,7 +103,7 @@ export function WorkersPage() {
   const unassign = useMutation({
     mutationFn: (workerId: string) => api(`/workers/${workerId}/unassign`, { body: {} }),
     onSuccess: () => {
-      toast.success('Fundi taken off the site.');
+      toast.success('Fundi taken off the site. Their record and history are kept.');
       invalidate();
     },
     onError: (e) => toast.error(errText(e, 'The fundi was not unassigned.')),
@@ -130,8 +133,8 @@ export function WorkersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Workers"
-        description="Fundis and site workers across all projects"
+        title="Fundis"
+        description="Fundis and site fundis across all sites"
         actions={
           <>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
@@ -144,25 +147,23 @@ export function WorkersPage() {
         }
       />
 
+      <QueryState query={workersQuery} rows={4} noun="fundis" />
+
       {workers?.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Empty icon={HardHat}>
-              <p className="font-medium text-fg">No workers yet</p>
-              <p className="mt-1 max-w-xs text-fg-muted">
-                Add fundis one at a time, or import a whole crew from a spreadsheet.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <Button variant="outline" onClick={() => setImportOpen(true)}>
-                  <Upload size={16} /> Import
-                </Button>
-                <Button onClick={() => setOpen(true)}>
-                  <Plus size={16} /> Add worker
-                </Button>
-              </div>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={HardHat}>
+          <p className="font-medium text-fg">No workers yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Add fundis one at a time, or import a whole crew from a spreadsheet.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload size={16} /> Import
+            </Button>
+            <Button onClick={() => setOpen(true)}>
+              <Plus size={16} /> Add worker
+            </Button>
+          </div>
+        </Empty>
       ) : (
         <Card className="overflow-hidden">
         <Table>
@@ -170,9 +171,9 @@ export function WorkersPage() {
             <tr>
               <Th>Name</Th>
               <Th>Trade</Th>
-              <Th className="text-right">Hourly rate</Th>
-              <Th>Biometric ID</Th>
-              <Th>Current site</Th>
+              <Th priority="sm" className="text-right">Hourly rate</Th>
+              <Th priority="lg">Biometric ID</Th>
+              <Th priority="sm">Current site</Th>
               <Th>Status</Th>
               <Th />
             </tr>
@@ -189,7 +190,7 @@ export function WorkersPage() {
                     supervisor cannot set one. Their hours accrue no cost until
                     this is filled in, so it has to be visible rather than
                     reading as a plausible zero. */}
-                <Td className="text-right tabular-nums">
+                <Td priority="sm" className="text-right tabular-nums">
                   {Number(w.hourlyRate) > 0 ? (
                     `${fmtMoney(Number(w.hourlyRate))}/hr`
                   ) : (
@@ -201,14 +202,14 @@ export function WorkersPage() {
                     </button>
                   )}
                 </Td>
-                <Td>
+                <Td priority="lg">
                   {w.biometricId ? (
                     <Badge tone="green">Enrolled</Badge>
                   ) : (
                     <Badge tone="yellow">Not enrolled</Badge>
                   )}
                 </Td>
-                <Td>
+                <Td priority="sm">
                   {w.assignments[0]?.project.name ?? (
                     <span className="text-fg-subtle">Unassigned</span>
                   )}
@@ -230,7 +231,7 @@ export function WorkersPage() {
                     <button
                       className="rounded-lg p-2 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg"
                       aria-label={`Pay ${w.name}`}
-                      title="Pay this worker"
+                      title="Pay this fundi"
                       onClick={() => setPaying(w)}
                     >
                       <Banknote size={16} />
@@ -258,7 +259,7 @@ export function WorkersPage() {
         </Card>
       )}
 
-      <Dialog open={open} onClose={() => setOpen(false)} title="Add worker">
+      <Dialog open={open} onClose={() => setOpen(false)} title="Add fundi">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -294,7 +295,7 @@ export function WorkersPage() {
             </p>
           )}
           <Button type="submit" className="w-full" disabled={create.isPending}>
-            Add worker
+            Add fundi
           </Button>
         </form>
       </Dialog>
@@ -451,11 +452,11 @@ export function WorkersPage() {
           }}
           className="space-y-3"
         >
-          <Field label="Site / project">
+          <Field label="Site / site">
             <Combobox
               name="projectId"
               placeholder="Search site…"
-              aria-label="Site / project"
+              aria-label="Site / site"
               options={(projects ?? []).map((p) => ({ value: p.id, label: p.name }))}
             />
           </Field>
@@ -469,51 +470,23 @@ export function WorkersPage() {
         {paying && <WorkerPaymentDialog worker={paying} onDone={() => setPaying(null)} />}
       </Dialog>
 
-      <Dialog
-        open={!!deleting}
+      <ConfirmDialog
+        open={Boolean(deleting)}
         onClose={() => {
           setDeleting(null);
           deleteWorker.reset();
         }}
         title={deleting ? `Delete ${deleting.name}?` : ''}
-      >
-        {deleting && (
-          <div className="space-y-3">
-            <p className="text-sm text-fg-muted">
-              This permanently removes <span className="font-medium text-fg">{deleting.name}</span>{' '}
-              and can&rsquo;t be undone. Workers with attendance history can&rsquo;t be deleted —
-              unassign them from their site instead to preserve those records.
-            </p>
-            {deleteWorker.isError && (
-              <p className="text-sm text-danger-fg">
-                {deleteWorker.error instanceof ApiRequestError
-                  ? deleteWorker.error.message
-                  : 'Failed to delete this worker'}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setDeleting(null);
-                  deleteWorker.reset();
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                disabled={deleteWorker.isPending}
-                onClick={() => deleteWorker.mutate(deleting.id)}
-              >
-                Delete permanently
-              </Button>
-            </div>
-          </div>
-        )}
-      </Dialog>
+        description={
+          deleting
+            ? `This permanently removes ${deleting.name} and cannot be undone. A fundi with attendance history cannot be deleted at all — take them off their site instead, which keeps every record of what they worked and what they were paid.`
+            : undefined
+        }
+        confirmLabel="Delete permanently"
+        pending={deleteWorker.isPending}
+        error={deleteWorker.isError ? errText(deleteWorker.error, 'The fundi was not deleted.') : null}
+        onConfirm={() => deleting && deleteWorker.mutate(deleting.id)}
+      />
     </div>
   );
 }

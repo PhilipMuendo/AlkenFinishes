@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -43,10 +44,11 @@ export function TaxPage() {
         `/tax/position?from=${from.toISOString()}&to=${to.toISOString()}`,
       ),
   });
-  const { data: certs } = useQuery({
+  const certsQuery = useQuery({
     queryKey: ['tax', 'certificates'],
     queryFn: () => api<OutstandingCertificate[]>('/tax/certificates-outstanding'),
   });
+  const { data: certs } = certsQuery;
 
   const recordCert = useMutation({
     mutationFn: ({ id, whtCertNo }: { id: string; whtCertNo: string }) =>
@@ -161,25 +163,25 @@ export function TaxPage() {
             Oldest first — all periods, not just this month.
           </p>
         </CardHeader>
+        <QueryState query={certsQuery} rows={3} noun="certificates" />
+
         {certs?.length === 0 ? (
-          <CardContent>
-            <Empty icon={FileCheck}>
-              <p className="font-medium text-fg">Nothing outstanding</p>
-              <p className="mt-1 max-w-sm text-fg-muted">
-                Every withholding deduction a client has made has a certificate recorded against
-                it.
-              </p>
-            </Empty>
-          </CardContent>
+          <Empty icon={FileCheck}>
+            <p className="font-medium text-fg">Nothing outstanding</p>
+            <p className="mt-1 max-w-sm text-fg-muted">
+              Every withholding deduction a client has made has a certificate recorded against
+              it.
+            </p>
+          </Empty>
         ) : (
           <Table>
             <thead>
               <tr>
                 <Th>Receipt</Th>
-                <Th>Client / project</Th>
-                <Th>Paid</Th>
+                <Th priority="sm">Client / site</Th>
+                <Th priority="sm">Paid</Th>
                 <Th className="text-right">Withheld</Th>
-                <Th className="text-right">Waiting</Th>
+                <Th priority="lg" className="text-right">Waiting</Th>
                 <Th />
               </tr>
             </thead>
@@ -192,13 +194,13 @@ export function TaxPage() {
                       <p className="text-xs font-normal text-fg-subtle">{c.invoice.invoiceNo}</p>
                     )}
                   </Td>
-                  <Td>
+                  <Td priority="sm">
                     <p className="text-fg">{c.project.clientName}</p>
                     <p className="text-xs text-fg-subtle">{c.project.name}</p>
                   </Td>
-                  <Td className="whitespace-nowrap">{fmtDate(c.paymentDate)}</Td>
+                  <Td priority="sm" className="whitespace-nowrap">{fmtDate(c.paymentDate)}</Td>
                   <Td className="text-right font-medium tabular-nums">{fmtMoney(c.withheld)}</Td>
-                  <Td className="text-right tabular-nums">
+                  <Td priority="lg" className="text-right tabular-nums">
                     <span className={c.daysWaiting > 60 ? 'text-danger-fg' : 'text-fg-muted'}>
                       {c.daysWaiting}d
                     </span>

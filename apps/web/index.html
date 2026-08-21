@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- iOS ignores the manifest's icons entirely and will screenshot the page
+         unless it finds this. 180x180, full bleed — the home screen applies its
+         own rounding, so artwork must not carry its own. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Alken Decor" />
+    <meta name="description" content="Site, labour and money management for Alken Decor Limited." />
     <!-- viewport-fit=cover puts the safe-area insets in play, which the bottom
          navigation and the assistant both pad against. interactive-widget
          makes the keyboard shrink the layout instead of covering it, so a

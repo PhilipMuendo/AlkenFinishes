@@ -6,9 +6,11 @@ import type { PayrollPreview, PayrollRunDetail, PayrollRunSummary, Project } fro
 import { fmtDate, fmtMoney, isoDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { toast } from '@/components/ui/toast';
@@ -35,11 +37,13 @@ export function PayrollPage() {
   const [periodTo, setPeriodTo] = useState(isoDate(monthEnd()));
   const [projectId, setProjectId] = useState('');
   const [notes, setNotes] = useState('');
+  const [deleting, setDeleting] = useState<PayrollRunSummary | null>(null);
 
-  const { data: runs, isLoading } = useQuery({
+  const runsQuery = useQuery({
     queryKey: ['payroll'],
     queryFn: () => api<PayrollRunSummary[]>('/payroll'),
   });
+  const { data: runs, isLoading } = runsQuery;
   const { data: projects } = useQuery({
     queryKey: ['projects'],
     queryFn: () => api<Project[]>('/projects'),
@@ -76,6 +80,7 @@ export function PayrollPage() {
     onSuccess: () => {
       toast.success('Draft payroll run deleted.');
       void qc.invalidateQueries({ queryKey: ['payroll'] });
+      setDeleting(null);
     },
     onError: (e) => toast.error(errText(e, 'The run was not deleted.')),
   });
@@ -99,18 +104,16 @@ export function PayrollPage() {
         </Button>
       </div>
 
+      <QueryState query={runsQuery} rows={3} noun="payroll runs" />
+
       {!isLoading && runs?.length === 0 ? (
-        <Card>
-          <CardContent>
-            <Empty icon={HardHat}>
-              <p className="font-medium text-fg">No payroll runs yet</p>
-              <p className="mt-1 max-w-sm text-fg-muted">
-                A run reads the hours already captured by attendance and works out each worker&rsquo;s
-                pay. Set your rates in Settings first — deductions stay switched off until you do.
-              </p>
-            </Empty>
-          </CardContent>
-        </Card>
+        <Empty icon={HardHat}>
+          <p className="font-medium text-fg">No payroll runs yet</p>
+          <p className="mt-1 max-w-sm text-fg-muted">
+            A run reads the hours already captured by attendance and works out each fundi&rsquo;s
+            pay. Set your rates in Settings first — deductions stay switched off until you do.
+          </p>
+        </Empty>
       ) : (
         <Card className="overflow-hidden">
           {/* The table scrolls inside the card rather than stretching the page
@@ -120,11 +123,11 @@ export function PayrollPage() {
               <thead>
                 <tr>
                   <Th>Period</Th>
-                  <Th>Scope</Th>
-                  <Th className="text-right">Workers</Th>
-                  <Th className="text-right">Gross</Th>
+                  <Th priority="sm">Scope</Th>
+                  <Th priority="sm" className="text-right">Fundis</Th>
+                  <Th priority="lg" className="text-right">Gross</Th>
                   <Th className="text-right">Net paid</Th>
-                  <Th className="text-right">Employer cost</Th>
+                  <Th priority="lg" className="text-right">Employer cost</Th>
                   <Th>Status</Th>
                   <Th />
                 </tr>
@@ -140,13 +143,13 @@ export function PayrollPage() {
                         {fmtDate(r.periodFrom)} – {fmtDate(r.periodTo)}
                       </button>
                     </Td>
-                    <Td>{r.project?.name ?? 'All sites'}</Td>
-                    <Td className="text-right tabular-nums">{r.workerCount}</Td>
-                    <Td className="text-right tabular-nums">{fmtMoney(r.totals.gross)}</Td>
+                    <Td priority="sm">{r.project?.name ?? 'All sites'}</Td>
+                    <Td priority="sm" className="text-right tabular-nums">{r.workerCount}</Td>
+                    <Td priority="lg" className="text-right tabular-nums">{fmtMoney(r.totals.gross)}</Td>
                     <Td className="text-right font-medium tabular-nums">
                       {fmtMoney(r.totals.netPay)}
                     </Td>
-                    <Td className="text-right tabular-nums">{fmtMoney(r.totals.employerCost)}</Td>
+                    <Td priority="lg" className="text-right tabular-nums">{fmtMoney(r.totals.employerCost)}</Td>
                     <Td>
                       {r.status === 'FINALISED' ? (
                         <Badge tone="green">Finalised</Badge>
@@ -159,7 +162,9 @@ export function PayrollPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => remove.mutate(r.id)}
+                          aria-label={`Delete the draft run for ${fmtDate(r.periodFrom)} to ${fmtDate(r.periodTo)}`}
+                          title="Delete this draft run"
+                          onClick={() => setDeleting(r)}
                           disabled={remove.isPending}
                         >
                           <Trash2 size={14} />
@@ -233,7 +238,7 @@ export function PayrollPage() {
             <>
               {!preview.data.config.enabled && (
                 <p className="rounded-lg border border-warn-hairline bg-warn-surface p-3 text-sm text-warn-fg">
-                  Statutory deductions are switched off, so this run pays each worker their full
+                  Statutory deductions are switched off, so this run pays each fundi their full
                   wage and withholds nothing. Turn them on in Settings once your rates are set.
                 </p>
               )}
@@ -258,7 +263,7 @@ export function PayrollPage() {
                       </span>
                       <span className="mt-1 block text-fg-muted">
                         Their hours are recorded but priced at zero, so this run would pay them
-                        nothing. Set the rate under Workers first — a supervisor can add a fundi
+                        nothing. Set the rate under Fundis first — a supervisor can add a fundi
                         but not price them.
                       </span>
                     </Notice>
@@ -305,6 +310,28 @@ export function PayrollPage() {
       >
         {openId && <RunDetail id={openId} onClose={() => setOpenId(null)} />}
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onClose={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+        title="Delete this draft payroll run?"
+        description={
+          deleting
+            ? `The draft covering ${fmtDate(deleting.periodFrom)} to ${fmtDate(
+                deleting.periodTo,
+              )} — ${deleting.workerCount} fundi${deleting.workerCount === 1 ? '' : 's'}, ${fmtMoney(
+                deleting.totals.netPay,
+              )} net — will be discarded. Attendance is untouched, so the run can be worked out again.`
+            : undefined
+        }
+        confirmLabel="Delete draft"
+        pending={remove.isPending}
+        error={remove.isError ? errText(remove.error, 'The run was not deleted.') : null}
+        onConfirm={() => deleting && remove.mutate(deleting.id)}
+      />
     </div>
   );
 }
@@ -321,7 +348,7 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
     onSuccess: () => {
       // Finalising makes this the record of what was withheld from real
       // people, so the confirmation says that rather than "Saved".
-      toast.success('Payroll finalised. It is now the record of what each worker was paid.');
+      toast.success('Payroll finalised. It is now the record of what each fundi was paid.');
       void qc.invalidateQueries({ queryKey: ['payroll'] });
     },
     onError: (e) => toast.error(errText(e, 'The run was not finalised.')),
@@ -355,7 +382,7 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
         <>
           <p className="text-xs text-fg-subtle">
             Finalising makes these figures permanent. After that the run is the record of what was
-            withheld from your workers and cannot be deleted or rebuilt.
+            withheld from your fundis and cannot be deleted or rebuilt.
           </p>
           {finalise.isError && (
             <p className="text-sm text-danger-fg">
@@ -386,7 +413,7 @@ function RunDetail({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
-/** The per-worker table. Scrolls sideways on a phone rather than squashing. */
+/** The per-fundi table. Scrolls sideways on a phone rather than squashing. */
 function PayrollLines({
   lines,
 }: {
@@ -397,13 +424,13 @@ function PayrollLines({
       <Table>
         <thead>
           <tr>
-            <Th>Worker</Th>
-            <Th className="text-right">Hours</Th>
+            <Th>Fundi</Th>
+            <Th priority="sm" className="text-right">Hours</Th>
             <Th className="text-right">Gross</Th>
-            <Th className="text-right">PAYE</Th>
-            <Th className="text-right">NSSF</Th>
-            <Th className="text-right">SHIF</Th>
-            <Th className="text-right">Levy</Th>
+            <Th priority="lg" className="text-right">PAYE</Th>
+            <Th priority="lg" className="text-right">NSSF</Th>
+            <Th priority="lg" className="text-right">SHIF</Th>
+            <Th priority="lg" className="text-right">Levy</Th>
             <Th className="text-right">Net</Th>
           </tr>
         </thead>
@@ -414,12 +441,12 @@ function PayrollLines({
                 <p className="font-medium text-fg">{l.workerName}</p>
                 {l.trade && <p className="text-xs text-fg-subtle">{l.trade}</p>}
               </Td>
-              <Td className="text-right tabular-nums">{l.hoursWorked}</Td>
+              <Td priority="sm" className="text-right tabular-nums">{l.hoursWorked}</Td>
               <Td className="text-right tabular-nums">{fmtMoney(l.gross)}</Td>
-              <Td className="text-right tabular-nums">{fmtMoney(l.paye)}</Td>
-              <Td className="text-right tabular-nums">{fmtMoney(l.nssf)}</Td>
-              <Td className="text-right tabular-nums">{fmtMoney(l.shif)}</Td>
-              <Td className="text-right tabular-nums">{fmtMoney(l.housingLevy)}</Td>
+              <Td priority="lg" className="text-right tabular-nums">{fmtMoney(l.paye)}</Td>
+              <Td priority="lg" className="text-right tabular-nums">{fmtMoney(l.nssf)}</Td>
+              <Td priority="lg" className="text-right tabular-nums">{fmtMoney(l.shif)}</Td>
+              <Td priority="lg" className="text-right tabular-nums">{fmtMoney(l.housingLevy)}</Td>
               <Td className="text-right font-medium tabular-nums">{fmtMoney(l.netPay)}</Td>
             </tr>
           ))}
@@ -442,7 +469,7 @@ function Totals({
         </CardHeader>
         <CardContent className="space-y-1 text-sm">
           <Row label="Gross wages" value={totals.gross} />
-          <Row label="Withheld from workers" value={-totals.totalDeductions} />
+          <Row label="Withheld from fundis" value={-totals.totalDeductions} />
           <div className="border-t border-hairline pt-1">
             <Row label="Net to pay out" value={totals.netPay} strong />
           </div>

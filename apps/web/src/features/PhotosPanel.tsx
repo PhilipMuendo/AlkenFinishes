@@ -5,10 +5,10 @@ import { api, ApiRequestError, errText } from '@/lib/api';
 import type { ProjectDocument } from '@/lib/types';
 import { fmtDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Field, Input } from '@/components/ui/input';
+import { QueryState } from '@/components/ui/query-state';
 import { Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 
@@ -28,10 +28,11 @@ export function PhotosPanel({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState<ProjectDocument | null>(null);
 
-  const { data: photos } = useQuery({
+  const photosQuery = useQuery({
     queryKey: ['documents', projectId, 'PHOTO'],
     queryFn: () => api<ProjectDocument[]>(`/projects/${projectId}/documents?type=PHOTO`),
   });
+  const { data: photos } = photosQuery;
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ['documents', projectId, 'PHOTO'] });
 
@@ -63,16 +64,16 @@ export function PhotosPanel({ projectId }: { projectId: string }) {
         </Button>
       </div>
 
+      <QueryState query={photosQuery} rows={2} noun="photos" />
+
       {photos?.length === 0 && (
-        <Card className="p-8">
-          <Empty icon={Camera}>
-            <p className="font-medium text-fg">No photos yet</p>
-            <p className="mt-1 max-w-xs text-fg-muted">
-              Add photos of the site here — progress shots, deliveries, anything worth keeping on
-              record outside a daily report.
-            </p>
-          </Empty>
-        </Card>
+        <Empty icon={Camera}>
+          <p className="font-medium text-fg">No photos yet</p>
+          <p className="mt-1 max-w-xs text-fg-muted">
+            Add photos of the site here — progress shots, deliveries, anything worth keeping on
+            record outside a daily report.
+          </p>
+        </Empty>
       )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">

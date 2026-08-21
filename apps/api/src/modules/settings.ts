@@ -6,7 +6,7 @@ import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { getFinanceSettings } from '../services/finance';
+import { clearFinanceSettingsCache, getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPurchaseTaxConfig } from '../services/payables';
 import { getStaffTaxConfig } from '../services/workerPay';
@@ -47,6 +47,7 @@ router.put(
       create: { key: 'labourCostSource', value: labourCostSource },
       update: { value: labourCostSource },
     });
+    clearFinanceSettingsCache();
     audit(req, 'settings.labourSource', 'Setting', 'labourCostSource', { labourCostSource });
     res.json({ labourCostSource });
   }),
@@ -67,6 +68,7 @@ router.put(
       create: { key: 'budgetThresholds', value },
       update: { value },
     });
+    clearFinanceSettingsCache();
     audit(req, 'settings.thresholds', 'Setting', 'budgetThresholds', value);
     res.json(value);
   }),

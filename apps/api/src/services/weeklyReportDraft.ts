@@ -43,6 +43,25 @@ export interface WeekSummary {
   empty: boolean;
 }
 
+/**
+ * The Sunday that closes the week containing this date.
+ *
+ * A weekly report is unique per (project, weekEnding). Without snapping, a
+ * supervisor who picks the Tuesday and one who picks the Sunday file two rows
+ * for the same seven days, and the office reads the site twice — so every
+ * route that takes a weekEnding puts it through here first and the stored key
+ * is always a Sunday.
+ *
+ * UTC throughout: weekEnding is a `@db.Date`, which Prisma hands back as UTC
+ * midnight, so `getDay()` would read the wrong weekday on a server west of it.
+ */
+export const endOfWeek = (d: Date) => {
+  const out = new Date(d);
+  const day = out.getUTCDay(); // 0 = Sunday
+  if (day !== 0) out.setUTCDate(out.getUTCDate() + (7 - day));
+  return out;
+};
+
 const weekBounds = (weekEnding: Date) => {
   const to = new Date(weekEnding);
   to.setHours(23, 59, 59, 999);
