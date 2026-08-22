@@ -13,7 +13,13 @@ import { monthPeriod, taxPosition } from './taxPosition';
 import { gatherDay, factsFor } from './dailyReportDraft';
 import { isOffice } from './payVisibility';
 import { contractPosition, leadPipeline } from './pipeline';
-import { projectFinancials, getFinanceSettings, monthlyTotals, toSeries } from './finance';
+import {
+  projectFinancials,
+  companyFinancials,
+  getFinanceSettings,
+  monthlyTotals,
+  toSeries,
+} from './finance';
 import { derivedEvents } from './calendarFeeds';
 import { attentionDigest, FINISHING_SOON_DAYS } from './attention';
 import {
@@ -232,6 +238,39 @@ export const LOOKUPS: Lookup[] = [
   },
 
   {
+    name: 'company_financials',
+    scope: 'office',
+    description:
+      'Whether the company is profitable and by how much: contract value, spend and estimated profit across every site, plus what has been collected and what remains to be billed. Use for "are we profitable", "how much have we made", "what is our margin" and similar company-wide money questions — not to be confused with company_overview, which covers what is owed rather than what has been earned.',
+    run: async () => {
+      const fin = await companyFinancials();
+      const t = fin.totals;
+      const marginPct = t.contractValue > 0 ? Math.round((t.estimatedProfit / t.contractValue) * 100) : null;
+
+      // Ranked so "which site is dragging on margin" and "which is a Line
+      // wins" are both answerable from one lookup without a second round trip.
+      const byProfit = [...fin.projects].sort((a, b) => b.estimatedProfit - a.estimatedProfit);
+      const most = byProfit[0];
+      const least = byProfit[byProfit.length - 1];
+
+      return {
+        facts: [
+          `Across ${plural(fin.projects.length, 'site')}: contract value ${money(t.contractValue)}, actual spend ${money(t.totalActual)}${t.overallConsumedPct != null ? ` (${t.overallConsumedPct}% of budget)` : ''}.`,
+          `Estimated profit at today's costs: ${money(t.estimatedProfit)}${marginPct != null ? ` (${marginPct}% of contract value)` : ''}. This is contract value less actual spend — work not yet billed is included, work not yet started is not.`,
+          `Collected from clients so far: ${money(t.totalCollected)}. Still to be billed or paid on signed contracts: ${money(t.totalPendingBalance)}.`,
+          `Invoiced and outstanding: ${money(t.arOutstanding)}, of which ${money(t.arOverdue)} is overdue. Retention held by clients: ${money(t.retentionHeld)}.`,
+          most && least && most.id !== least.id
+            ? `Most profitable so far: ${most.name} (${money(most.estimatedProfit)}). Least: ${least.name} (${money(least.estimatedProfit)}).`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        source: { label: 'Overview', href: '/admin' },
+      };
+    },
+  },
+
+  {
     name: 'site_status',
     scope: 'site',
     description:
@@ -275,7 +314,7 @@ export const LOOKUPS: Lookup[] = [
             ? `Last daily report: ${day(lastReport.date)}.`
             : 'No daily report has ever been filed for this site.',
         ].join('\n'),
-        source: { label: project.name, href: `/admin/projects/${projectId}` },
+        source: { label: project.name, href: `/admin/sites/${projectId}` },
       };
     },
   },
@@ -313,7 +352,7 @@ export const LOOKUPS: Lookup[] = [
           `Invoiced and outstanding from the client: ${money(receivables.arOutstanding)}, of which ${money(receivables.arOverdue)} is overdue.`,
           `Retention held: ${money(receivables.retentionHeld)}.`,
         ].join('\n'),
-        source: { label: `${project.name} — money`, href: `/admin/projects/${projectId}?tab=financials` },
+        source: { label: `${project.name} — money`, href: `/admin/sites/${projectId}?tab=financials` },
       };
     },
   },
@@ -334,7 +373,7 @@ export const LOOKUPS: Lookup[] = [
           : `On ${day(date)}:\n${factsFor(summary)}`,
         source: {
           label: `${summary.projectName} — daily reports`,
-          href: `/admin/projects/${projectId}?tab=reports`,
+          href: `/admin/sites/${projectId}?tab=reports`,
         },
       };
     },
@@ -585,7 +624,7 @@ export const LOOKUPS: Lookup[] = [
                   25,
                 ),
               ].join('\n'),
-        source: { label: 'Sites', href: '/admin/projects' },
+        source: { label: 'Sites', href: '/admin/sites' },
       };
     },
   },
@@ -703,7 +742,7 @@ export const LOOKUPS: Lookup[] = [
               ]
                 .filter(Boolean)
                 .join('\n'),
-        source: { label: `${project.name} — attendance`, href: `/admin/projects/${projectId}?tab=attendance` },
+        source: { label: `${project.name} — attendance`, href: `/admin/sites/${projectId}?tab=attendance` },
       };
     },
   },
@@ -779,7 +818,7 @@ export const LOOKUPS: Lookup[] = [
                   ? `Blocked: ${blocked.map((t) => `${t.name}${t.notes ? ` — ${t.notes}` : ''}`).join('; ')}.`
                   : 'Nothing is blocked.',
               ].join('\n'),
-        source: { label: `${project.name} — programme`, href: `/admin/projects/${projectId}?tab=tasks` },
+        source: { label: `${project.name} — programme`, href: `/admin/sites/${projectId}?tab=tasks` },
       };
     },
   },
@@ -837,7 +876,7 @@ export const LOOKUPS: Lookup[] = [
               ]
                 .filter(Boolean)
                 .join('\n'),
-        source: { label: `${project.name} — defects`, href: `/admin/projects/${projectId}?tab=snags` },
+        source: { label: `${project.name} — defects`, href: `/admin/sites/${projectId}?tab=snags` },
       };
     },
   },
@@ -877,7 +916,7 @@ export const LOOKUPS: Lookup[] = [
                   12,
                 ),
               ].join('\n'),
-        source: { label: `${project.name} — safety`, href: `/admin/projects/${projectId}?tab=safety` },
+        source: { label: `${project.name} — safety`, href: `/admin/sites/${projectId}?tab=safety` },
       };
     },
   },
@@ -935,7 +974,7 @@ export const LOOKUPS: Lookup[] = [
         ]
           .filter(Boolean)
           .join('\n'),
-        source: { label: `${project.name} — materials`, href: `/admin/projects/${projectId}?tab=stock` },
+        source: { label: `${project.name} — materials`, href: `/admin/sites/${projectId}?tab=stock` },
       };
     },
   },
@@ -981,7 +1020,7 @@ export const LOOKUPS: Lookup[] = [
               `Week ending ${day(w.weekEnding)}: ${w.summary}${w.issues ? ` Issues: ${w.issues}` : ''}${w.nextWeekPlan ? ` Next week: ${w.nextWeekPlan}` : ''}`,
           ),
         ].join('\n'),
-        source: { label: `${project.name} — reports`, href: `/admin/projects/${projectId}?tab=reports` },
+        source: { label: `${project.name} — reports`, href: `/admin/sites/${projectId}?tab=reports` },
       };
     },
   },
@@ -1022,7 +1061,7 @@ export const LOOKUPS: Lookup[] = [
                   20,
                 ),
               ].join('\n'),
-        source: { label: `${project.name} — documents`, href: `/admin/projects/${projectId}?tab=documents` },
+        source: { label: `${project.name} — documents`, href: `/admin/sites/${projectId}?tab=documents` },
       };
     },
   },
@@ -1085,7 +1124,7 @@ export const LOOKUPS: Lookup[] = [
         ]
           .filter(Boolean)
           .join('\n'),
-        source: { label: `${project.name} — costs`, href: `/admin/projects/${projectId}?tab=financials` },
+        source: { label: `${project.name} — costs`, href: `/admin/sites/${projectId}?tab=financials` },
       };
     },
   },
@@ -1141,7 +1180,7 @@ export const LOOKUPS: Lookup[] = [
                   20,
                 ),
               ].join('\n'),
-        source: { label: `${project.name} — invoices`, href: `/admin/projects/${projectId}?tab=financials` },
+        source: { label: `${project.name} — invoices`, href: `/admin/sites/${projectId}?tab=financials` },
       };
     },
   },
@@ -1753,7 +1792,7 @@ export const LOOKUPS: Lookup[] = [
       if (rows.length === 0) {
         return {
           facts: `No spend has been recorded yet for ${label}.`,
-          source: { label: 'Spend trend', href: projectId ? `/admin/projects/${projectId}` : '/admin' },
+          source: { label: 'Spend trend', href: projectId ? `/admin/sites/${projectId}` : '/admin' },
         };
       }
       const recent = rows.slice(-6);
@@ -1777,7 +1816,7 @@ export const LOOKUPS: Lookup[] = [
         ]
           .filter(Boolean)
           .join('\n'),
-        source: { label: 'Spend trend', href: projectId ? `/admin/projects/${projectId}?tab=financials` : '/admin' },
+        source: { label: 'Spend trend', href: projectId ? `/admin/sites/${projectId}?tab=financials` : '/admin' },
       };
     },
   },
@@ -1818,7 +1857,7 @@ export const LOOKUPS: Lookup[] = [
             ? `Material requests still open (not yet reflected in spend): ${openRequests.map((r) => `${Number(r.quantity)} ${r.unit} ${r.itemName}`).join(', ')}.`
             : 'No material requests are outstanding on this site.',
         ].join('\n'),
-        source: { label: `${project.name} — budget impact`, href: `/admin/projects/${projectId}?tab=financials` },
+        source: { label: `${project.name} — budget impact`, href: `/admin/sites/${projectId}?tab=financials` },
       };
     },
   },

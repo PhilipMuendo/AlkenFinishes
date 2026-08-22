@@ -5,13 +5,11 @@ import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import {
   projectFinancials,
+  companyFinancials,
   getFinanceSettings,
-  health,
-  buildCategories,
   monthlyTotals,
   toSeries,
 } from '../services/finance';
-import { companyReceivables } from '../services/invoicing';
 import { leadPipeline } from '../services/pipeline';
 import { attentionDigest } from '../services/attention';
 
@@ -58,128 +56,60 @@ router.get(
 
 // Company-wide dashboard — SUPERADMIN only. Fixed number of grouped queries
 // regardless of how many projects or rows exist.
+//
+// The per-site rollup itself is `companyFinancials()` in services/finance.ts
+// — extracted there (rather than kept inline here) so the chat assistant's
+// `company_financials` lookup can call the exact same arithmetic and can
+// never disagree with this page about the company's profit, spend or AR.
 router.get(
   '/company',
   requireSuperadmin,
   asyncHandler(async (_req, res) => {
     const settings = await getFinanceSettings();
     const since30d = new Date(Date.now() - 30 * 86400_000);
-    const [projects, budgetLines, expenseAgg, labourAgg, overrideAgg, paymentAgg, months] =
-      await Promise.all([
-        prisma.project.findMany({
-          where: { status: { notIn: ['CANCELLED'] } },
-          include: { supervisor: { select: { id: true, name: true } } },
-          orderBy: { createdAt: 'asc' },
-        }),
-        prisma.budgetLine.findMany(),
-        prisma.expense.groupBy({
-          by: ['projectId', 'category'],
-          where: { status: 'APPROVED' },
-          _sum: { amount: true },
-        }),
-        prisma.attendanceRecord.groupBy({
-          by: ['projectId'],
-          where: { labourCost: { not: null } },
-          _sum: { labourCost: true },
-        }),
-        prisma.attendanceRecord.groupBy({
-          by: ['projectId'],
-          where: { method: 'MANUAL_OVERRIDE', date: { gte: since30d } },
-          _count: true,
-        }),
-        // voidedAt: null — a voided receipt is not money received. Omitting
-        // this filter silently overstates collections across the dashboard.
-        prisma.payment.groupBy({
-          by: ['projectId'],
-          where: { voidedAt: null },
-          _sum: { amount: true },
-        }),
-        monthlyTotals(settings.labourCostSource),
-      ]);
-
-    // Index each aggregate array once so the per-project loop below is O(P), not O(P x Q).
-    const expenseByProject = new Map<string, Record<string, number>>();
-    for (const row of expenseAgg) {
-      const bucket = expenseByProject.get(row.projectId) ?? {};
-      bucket[row.category] = Number(row._sum.amount ?? 0);
-      expenseByProject.set(row.projectId, bucket);
-    }
-    const labourByProject = new Map(labourAgg.map((a) => [a.projectId, Number(a._sum.labourCost ?? 0)]));
-    const overridesByProject = new Map(overrideAgg.map((o) => [o.projectId, o._count]));
-    const collectedByProject = new Map(paymentAgg.map((a) => [a.projectId, Number(a._sum.amount ?? 0)]));
-    const budgetLinesByProject = new Map<string, typeof budgetLines>();
-    for (const line of budgetLines) {
-      const bucket = budgetLinesByProject.get(line.projectId) ?? [];
-      bucket.push(line);
-      budgetLinesByProject.set(line.projectId, bucket);
-    }
-
-    const perProject = projects.map((p) => {
-      const expenseByCategory = expenseByProject.get(p.id) ?? {};
-      const attendanceLabour = labourByProject.get(p.id) ?? 0;
-      const categories = buildCategories(
-        budgetLinesByProject.get(p.id) ?? [],
-        { expenseByCategory, attendanceLabour },
-        settings,
-      );
-      const totalBudget = categories.reduce((s, c) => s + c.allocated, 0);
-      const totalActual = categories.reduce((s, c) => s + c.actual, 0);
-      const contractValue = Number(p.contractValue);
-      const consumedPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : null;
-      const totalCollected = collectedByProject.get(p.id) ?? 0;
-      return {
-        id: p.id,
-        name: p.name,
-        clientName: p.clientName,
-        location: p.location,
-        startDate: p.startDate,
-        expectedCompletion: p.expectedCompletion,
-        status: p.status,
-        progressPct: p.progressPct,
-        supervisorId: p.supervisorId,
-        supervisor: p.supervisor,
-        contractValue,
-        totalBudget,
-        totalActual,
-        estimatedProfit: contractValue - totalActual,
-        consumedPct,
-        health: health(consumedPct, settings.thresholds),
-        manualOverrides30d: overridesByProject.get(p.id) ?? 0,
-        totalCollected,
-        pendingBalance: contractValue - totalCollected,
-      };
-    });
-
-    const totals = perProject.reduce(
-      (acc, p) => ({
-        contractValue: acc.contractValue + p.contractValue,
-        totalActual: acc.totalActual + p.totalActual,
-        estimatedProfit: acc.estimatedProfit + p.estimatedProfit,
-        totalBudget: acc.totalBudget + p.totalBudget,
-        totalCollected: acc.totalCollected + p.totalCollected,
+    const [fin, supervisorsAndDates, overrideAgg, months] = await Promise.all([
+      companyFinancials(settings),
+      prisma.project.findMany({
+        where: { status: { notIn: ['CANCELLED'] } },
+        select: {
+          id: true,
+          clientName: true,
+          location: true,
+          startDate: true,
+          expectedCompletion: true,
+          status: true,
+          progressPct: true,
+          supervisorId: true,
+          supervisor: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
       }),
-      { contractValue: 0, totalActual: 0, estimatedProfit: 0, totalBudget: 0, totalCollected: 0 },
-    );
-    const overallPct =
-      totals.totalBudget > 0 ? Math.round((totals.totalActual / totals.totalBudget) * 100) : null;
+      // A data-quality signal for this dashboard specifically, not a
+      // financial figure — kept out of companyFinancials() so the assistant
+      // and every other caller of it aren't carrying a count they never use.
+      prisma.attendanceRecord.groupBy({
+        by: ['projectId'],
+        where: { method: 'MANUAL_OVERRIDE', date: { gte: since30d } },
+        _count: true,
+      }),
+      monthlyTotals(settings.labourCostSource),
+    ]);
+
+    // companyFinancials() carries only the figures the arithmetic needs; the
+    // fields the dashboard's project table displays alongside them (client,
+    // location, dates, supervisor) are joined back in here rather than
+    // pushed into the shared function, which every other caller — the chat
+    // lookup included — has no use for.
+    const byId = new Map(supervisorsAndDates.map((p) => [p.id, p]));
+    const overridesByProject = new Map(overrideAgg.map((o) => [o.projectId, o._count]));
+    const projects = fin.projects.map((p) => ({
+      ...p,
+      ...byId.get(p.id),
+      manualOverrides30d: overridesByProject.get(p.id) ?? 0,
+    }));
 
     const spendTrend = toSeries(months).map(({ month, total }) => ({ month, total }));
-    // Receivables answer a different question from pendingBalance: this is what
-    // has been *billed* and not yet paid, whereas pendingBalance is everything
-    // still owed on the contract including work not yet invoiced.
-    const receivables = await companyReceivables(perProject.map((p) => p.id));
-    res.json({
-      totals: {
-        ...totals,
-        totalPendingBalance: totals.contractValue - totals.totalCollected,
-        arOutstanding: receivables.totalAr,
-        arOverdue: receivables.totalOverdue,
-        retentionHeld: receivables.retentionHeld,
-        overallHealth: health(overallPct, settings.thresholds),
-      },
-      projects: perProject,
-      spendTrend,
-    });
+    res.json({ totals: fin.totals, projects, spendTrend });
   }),
 );
 

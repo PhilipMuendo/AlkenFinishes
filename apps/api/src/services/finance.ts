@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { env } from '../config/env';
+import { companyReceivables } from './invoicing';
 
 export interface Thresholds {
   yellowPct: number; // consumption % at which category turns yellow
@@ -153,6 +154,147 @@ export async function projectFinancials(projectId: string, settings?: FinanceSet
     overallHealth: health(overallPct, fin.thresholds),
     categories,
     thresholds: fin.thresholds,
+  };
+}
+
+export interface ProjectFinancialsRow {
+  id: string;
+  name: string;
+  contractValue: number;
+  totalBudget: number;
+  totalActual: number;
+  estimatedProfit: number;
+  consumedPct: number | null;
+  health: ReturnType<typeof health>;
+  totalCollected: number;
+  pendingBalance: number;
+}
+
+export interface CompanyFinancials {
+  totals: {
+    contractValue: number;
+    totalBudget: number;
+    totalActual: number;
+    estimatedProfit: number;
+    totalCollected: number;
+    totalPendingBalance: number;
+    arOutstanding: number;
+    arOverdue: number;
+    retentionHeld: number;
+    overallConsumedPct: number | null;
+    overallHealth: ReturnType<typeof health>;
+  };
+  projects: ProjectFinancialsRow[];
+}
+
+/**
+ * The company's financial position across every non-cancelled site: contract
+ * value, spend, and the profit implied by the two — the same figures
+ * `projectFinancials` returns for one site, rolled up.
+ *
+ * Extracted from the `/analytics/company` route (rather than the route
+ * calling this and the chat lookup hand-rolling its own version) so a
+ * profitability question from the assistant can never disagree with the
+ * Overview dashboard — they are, literally, the same arithmetic. Fixed
+ * number of grouped queries regardless of how many sites or rows exist.
+ */
+export async function companyFinancials(
+  settings?: FinanceSettings,
+): Promise<CompanyFinancials> {
+  const fin = settings ?? (await getFinanceSettings());
+  const since30d = new Date(Date.now() - 30 * 86400_000);
+  const [projects, budgetLines, expenseAgg, labourAgg, paymentAgg] = await Promise.all([
+    prisma.project.findMany({
+      where: { status: { notIn: ['CANCELLED'] } },
+      select: { id: true, name: true, contractValue: true },
+      orderBy: { createdAt: 'asc' },
+    }),
+    prisma.budgetLine.findMany(),
+    prisma.expense.groupBy({
+      by: ['projectId', 'category'],
+      where: { status: 'APPROVED' },
+      _sum: { amount: true },
+    }),
+    prisma.attendanceRecord.groupBy({
+      by: ['projectId'],
+      where: { labourCost: { not: null } },
+      _sum: { labourCost: true },
+    }),
+    // voidedAt: null — a voided receipt is not money received. Omitting this
+    // filter silently overstates collections across the dashboard.
+    prisma.payment.groupBy({
+      by: ['projectId'],
+      where: { voidedAt: null },
+      _sum: { amount: true },
+    }),
+  ]);
+
+  const expenseByProject = new Map<string, Record<string, number>>();
+  for (const row of expenseAgg) {
+    const bucket = expenseByProject.get(row.projectId) ?? {};
+    bucket[row.category] = num(row._sum.amount);
+    expenseByProject.set(row.projectId, bucket);
+  }
+  const labourByProject = new Map(labourAgg.map((a) => [a.projectId, num(a._sum.labourCost)]));
+  const collectedByProject = new Map(paymentAgg.map((a) => [a.projectId, num(a._sum.amount)]));
+  const budgetLinesByProject = new Map<string, typeof budgetLines>();
+  for (const line of budgetLines) {
+    const bucket = budgetLinesByProject.get(line.projectId) ?? [];
+    bucket.push(line);
+    budgetLinesByProject.set(line.projectId, bucket);
+  }
+
+  const rows: ProjectFinancialsRow[] = projects.map((p) => {
+    const categories = buildCategories(
+      budgetLinesByProject.get(p.id) ?? [],
+      { expenseByCategory: expenseByProject.get(p.id) ?? {}, attendanceLabour: labourByProject.get(p.id) ?? 0 },
+      fin,
+    );
+    const totalBudget = categories.reduce((s, c) => s + c.allocated, 0);
+    const totalActual = categories.reduce((s, c) => s + c.actual, 0);
+    const contractValue = num(p.contractValue);
+    const consumedPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : null;
+    const totalCollected = collectedByProject.get(p.id) ?? 0;
+    return {
+      id: p.id,
+      name: p.name,
+      contractValue,
+      totalBudget,
+      totalActual,
+      estimatedProfit: contractValue - totalActual,
+      consumedPct,
+      health: health(consumedPct, fin.thresholds),
+      totalCollected,
+      pendingBalance: contractValue - totalCollected,
+    };
+  });
+
+  const totals = rows.reduce(
+    (acc, p) => ({
+      contractValue: acc.contractValue + p.contractValue,
+      totalBudget: acc.totalBudget + p.totalBudget,
+      totalActual: acc.totalActual + p.totalActual,
+      estimatedProfit: acc.estimatedProfit + p.estimatedProfit,
+      totalCollected: acc.totalCollected + p.totalCollected,
+    }),
+    { contractValue: 0, totalBudget: 0, totalActual: 0, estimatedProfit: 0, totalCollected: 0 },
+  );
+  const overallConsumedPct =
+    totals.totalBudget > 0 ? Math.round((totals.totalActual / totals.totalBudget) * 100) : null;
+
+  const receivables = await companyReceivables(rows.map((p) => p.id));
+
+  return {
+    totals: {
+      ...totals,
+      totalPendingBalance: totals.contractValue - totals.totalCollected,
+      arOutstanding: receivables.totalAr,
+      arOverdue: receivables.totalOverdue,
+      retentionHeld: receivables.retentionHeld,
+      overallConsumedPct,
+      overallHealth: health(overallConsumedPct, fin.thresholds),
+    },
+    projects: rows,
   };
 }
 

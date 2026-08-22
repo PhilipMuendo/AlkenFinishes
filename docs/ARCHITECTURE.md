@@ -173,36 +173,152 @@ answer a "what day is it" question in the wrong zone.
 
 ## AI features
 
-Optional and absent unless a key is configured. Three features, one shared
-transport, one shared daily allowance.
+Optional and absent unless a key is configured. Three features — the
+assistant, the receipt reader, report drafting — share one transport, one
+trust model, and one daily allowance.
 
 - **`services/ai.ts`** is the only place the system talks to a model: provider
-  selection (Gemini or Anthropic, cheapest present first), transport, timeouts,
-  and the difference between a per-minute rate limit and a spent daily quota —
-  telling someone to "try again shortly" when their allowance is gone until
-  midnight wastes their afternoon. It returns text and decides nothing.
-- **Nothing a model says is trusted.** Receipt figures are checked against
-  arithmetic the model cannot influence (does it add up, is the VAT rate
-  plausible, is this a tax invoice). The diary's counts come from the database;
-  the model is explicitly forbidden to state a number. The assistant answers
-  only from a fixed catalogue of lookups.
+  selection (Gemini or Anthropic, cheapest configured key first, with
+  comma-separated fallback keys per provider for a busy day), transport,
+  timeouts, and the difference between a per-minute rate limit and a spent
+  daily quota — telling someone to "try again shortly" when their allowance is
+  gone until midnight wastes their afternoon. It returns text and decides
+  nothing; every caller treats that text as an untrusted claim.
+- **Nothing a model says is trusted without a check it cannot influence.**
+  Receipt figures are checked against arithmetic (does the subtotal plus VAT
+  equal the printed total, is the VAT rate plausible). The diary's counts
+  come from the database; the model is explicitly forbidden to state a
+  number that isn't there. The assistant answers only from a fixed catalogue
+  of lookups that call the same code the screens call — detailed below.
 - **Nothing is written automatically.** Every feature produces a draft or an
-  answer that a person edits, files or checks.
-- **`services/chatRetrieval.ts`** — the assistant's lookups call the *same
-  service functions the screens call* (`payablePosition`, `taxPosition`,
-  `projectReceivables`, `gatherDay`). The model chooses from a menu and writes
-  the sentence; it never sees the schema and cannot compose an aggregate. An
-  answer therefore cannot disagree with the page. Each lookup carries a `scope`
-  (`office` / `site` / `shared`) checked in `runLookup` against the asking user
-  — a chat box is a way around every permission boundary in the app unless
-  retrieval enforces the same ones the routes do. The catalogue a supervisor is
-  shown does not even name the money lookups.
-- **`services/aiUsage.ts`** — all three features share one key and therefore
-  one cap. The assistant is much the hungriest (a conversation is a dozen calls
-  where a receipt is one), so it yields: it stops at a configurable reserve
-  kept for receipts and reports and says why, rather than eating the allowance
-  and leaving the receipt reader dead by mid-morning. The counter rolls on the
-  provider's own midnight, not the office's.
+  answer that a person edits, files or checks before it becomes a record.
+- **`services/aiUsage.ts`** doles out one shared daily allowance
+  (`DEFAULT_AI_BUDGET`: 200 calls, sized for Google's free Flash tier) across
+  all three features. Left alone they would compete — a single conversation
+  with the assistant is a dozen model calls where a receipt is one — so on a
+  normal Tuesday chat would quietly exhaust the allowance and the receipt
+  reader would be dead by mid-morning, with nothing to explain why. So chat
+  yields: it stops once fewer than `reservedForWork` (60) calls remain for
+  the day, and says so, rather than eating the budget the business actually
+  depends on. The counter rolls on the provider's own midnight, kept in one
+  `Setting` row — a guard rail, not an accounting record; the provider's own
+  count is authoritative.
+
+### The assistant (chat)
+
+The most-used and most complex of the three, and the one most worth
+understanding fully — a wrong number here reads as the system itself being
+wrong, not as a chat feature glitching.
+
+**Request flow.** `POST /chat/ask` (`modules/chat.ts`) → `answerQuestion()`
+(`services/projectChat.ts`) → the lookup catalogue (`services/chatRetrieval.ts`).
+Every route is a read; the endpoint writes nothing to the domain, only an
+audit-log entry of the question asked (never the answer — what someone asked
+is worth knowing if the assistant ever misleads them, and it stays true even
+after the model changes).
+
+**Two model calls, not one, and the split is the whole safety design:**
+
+1. **Plan.** The model is shown the question, the last four turns of
+   conversation, the sites this user may ask about, and the *catalogue* —
+   every lookup's name, arguments and one-line description, filtered to what
+   this user's role is even allowed to see. It replies with which lookup(s)
+   to run (at most 4) and their arguments, or a `decline` reason if nothing
+   in the catalogue answers the question. It never sees the database schema
+   and cannot compose a query of its own — `parsePlan` drops anything in an
+   argument that isn't a plain string or number, so a planner talked into
+   passing `{"$gt": …}` gets nothing.
+2. **Answer.** The chosen lookups run as plain TypeScript — normal Prisma
+   reads, permission-checked in `runLookup` — and return `facts`: sentences a
+   human could read and check. The model is shown *only those facts* and
+   told to answer in two or three sentences, using no number that doesn't
+   appear in them verbatim, and to say plainly what's missing rather than
+   fill a gap.
+
+The arithmetic therefore never passes through the model at any point. Every
+figure in every answer was computed by the same service function that
+computes the figure on the screen (`projectFinancials`, `taxPosition`,
+`companyReceivables`, `gatherDay`, …), so the assistant cannot disagree with
+the app — the worst it can do is choose the wrong lookup, which surfaces as
+an answer about the wrong subject, never a wrong number about the right one.
+
+**Permission is enforced in the retrieval layer, not the prompt.** A chat box
+is a way around every RBAC boundary in the app unless the code checks the
+same rules the routes do. `runLookup` re-checks on every call: a `scope:
+'office'` lookup is refused outright to a supervisor (`company_financials`,
+`who_we_owe`, `site_money`, …); a `scope: 'site'` lookup is refused if the
+`projectId` isn't one of `allowedProjectIds`; a `scope: 'shared'` lookup must
+narrow itself (`withinScope`/`scopedProjectIds` helpers). The catalogue a
+supervisor is shown for planning doesn't even *name* the office-only lookups
+— not decoration, a name in the prompt is something to be talked into asking
+for, and there's no reason to advertise what will only be refused.
+
+**Answers are checkable, not just trusted.** Every reply carries `used` (which
+lookups ran), `facts` (their raw output) and a `source` (a link into the
+screen that owns the data) alongside the prose. The widget's "Show what this
+is based on" is not a debugging aid, it's the feature — the same reasoning as
+the receipt reader showing its arithmetic: an answer nobody can check is worth
+very little in a system that moves money.
+
+**Follow-ups.** The client holds the conversation (nothing is stored
+server-side — this is a read-only endpoint and a chat log is the one thing it
+would otherwise have to write) and sends the last 4 turns back with each
+question. The planner is told earlier turns exist only to resolve "it",
+"there" and "what about X?" — a question that names its own subject is not a
+follow-up, so an earlier site can't quietly capture a new question about a
+different one.
+
+**Context from the screen.** `Assistant.tsx` reads the site being viewed
+straight from the URL (`/admin/sites/:id` or `/sites/:id` — see
+`useLocation`) and sends it as `projectId`, so "what happened here today?"
+resolves without the site being named. The suggested questions shown differ
+by shell (`SUGGESTIONS_OFFICE` vs `SUGGESTIONS_SITE`) but are just prompts —
+any question can be typed regardless of which list is showing.
+
+**The office also gets an unprompted digest.** Opening the panel auto-asks
+"What needs my attention?" once per calendar day (`AUTO_ASK_ATTENTION_ON_OPEN`,
+tracked in `localStorage`) — the same `company_operations` lookup and the
+same `attentionDigest()` the Overview page's cards use, so the assistant
+greets the person opening it with the thing the dashboard would have told
+them anyway. Supervisors never see this: the lookup is office-only, and
+asking it on their behalf would just be a refusal.
+
+**The button is absent, not disabled, when no key is configured** — a control
+that cannot work is worse than no control — and the widget is a floating
+panel beside the page rather than a modal `<dialog>`, deliberately: the
+subject of the conversation is usually the page underneath it.
+
+Worked example: *"Are we profitable?"* → planner picks `company_financials`
+→ it calls `companyFinancials()` in `services/finance.ts` (the exact function
+`GET /analytics/company` calls for the Overview dashboard) → facts include
+contract value, actual spend, estimated profit and margin %, collected vs.
+still-to-bill, AR outstanding/overdue, and the most/least profitable site →
+the writer states the profit figure and margin, nothing more. Before this
+lookup existed the question reached the model with no fact that answered it,
+and the model correctly said so — see the incident log below.
+
+### Receipt reader
+
+`services/receiptExtraction.ts`. A supplier receipt photo goes in, a
+structured draft (supplier, invoice number, date, subtotal, VAT, total) comes
+back to prefill the expense form — never written directly. The valuable half
+of the file is not the extraction, it's `verify()`: checking that subtotal +
+VAT equals the printed total and that VAT matches the configured rate is
+something arithmetic can do perfectly and a model cannot be trusted to. What
+the user sees is never "the AI says 16,000" but "the AI says 16,000 and the
+arithmetic agrees" — or "…and it does not, look at this one."
+
+### Report drafting
+
+`services/dailyReportDraft.ts` and `services/weeklyReportDraft.ts`, the same
+shape twice. A daily draft is written from that day's own attendance, tasks,
+deliveries and snags (`gatherDay` → `factsFor` → `draftDailyReport`); a
+weekly draft is written from that week's own filed daily reports rather than
+re-deriving from raw records, because the point is to save re-typing seven
+diary entries into one summary. Both return the draft *and* the facts it was
+built from, prefilled into an editable form — a supervisor reviews and can
+change anything before it's filed. Counts (workers present, tasks done) are
+always the database's; the model supplies prose only.
 
 ### Adding a feature means adding a lookup
 
@@ -214,9 +330,16 @@ as far as a user asking a question is concerned, and the failure is silent and
 confusing — the assistant says the information "is not stated", which reads
 like a broken assistant rather than a missing lookup.
 
-This has already happened twice. The catalogue could report *how many* sites
-there were but could not name them, and knew nothing about workers at all,
-while both sat in the database the whole time.
+This has already happened three times. The catalogue could report *how many*
+sites there were but could not name them, and knew nothing about workers at
+all, while both sat in the database the whole time. The third time, it could
+state a site's estimated profit but had nothing at all to say about the
+company's — "are we profitable?" got a correct, honest, useless "the facts
+don't contain that." The screen this lookup answers for
+(`/analytics/company`, the Overview dashboard) had carried the figure the
+whole time; nobody had told the assistant to look. Fixed by extracting
+`companyFinancials()` in `services/finance.ts` out of that route and adding
+`company_financials`, exactly per the rule above.
 
 A lookup is a name, a scope, a description and a `run` that returns prose:
 
@@ -228,7 +351,7 @@ A lookup is a name, a scope, a description and a `run` that returns prose:
   args: ['from', 'to'],          // optional; projectId is implicit for 'site'
   run: async ({ projectId, user, args, allowedProjectIds }) => ({
     facts: '…plain sentences the model will quote…',
-    source: { label: 'Kilimani — defects', href: '/admin/projects/x?tab=snags' },
+    source: { label: 'Kilimani — defects', href: '/admin/sites/x?tab=snags' },
   }),
 }
 ```

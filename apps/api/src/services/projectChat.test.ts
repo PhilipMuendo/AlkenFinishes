@@ -21,6 +21,7 @@ test('a supervisor is never offered a company-money lookup', () => {
   assert.ok(!names.includes('who_owes_us'));
   assert.ok(!names.includes('tax_position'));
   assert.ok(!names.includes('company_overview'));
+  assert.ok(!names.includes('company_financials'));
   assert.ok(!names.includes('site_money'));
 });
 
@@ -39,7 +40,7 @@ test('the catalogue a supervisor sees does not even name the money lookups', () 
   // for. The permission check is separate and enforced regardless, but there is
   // no reason to advertise.
   const cat = catalogueFor(supervisor);
-  assert.doesNotMatch(cat, /who_we_owe|owed_to_staff|tax_position|site_money/);
+  assert.doesNotMatch(cat, /who_we_owe|owed_to_staff|tax_position|site_money|company_financials/);
 });
 
 // A regression guard: company_operations used to know only about defects,
@@ -100,6 +101,7 @@ test('the catalogue reaches every part of the platform', () => {
     'equipment',
     'upcoming',
     'company_operations',
+    'company_financials',
     'owed_to_staff',
     'supplier_detail',
     'worker_detail',
@@ -134,6 +136,7 @@ test('a supervisor is not offered the commercial lookups', () => {
     'reporting_compliance',
     'spend_trend',
     'budget_impact',
+    'company_financials',
   ]) {
     assert.ok(!names.includes(officeOnly), `${officeOnly} was offered to a supervisor`);
   }

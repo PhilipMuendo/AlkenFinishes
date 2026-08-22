@@ -104,7 +104,7 @@ export function Assistant({ office }: { office: boolean }) {
   // Read from the path rather than useParams: this is mounted in the layout,
   // which sits above the route that carries :projectId and so never sees it.
   const { pathname } = useLocation();
-  const projectId = /^\/(?:admin\/projects|sites)\/([^/?#]+)/.exec(pathname)?.[1];
+  const projectId = /^\/(?:admin\/sites|sites)\/([^/?#]+)/.exec(pathname)?.[1];
 
   const { data: status } = useQuery({
     queryKey: ['chat', 'status'],
