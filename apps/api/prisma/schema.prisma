@@ -1098,6 +1098,12 @@ model AttendanceDevice {
 enum DeviceVendor {
   ZKTECO
   SUPREMA
+  // A closed cloud appliance (e.g. uAttend BN6500): it never pushes to us and
+  // exposes no local server to poll, only its own paid cloud portal. There is
+  // no automatic sync path — punches are pulled in via CSV export/import
+  // instead (services/csvImport.ts), so lastSyncAt on this vendor means "last
+  // import", not "last connection".
+  UATTEND
 }
 
 // Punches a sync could not turn into attendance (unknown fingerprint, worker

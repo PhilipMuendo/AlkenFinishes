@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type AttendanceMethod, type AttendanceSource } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
@@ -55,7 +55,10 @@ const keyOf = (workerId: string, projectId: string, date: Date) =>
 export async function ingestPunches(
   device: { id: string; projectId: string | null },
   punches: Punch[],
+  opts: { method?: AttendanceMethod; source?: AttendanceSource } = {},
 ): Promise<IngestSummary> {
+  const method = opts.method ?? 'FINGERPRINT';
+  const source = opts.source ?? 'DEVICE_SYNC';
   const issues: { biometricId: string; reason: string; workerId?: string }[] = [];
   if (punches.length === 0) return { accepted: 0, received: 0, issues: [] };
 
@@ -151,8 +154,8 @@ export async function ingestPunches(
               checkIn,
               checkOut,
               deviceId: device.id,
-              method: 'FINGERPRINT',
-              source: 'DEVICE_SYNC',
+              method,
+              source,
               ...cost,
             },
           }),

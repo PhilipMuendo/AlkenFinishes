@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
+import multer from 'multer';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
@@ -9,9 +10,10 @@ import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { visibleAttendanceList } from '../services/payVisibility';
 import { deviceSyncLimiter } from '../middleware/rateLimit';
-import { computeCost, recordIssue } from '../services/attendanceIngest';
+import { computeCost, ingestPunches, recordIssue } from '../services/attendanceIngest';
 import { encrypt } from '../services/crypto';
 import { BiostarError, syncSupremaDevice } from '../services/biostar';
+import { CsvImportError, parsePunchFile, type ParsedImport } from '../services/csvImport';
 
 /**
  * Attendance design:
@@ -455,8 +457,9 @@ adminDeviceRouter.post(
       .object({
         name: z.string().min(1),
         projectId: z.string().nullable().optional(),
-        vendor: z.enum(['ZKTECO', 'SUPREMA']).default('ZKTECO'),
-        // ZKTeco/ADMS push devices identify by serial number.
+        vendor: z.enum(['ZKTECO', 'SUPREMA', 'UATTEND']).default('ZKTECO'),
+        // ZKTeco/ADMS push devices identify by serial number; also used to
+        // note a uAttend device's own serial for reference (not for auth).
         serialNumber: z.string().trim().min(1).optional(),
       })
       .and(biostarFieldsSchema)
@@ -539,6 +542,65 @@ adminDeviceRouter.post(
       accepted: summary.accepted,
     });
     res.json(summary);
+  }),
+);
+
+// ---- CSV import: for a device that can't push or be polled (uAttend) ----
+
+// In-memory only: the file is parsed and discarded, never persisted or
+// linked, the same as the worker bulk-import in modules/workers.ts.
+const importUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok =
+      /\.(csv|xlsx|xls)$/i.test(file.originalname) ||
+      [
+        'text/csv',
+        'application/csv',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ].includes(file.mimetype);
+    if (!ok) return cb(ApiError.badRequest('File must be a .csv, .xls, or .xlsx export'));
+    cb(null, true);
+  },
+});
+
+/**
+ * Punches from a uAttend (or similar cloud-only) clock's exported report.
+ * Goes through the exact same ingestPunches() pipeline ZKTeco and Suprema
+ * punches do — first-in/last-out aggregation, sync-issue recording, the lot —
+ * so a manually-imported punch behaves identically to a device-pushed one,
+ * just tagged AttendanceSource.IMPORT so it's distinguishable in the record.
+ */
+adminDeviceRouter.post(
+  '/:id/import',
+  importUpload.single('file'),
+  asyncHandler(async (req, res) => {
+    const device = await prisma.attendanceDevice.findUnique({ where: { id: req.params.id } });
+    if (!device) throw ApiError.notFound();
+    if (device.vendor !== 'UATTEND') {
+      throw ApiError.badRequest('Only a uAttend-vendor device accepts a CSV import — the other vendors sync automatically');
+    }
+    if (!req.file) throw ApiError.badRequest('file is required');
+
+    let parsed: ParsedImport;
+    try {
+      parsed = parsePunchFile(req.file.buffer);
+    } catch (err) {
+      if (err instanceof CsvImportError) throw ApiError.badRequest(err.message);
+      throw err;
+    }
+    const { punches, rowIssues } = parsed;
+    const summary = await ingestPunches(device, punches, { source: 'IMPORT' });
+
+    audit(req, 'device.import', 'AttendanceDevice', device.id, {
+      rows: punches.length + rowIssues.length,
+      accepted: summary.accepted,
+      unplaced: summary.issues.length,
+      unreadable: rowIssues.length,
+    });
+    res.json({ ...summary, rowIssues });
   }),
 );
 

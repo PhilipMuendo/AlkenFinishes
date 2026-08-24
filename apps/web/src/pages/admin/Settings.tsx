@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Fingerprint, Plus, RefreshCw, ScrollText } from 'lucide-react';
+import { AlertTriangle, Fingerprint, Plus, RefreshCw, ScrollText, Upload } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type {
   AiSettings,
@@ -56,7 +56,7 @@ function humanizeAction(action: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-type DeviceVendor = 'ZKTECO' | 'SUPREMA';
+type DeviceVendor = 'ZKTECO' | 'SUPREMA' | 'UATTEND';
 
 interface Device {
   id: string;
@@ -81,6 +81,13 @@ interface SyncIssue {
   worker: { id: string; name: string; trade: string } | null;
 }
 
+interface ImportSummary {
+  received: number;
+  accepted: number;
+  issues: { biometricId: string; reason: string }[];
+  rowIssues: { row: number; reason: string }[];
+}
+
 const ISSUE_LABEL: Record<string, string> = {
   unknown_worker: 'Unrecognised fingerprint',
   no_assignment: 'Worker not assigned to a site',
@@ -99,6 +106,8 @@ export function SettingsPage() {
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [deviceVendor, setDeviceVendor] = useState<DeviceVendor>('ZKTECO');
   const [newKey, setNewKey] = useState<string | null>(null);
+  const [importingDevice, setImportingDevice] = useState<Device | null>(null);
+  const [importResult, setImportResult] = useState<ImportSummary | null>(null);
   const [yellowPct, setYellowPct] = useState('80');
   const [redPct, setRedPct] = useState('100');
   const [auditPage, setAuditPage] = useState(1);
@@ -174,8 +183,13 @@ export function SettingsPage() {
   const createDevice = useMutation({
     mutationFn: (body: Record<string, unknown>) => api<{ apiKey: string; vendor: DeviceVendor }>('/devices', { body }),
     onSuccess: (data) => {
-      if (data.vendor === 'ZKTECO') setNewKey(data.apiKey);
-      else setDeviceOpen(false); // Suprema needs no key handoff screen
+      if (data.vendor === 'ZKTECO') {
+        setNewKey(data.apiKey);
+      } else {
+        // Suprema and uAttend need no key handoff screen.
+        setDeviceOpen(false);
+        toast.success('Device registered.');
+      }
       void qc.invalidateQueries({ queryKey: ['devices'] });
     },
   });
@@ -203,6 +217,22 @@ export function SettingsPage() {
       void qc.invalidateQueries({ queryKey: ['devices'] });
     },
     onError: (e) => toast.error(errText(e, 'The device could not be synced.')),
+  });
+
+  const importPunches = useMutation({
+    mutationFn: ({ id, formData }: { id: string; formData: FormData }) =>
+      api<ImportSummary>(`/devices/${id}/import`, { formData }),
+    onSuccess: (data) => {
+      toast.success(
+        data.accepted === data.received
+          ? `${data.accepted} punches imported.`
+          : `${data.accepted} of ${data.received} punches imported — the rest are listed below.`,
+      );
+      setImportResult(data);
+      void qc.invalidateQueries({ queryKey: ['devices'] });
+      void qc.invalidateQueries({ queryKey: ['sync-issues'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The file could not be imported.')),
   });
 
   const { data: issues } = useQuery({
@@ -356,8 +386,12 @@ export function SettingsPage() {
                     <div>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium text-fg">{d.name}</p>
-                        <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : 'slate'}>
-                          {d.vendor === 'SUPREMA' ? 'Suprema · BioStar 2' : 'ZKTeco'}
+                        <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : d.vendor === 'UATTEND' ? 'yellow' : 'slate'}>
+                          {d.vendor === 'SUPREMA'
+                            ? 'Suprema · BioStar 2'
+                            : d.vendor === 'UATTEND'
+                              ? 'uAttend · CSV import'
+                              : 'ZKTeco'}
                         </Badge>
                       </div>
                       <p className="text-xs text-fg-subtle">
@@ -371,7 +405,9 @@ export function SettingsPage() {
                             <span className="font-mono">{d.biostarBaseUrl}</span> ·{' '}
                           </>
                         )}
-                        Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}
+                        {d.vendor === 'UATTEND'
+                          ? <>Last import: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}</>
+                          : <>Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}</>}
                       </p>
                     </div>
                   </div>
@@ -384,6 +420,18 @@ export function SettingsPage() {
                         onClick={() => syncDevice.mutate(d.id)}
                       >
                         <RefreshCw size={14} /> Sync now
+                      </Button>
+                    )}
+                    {d.vendor === 'UATTEND' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setImportingDevice(d);
+                          setImportResult(null);
+                        }}
+                      >
+                        <Upload size={14} /> Import CSV
                       </Button>
                     )}
                     <Select
@@ -588,6 +636,7 @@ export function SettingsPage() {
               >
                 <option value="ZKTECO">ZKTeco / ADMS push terminal</option>
                 <option value="SUPREMA">Suprema (BioLite Net, via BioStar 2)</option>
+                <option value="UATTEND">uAttend (BN6500 and similar — CSV import)</option>
               </Select>
             </Field>
             <Field label="Device name">
@@ -598,6 +647,20 @@ export function SettingsPage() {
               <Field label="Serial number (printed on the device)">
                 <Input name="serialNumber" placeholder="e.g. ZK9988" />
               </Field>
+            ) : deviceVendor === 'UATTEND' ? (
+              <>
+                <p className="rounded-lg bg-brand-50 p-3 text-xs text-brand-800">
+                  A uAttend clock only ever talks to uAttend&rsquo;s own cloud — it can&rsquo;t push
+                  to this app or be polled. Registering it here just creates a place to import
+                  its punches into: export a report from the uAttend web portal (Punch Report or
+                  Timecard Report, CSV) and use &ldquo;Import CSV&rdquo; on this device whenever
+                  there&rsquo;s new data. The report&rsquo;s Employee ID column must match the same
+                  Biometric ID already set on each fundi in AlkenFinishes.
+                </p>
+                <Field label="uAttend device serial (optional, for your own reference)">
+                  <Input name="serialNumber" placeholder="e.g. BN6500-xxxxx" />
+                </Field>
+              </>
             ) : (
               <>
                 <p className="rounded-lg bg-brand-50 p-3 text-xs text-brand-800">
@@ -659,6 +722,82 @@ export function SettingsPage() {
             )}
             <Button type="submit" className="w-full" disabled={createDevice.isPending}>
               Register device
+            </Button>
+          </form>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!importingDevice}
+        onClose={() => {
+          setImportingDevice(null);
+          setImportResult(null);
+          importPunches.reset();
+        }}
+        title={`Import punches — ${importingDevice?.name ?? ''}`}
+      >
+        {importResult ? (
+          <div className="space-y-3">
+            <p className="text-sm text-fg">
+              {importResult.accepted} of {importResult.received} punches became attendance
+              records.
+            </p>
+            {(importResult.issues.length > 0 || importResult.rowIssues.length > 0) && (
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-hairline p-2 text-xs">
+                {importResult.rowIssues.map((r) => (
+                  <p key={`row-${r.row}`} className="text-danger-fg">
+                    Row {r.row}: {r.reason}
+                  </p>
+                ))}
+                {importResult.issues.map((i, idx) => (
+                  <p key={`issue-${idx}`} className="text-warn-fg">
+                    {ISSUE_LABEL[i.reason] ?? i.reason} (Employee ID {i.biometricId})
+                  </p>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportResult(null)} className="flex-1">
+                Import another file
+              </Button>
+              <Button
+                onClick={() => {
+                  setImportingDevice(null);
+                  setImportResult(null);
+                }}
+                className="flex-1"
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form
+            key={importingDevice?.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!importingDevice) return;
+              importPunches.mutate({
+                id: importingDevice.id,
+                formData: new FormData(e.currentTarget),
+              });
+            }}
+            className="space-y-3"
+          >
+            <p className="text-sm text-fg-muted">
+              Export a Punch Report or Timecard Report (CSV) from the uAttend portal and upload it
+              here. Rows the system can&rsquo;t place — an unrecognised Employee ID, a fundi with
+              no current site — are listed after the import so nothing is lost silently; the same
+              &ldquo;Sync issues&rdquo; list below also picks them up.
+            </p>
+            <Field label="File">
+              <Input name="file" type="file" accept=".csv,.xlsx,.xls" required />
+            </Field>
+            {importPunches.isError && (
+              <p className="text-sm text-danger-fg">{errText(importPunches.error, 'The file could not be imported.')}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={importPunches.isPending}>
+              {importPunches.isPending ? 'Importing…' : 'Import'}
             </Button>
           </form>
         )}

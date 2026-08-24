@@ -12,6 +12,7 @@ Monorepo (npm workspaces) with two deployable services behind Nginx:
                                               │
       ZKTeco terminals ──push──▶ /iclock, /attendance/device-sync (API key)
       Suprema terminals ◀──poll── BioStar 2 REST API, every 2 min
+      uAttend clocks    ──CSV──▶ /devices/:id/import, on demand (no live link)
       Language model   ◀──────── optional, opt-in by configuration
 ```
 
@@ -402,14 +403,15 @@ planner prompt, so keep descriptions to one line.
 
 ## Attendance device integration
 
-Two integrations exist because the two vendors have fundamentally different
-connection models — one is push, the other is poll — and that shape is
-reflected in the code (`modules/iclock.ts` / `modules/attendance.ts`'s
-`deviceRouter` for ZKTeco, `services/biostar.ts` for Suprema) rather than
-forced into one interface. Both funnel into the same
-`services/attendanceIngest.ts` core (`ingestPunches`, `computeCost`), so a
-worker's attendance record looks identical regardless of which vendor produced
-it.
+Three integrations exist because the vendors have fundamentally different
+connection models — push, poll, and (for a closed cloud appliance) neither —
+and that shape is reflected in the code (`modules/iclock.ts` /
+`modules/attendance.ts`'s `deviceRouter` for ZKTeco, `services/biostar.ts` for
+Suprema, `services/csvImport.ts` for uAttend) rather than forced into one
+interface. All three funnel into the same `services/attendanceIngest.ts` core
+(`ingestPunches`, `computeCost`), so a worker's attendance record looks
+identical regardless of which vendor produced it, and `AttendanceRecord.source`
+(`DEVICE_SYNC` / `IMPORT`) is the only trace of which path it came through.
 
 ### ZKTeco / ADMS (push)
 
@@ -469,6 +471,47 @@ POST {biostarBaseUrl}/api/events/search    -> events since the stored cursor
   `biostarInsecureTls` skips verification for that one device only (never a
   process-wide setting — see the `undici` per-request dispatcher), off by
   default.
+
+### uAttend (CSV import — no live connection)
+
+A uAttend clock (e.g. the BN6500) is a closed cloud appliance: it only ever
+talks to uAttend's own hosted portal over LAN/WiFi, requires a paid uAttend
+subscription, and exposes no server we can push to or poll — not a push
+protocol like ZKTeco, not a local REST API like BioStar 2. There is nothing
+for `server.ts` to schedule and no device-side credential to configure. The
+only way its punches reach AlkenFinishes is a human exporting a report from
+the uAttend web portal (Punch Report or Timecard Report, CSV) and uploading it
+under Settings → Attendance → **Import CSV**.
+
+```
+POST /api/v1/devices/:id/import   (multipart, field "file")
+```
+
+- `services/csvImport.ts` reads the file with `xlsx` (handles CSV and Excel
+  alike) and matches columns by alias rather than one fixed layout, since
+  uAttend's exact export columns aren't publicly documented and differ by
+  report type: a Punch Report is one row per punch (an Employee ID + a single
+  date/time column); a Timecard Report is one row per day (Employee ID + Date
+  + separate Time In / Time Out columns). Both shapes are turned into the same
+  `Punch[]` `ingestPunches()` already consumes for the other two vendors.
+- The report's **Employee ID** column must equal the worker's `biometricId`
+  already stored in AlkenFinishes — the same convention as a ZKTeco PIN or a
+  BioStar 2 User ID. Enrol each worker with the same ID in the uAttend portal
+  as they already have here, and any of the three device types can log their
+  attendance interchangeably.
+- Imported records are tagged `source: 'IMPORT'` (vs. `'DEVICE_SYNC'` for a
+  live push/poll) — `ingestPunches()` takes an optional
+  `{ method, source }` override for exactly this, defaulting to
+  `FINGERPRINT`/`DEVICE_SYNC` so the two existing callers are unaffected.
+- A row the importer can't place (unrecognised header, unparsable date/time)
+  is skipped and reported back per-row, distinct from a punch that parsed but
+  couldn't be matched to a worker (`unknown_worker`, `no_assignment`, etc. —
+  the same "Sync issues" list the other two vendors feed).
+- `AttendanceDevice.lastSyncAt` on a `UATTEND` row means "last import", not
+  "last connection" — there is no connection to have.
+- Treat a uAttend clock as a fallback, not the primary plan: a ZKTeco or
+  Suprema terminal needs zero recurring manual effort once registered, a
+  uAttend clock needs a CSV export every time attendance needs to be current.
 
 ## Frontend
 
