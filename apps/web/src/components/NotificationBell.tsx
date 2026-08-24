@@ -101,7 +101,7 @@ export function NotificationBell({ className }: { className?: string }) {
         // Fixed to the viewport's top-right corner rather than anchored under
         // the bell itself — in AdminLayout the bell sits in the top-LEFT
         // sidebar, and a panel dropping from there ran down over the nav.
-        <div className="fixed right-3 top-16 z-30 max-h-[28rem] w-80 overflow-hidden rounded-lg border border-hairline bg-surface shadow-md sm:right-4 sm:w-96">
+        <div className="fixed right-3 top-16 z-30 max-h-[28rem] w-[calc(100vw-1.5rem)] max-w-80 overflow-hidden rounded-lg border border-hairline bg-surface shadow-md sm:right-4 sm:max-w-96">
           <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
             <p className="text-sm font-medium text-fg">Notifications</p>
             {notifications && notifications.some((n) => !n.readAt) && (
