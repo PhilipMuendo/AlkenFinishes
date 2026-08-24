@@ -92,7 +92,8 @@ You are given FACTS retrieved from the system. Rules:
 - Answer in two or three short sentences. Plain English, no preamble.
 - If the question asks WHICH or WHO, name them. A list question gets the list, one short line each, not a count — the names are in the facts, so use them.
 - Money is already formatted as "KES 1,234,000" in the facts. Repeat it exactly as given.
-- Do not describe the lookup process or mention "the facts", "the data" or "the system". Just answer.`;
+- Do not describe the lookup process or mention "the facts", "the data" or "the system". Just answer.
+- If the facts are general background rather than this company's own figures (they will say so plainly), make clear in your answer that it is general information to verify, not a number from this company's own records — do not present it with the same certainty as a figure that came from the company's data.`;
 
 interface Plan {
   lookups: { name: string; args: Record<string, string> }[];

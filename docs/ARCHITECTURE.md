@@ -401,6 +401,42 @@ database reads. Adding lookups makes the assistant more useful without making
 it more expensive per question — but every catalogue entry lengthens the
 planner prompt, so keep descriptions to one line.
 
+#### The one deliberate exception: general knowledge as a static fact
+
+Every lookup above returns facts a database query produced. `kenya_tax_guide`
+is the one exception — general Kenyan tax administration knowledge (VAT/TOT/
+WHT rates, iTax filing deadlines) that no table in this system holds, added
+because a "how does X tax work" question is exactly the kind of tax-compliance
+help an owner asks for, and refusing it outright ("I can't answer that from
+what the system holds") would be true but useless.
+
+The rule is not relaxed for it — it is satisfied a different way. `run()`
+still returns `facts` a human wrote and can review, in
+`services/kenyaTaxReference.ts`: the model paraphrases a reviewed constant, it
+never answers from its own training. That file:
+
+- Is dated ("last reviewed …") and says plainly that a Finance Act may have
+  moved a number since, because it will have.
+- Never restates a rate this company's own `PayrollConfig` already governs
+  (PAYE bands, NSSF tiers, SHIF, Housing Levy) — it points at Settings >
+  Money & tax instead, so it can never drift out of sync with what the app is
+  actually configured to charge. Restating an editable rate as fixed
+  background text is exactly the drift the rest of this section exists to
+  prevent.
+- Hedges anything genuinely volatile (WHT category rates, penalty amounts)
+  rather than asserting a number with false confidence, and ends by telling
+  the reader to confirm anything material with KRA or a tax agent.
+
+`ANSWER_SYSTEM` in `services/projectChat.ts` carries a matching rule: when the
+facts say plainly that they are general background rather than this
+company's own data, the answer has to say so too, in the same certainty it
+was given in — a hedge in the source must survive into the sentence, not get
+smoothed away by "answer in two or three short sentences."
+
+A second lookup like this should be rare. Before adding one, prefer the
+ninety-nine-times-out-of-a-hundred answer: extract a service function and add
+a normal, database-backed lookup.
+
 ## Attendance device integration
 
 Three integrations exist because the vendors have fundamentally different

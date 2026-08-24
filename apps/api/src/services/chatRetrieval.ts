@@ -10,6 +10,7 @@ import {
   type PayablePayment,
 } from './payables';
 import { monthPeriod, taxPosition } from './taxPosition';
+import { KENYA_TAX_REFERENCE } from './kenyaTaxReference';
 import { gatherDay, factsFor } from './dailyReportDraft';
 import { isOffice } from './payVisibility';
 import { contractPosition, leadPipeline } from './pipeline';
@@ -553,9 +554,21 @@ export const LOOKUPS: Lookup[] = [
   },
 
   {
+    name: 'kenya_tax_guide',
+    scope: 'office',
+    description:
+      'General Kenyan tax administration knowledge — VAT/Turnover Tax/Withholding Tax rates, filing deadlines, iTax, what a WHT certificate is. NOT this company\'s own figures (use tax_position or payroll_recent for those) — use this only for a general "how does X tax work in Kenya" or "when is X due" question.',
+    run: async () => ({
+      facts: KENYA_TAX_REFERENCE,
+      source: { label: 'iTax', href: 'https://itax.kra.go.ke' },
+    }),
+  },
+
+  {
     name: 'payroll_recent',
     scope: 'office',
-    description: 'The most recent payroll runs: period, how many workers, gross, net paid.',
+    description:
+      'The most recent payroll runs: period, how many workers, gross, net paid, and what has to be remitted to KRA/NSSF/SHIF and by when — PAYE, NSSF, SHIF, Housing Levy.',
     run: async () => {
       const runs = await prisma.payrollRun.findMany({
         orderBy: { periodTo: 'desc' },
@@ -565,18 +578,49 @@ export const LOOKUPS: Lookup[] = [
           periodTo: true,
           status: true,
           project: { select: { name: true } },
-          lines: { select: { gross: true, netPay: true } },
+          lines: {
+            select: {
+              gross: true,
+              netPay: true,
+              paye: true,
+              nssf: true,
+              employerNssf: true,
+              shif: true,
+              housingLevy: true,
+              employerHousingLevy: true,
+            },
+          },
         },
       });
+      // Both due the 9th of the month after the period the pay covers — see
+      // services/kenyaTaxReference.ts for where that convention comes from.
+      const dueDate = (periodTo: Date) => {
+        const d = new Date(periodTo.getFullYear(), periodTo.getMonth() + 1, 9);
+        return day(d);
+      };
       return {
         facts:
           runs.length === 0
             ? 'No payroll run has been created yet.'
             : runs
                 .map((r) => {
-                  const gross = kes(sumCents(r.lines.map((l) => toCents(l.gross))));
-                  const net = kes(sumCents(r.lines.map((l) => toCents(l.netPay))));
-                  return `${day(r.periodFrom)} to ${day(r.periodTo)} (${r.project?.name ?? 'all sites'}), ${r.status.toLowerCase()}: ${r.lines.length} workers, ${money(gross)} gross, ${money(net)} net paid.`;
+                  const sum = (pick: (l: (typeof r.lines)[number]) => Prisma.Decimal) =>
+                    kes(sumCents(r.lines.map((l) => toCents(pick(l)))));
+                  const gross = sum((l) => l.gross);
+                  const net = sum((l) => l.netPay);
+                  const paye = sum((l) => l.paye);
+                  const nssf = sum((l) => l.nssf) + sum((l) => l.employerNssf);
+                  const shif = sum((l) => l.shif);
+                  const levy = sum((l) => l.housingLevy) + sum((l) => l.employerHousingLevy);
+                  const remittable = paye > 0 || nssf > 0 || shif > 0 || levy > 0;
+                  return [
+                    `${day(r.periodFrom)} to ${day(r.periodTo)} (${r.project?.name ?? 'all sites'}), ${r.status.toLowerCase()}: ${r.lines.length} workers, ${money(gross)} gross, ${money(net)} net paid.`,
+                    remittable
+                      ? `To remit for this run, due ${dueDate(r.periodTo)}: PAYE ${money(paye)}, NSSF (employee + employer) ${money(nssf)}, SHIF ${money(shif)}, Housing Levy (employee + employer) ${money(levy)}.`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ');
                 })
                 .join('\n'),
         source: { label: 'Payroll', href: '/admin/payroll' },
