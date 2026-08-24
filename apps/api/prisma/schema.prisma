@@ -258,6 +258,7 @@ model User {
   supplierPayments        SupplierPayment[]           @relation("SupplierPaymentPaidBy")
   payrollRuns             PayrollRun[]                @relation("PayrollRunCreatedBy")
   workerPayments          WorkerPayment[]             @relation("WorkerPaymentPaidBy")
+  notificationReads       NotificationRead[]
 }
 
 model RefreshToken {
@@ -323,6 +324,7 @@ model Project {
   overrideRequests  AttendanceOverrideRequest[]
   calendarEvents    CalendarEvent[]
   payrollRuns       PayrollRun[]
+  notifications     Notification[]
 
   @@index([supervisorId])
   @@index([clientId])
@@ -1124,6 +1126,58 @@ model AttendanceSyncIssue {
 
   @@unique([deviceId, biometricId, reason])
   @@index([resolvedAt, lastSeenAt])
+}
+
+enum NotificationType {
+  SYNC_ISSUE
+  BUDGET_OVER_THRESHOLD
+  PAYMENT_OVERDUE
+  INVOICE_OVERDUE
+  CONTRACT_AWAITING_SIGNATURE
+}
+
+// The in-app notification bell. One row is one problem, not one alert — the
+// same dedupeKey reopens rather than duplicates (occurrences/lastSeenAt), the
+// same shape AttendanceSyncIssue already uses. A budget-threshold or
+// payments/contracts notification is written by a periodic scan
+// (services/notifications.ts) that reuses attentionDigest() rather than
+// re-deriving the numbers; a sync-issue notification is written the instant
+// recordIssue() fires, since that one already is a discrete event.
+//
+// Audience is computed at read time, not stored: projectId == null is
+// office-only (SUPERADMIN); projectId set is SUPERADMIN plus that project's
+// own supervisor — see GET /notifications, which mirrors requireProjectAccess.
+model Notification {
+  id          String            @id @default(cuid())
+  type        NotificationType
+  // Identifies "the same problem" across scan cycles so it reopens instead of
+  // duplicating, e.g. "budget:{projectId}" or "invoice_overdue:{invoiceId}".
+  dedupeKey   String            @unique
+  title       String
+  body        String
+  projectId   String?
+  project     Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  occurrences Int               @default(1)
+  createdAt   DateTime          @default(now())
+  lastSeenAt  DateTime          @default(now())
+  resolvedAt  DateTime?
+  reads       NotificationRead[]
+
+  @@index([resolvedAt, lastSeenAt])
+  @@index([projectId])
+}
+
+// Presence of a row is "read"; absence is "unread" — one shared Notification,
+// one row per user who has seen it.
+model NotificationRead {
+  id             String       @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@unique([notificationId, userId])
 }
 
 // The customer. Introduced with the pre-project pipeline so a lead, quotation,

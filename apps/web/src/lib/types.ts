@@ -4,6 +4,27 @@ export type Health = 'GREEN' | 'YELLOW' | 'RED' | 'NONE';
 export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
 export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE';
 
+export type NotificationType =
+  | 'SYNC_ISSUE'
+  | 'BUDGET_OVER_THRESHOLD'
+  | 'PAYMENT_OVERDUE'
+  | 'INVOICE_OVERDUE'
+  | 'CONTRACT_AWAITING_SIGNATURE';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  projectId: string | null;
+  project: { id: string; name: string } | null;
+  occurrences: number;
+  createdAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+  readAt: string | null;
+}
+
 export interface AuthUser {
   id: string;
   email: string;

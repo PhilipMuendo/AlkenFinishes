@@ -38,6 +38,7 @@ import weeklyReportsRouter from './modules/weeklyReports';
 import reportsRouter from './modules/reports';
 import analyticsRouter from './modules/analytics';
 import settingsRouter from './modules/settings';
+import notificationsRouter from './modules/notifications';
 import { serveUploads } from './middleware/upload';
 
 export function createApp() {
@@ -95,6 +96,7 @@ export function createApp() {
   v1.use('/projects/:projectId/business-reports', businessReportsRouter);
   v1.use('/projects/:projectId/command-centre', commandCentreRouter);
   v1.use('/chat', chatRouter); // read-only Q&A, scoped by the asking user
+  v1.use('/notifications', notificationsRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);

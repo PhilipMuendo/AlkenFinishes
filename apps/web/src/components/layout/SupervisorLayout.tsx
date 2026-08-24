@@ -6,6 +6,7 @@ import { Wordmark } from '@/components/Wordmark';
 import { ConnectionBar } from '@/components/ConnectionBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { CommandPalette, useCommandPalette } from '@/components/CommandPalette';
+import { NotificationBell } from '@/components/NotificationBell';
 import { Toaster } from '@/components/ui/toast';
 import { Assistant } from '@/features/Assistant';
 
@@ -40,6 +41,7 @@ export function SupervisorLayout() {
           >
             <Search size={20} />
           </button>
+          <NotificationBell />
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
             {initials(user?.name)}
           </div>

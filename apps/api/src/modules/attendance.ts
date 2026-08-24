@@ -14,6 +14,7 @@ import { computeCost, ingestPunches, recordIssue } from '../services/attendanceI
 import { encrypt } from '../services/crypto';
 import { BiostarError, syncSupremaDevice } from '../services/biostar';
 import { CsvImportError, parsePunchFile, type ParsedImport } from '../services/csvImport';
+import { resolveNotification } from '../services/notifications';
 
 /**
  * Attendance design:
@@ -165,7 +166,7 @@ deviceRouter.post(
 
     await Promise.all(
       [...issuesToRecord.values()].map((i) =>
-        recordIssue(device.id, i.biometricId, i.reason, i.workerId),
+        recordIssue(device.id, i.biometricId, i.reason, i.workerId, undefined, device.projectId),
       ),
     );
 
@@ -629,6 +630,7 @@ adminDeviceRouter.post(
       where: { id: req.params.id },
       data: { resolvedAt: new Date() },
     });
+    await resolveNotification(`sync_issue:${issue.deviceId}:${issue.biometricId}:${issue.reason}`);
     audit(req, 'attendance.issue_resolve', 'AttendanceSyncIssue', issue.id);
     res.json(issue);
   }),
@@ -656,6 +658,7 @@ adminDeviceRouter.post(
         data: { resolvedAt: new Date(), workerId },
       }),
     ]);
+    await resolveNotification(`sync_issue:${issue.deviceId}:${issue.biometricId}:${issue.reason}`);
     audit(req, 'worker.enroll', 'Worker', workerId, { biometricId: issue.biometricId });
     res.json({ ok: true });
   }),

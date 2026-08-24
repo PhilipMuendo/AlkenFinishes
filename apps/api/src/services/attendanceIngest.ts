@@ -2,6 +2,7 @@ import { Prisma, type AttendanceMethod, type AttendanceSource } from '@prisma/cl
 import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
+import { upsertNotification } from './notifications';
 
 /** A day beyond this is overtime, paid at OVERTIME_MULTIPLIER. */
 export const STANDARD_SHIFT_HOURS = 8;
@@ -165,7 +166,9 @@ export async function ingestPunches(
     await prisma.$transaction(ops);
   }
 
-  await Promise.all(issues.map((i) => recordIssue(device.id, i.biometricId, i.reason, i.workerId)));
+  await Promise.all(
+    issues.map((i) => recordIssue(device.id, i.biometricId, i.reason, i.workerId, undefined, device.projectId)),
+  );
   await prisma.attendanceDevice
     .update({ where: { id: device.id }, data: { lastSyncAt: new Date() } })
     .catch((e) => logger.warn({ err: e }, 'device lastSyncAt update failed'));
@@ -173,13 +176,26 @@ export async function ingestPunches(
   return { accepted: groups.size, received: punches.length, issues: issues.map(({ biometricId, reason }) => ({ biometricId, reason })) };
 }
 
-/** Dedupe-record a punch we couldn't place, so the admin can act on it. */
+const REASON_LABEL: Record<string, string> = {
+  unknown_worker: 'Unrecognised fingerprint',
+  no_assignment: 'Worker not assigned to a site',
+  wrong_site: 'Punched at the wrong site',
+  invalid_time: 'Invalid punch time',
+};
+
+/**
+ * Dedupe-record a punch we couldn't place, so the admin can act on it — and
+ * raise the matching in-app notification. `projectId` scopes that
+ * notification to the device's site (visible to its supervisor too); a
+ * device with no site bound stays office-only, same as the sync-issue itself.
+ */
 export async function recordIssue(
   deviceId: string,
   biometricId: string,
   reason: string,
   workerId?: string,
   detail?: string,
+  projectId?: string | null,
 ) {
   await prisma.attendanceSyncIssue.upsert({
     where: { deviceId_biometricId_reason: { deviceId, biometricId, reason } },
@@ -191,4 +207,12 @@ export async function recordIssue(
       ...(workerId ? { workerId } : {}),
     },
   });
+
+  await upsertNotification({
+    type: 'SYNC_ISSUE',
+    dedupeKey: `sync_issue:${deviceId}:${biometricId}:${reason}`,
+    projectId: projectId ?? null,
+    title: REASON_LABEL[reason] ?? reason,
+    body: `Fingerprint ID ${biometricId} — link it under Settings → Attendance to enrol the fundi.`,
+  }).catch((e) => logger.warn({ err: e }, 'notification write failed for sync issue'));
 }

@@ -3,6 +3,7 @@ import { env } from './config/env';
 import { logger } from './lib/logger';
 import { prisma } from './lib/prisma';
 import { syncAllSupremaDevices } from './services/biostar';
+import { runNotificationScan } from './services/notifications';
 
 const app = createApp();
 
@@ -31,6 +32,18 @@ pruneTimer.unref();
 // who doesn't want to wait.
 const biostarTimer = setInterval(() => void syncAllSupremaDevices(), 2 * 60_000);
 biostarTimer.unref();
+
+// Budget/payment/contract notifications aren't triggered by a single write —
+// they're a rolling condition — so they're re-derived from current state on
+// a timer instead (services/notifications.ts). 10 minutes is frequent enough
+// that a newly-overdue invoice shows up the same morning without scanning
+// the whole portfolio needlessly often.
+void runNotificationScan().catch((e) => logger.error(e, 'initial notification scan failed'));
+const notificationTimer = setInterval(
+  () => void runNotificationScan().catch((e) => logger.error(e, 'notification scan failed')),
+  10 * 60_000,
+);
+notificationTimer.unref();
 
 async function shutdown(signal: string) {
   logger.info(`${signal} received, shutting down`);

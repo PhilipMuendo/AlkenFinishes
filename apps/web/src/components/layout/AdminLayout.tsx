@@ -30,6 +30,7 @@ import { ConnectionBar } from '@/components/ConnectionBar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Toaster } from '@/components/ui/toast';
 import { CommandPalette, useCommandPalette } from '@/components/CommandPalette';
+import { NotificationBell } from '@/components/NotificationBell';
 import { Assistant } from '@/features/Assistant';
 
 /**
@@ -174,8 +175,9 @@ export function AdminLayout() {
           <img src="/favicon.svg" alt="" className="h-8 w-8" />
           <Wordmark className="text-[15px]" />
         </div>
-        <div className="px-3 pb-1">
-          <SearchTrigger onClick={() => palette.setOpen(true)} />
+        <div className="flex items-center gap-1.5 px-3 pb-1">
+          <SearchTrigger onClick={() => palette.setOpen(true)} className="flex-1" />
+          <NotificationBell />
         </div>
         <NavItems />
         <UserFooter name={user?.name} onSignOut={() => void logout()} />
@@ -196,6 +198,7 @@ export function AdminLayout() {
             >
               <Search size={21} />
             </button>
+            <NotificationBell />
             <button
               aria-label={open ? 'Close menu' : 'Open menu'}
               aria-expanded={open}
