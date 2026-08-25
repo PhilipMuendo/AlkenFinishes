@@ -971,6 +971,48 @@ export const LOOKUPS: Lookup[] = [
   },
 
   {
+    name: 'task_photos',
+    scope: 'site',
+    description:
+      'Progress photos attached to one task on the programme — how many there are, their captions, and when each was uploaded. Needs the task name. Cannot show the images themselves, only what was written about them.',
+    args: ['task'],
+    run: async ({ projectId, args }) => {
+      const needle = (args.task ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which task do you mean?');
+      const matches = await prisma.task.findMany({
+        where: { projectId, name: { contains: needle, mode: 'insensitive' } },
+        select: {
+          name: true,
+          photos: { select: { caption: true, uploadedAt: true }, orderBy: { uploadedAt: 'desc' } },
+        },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No task matching "${needle}" was found on this site.` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one task matches "${needle}": ${matches.map((m) => m.name).join(', ')}. Ask about one by its full name.`,
+        };
+      }
+      const task = matches[0];
+      return {
+        facts:
+          task.photos.length === 0
+            ? `No photos have been uploaded for "${task.name}".`
+            : [
+                `${plural(task.photos.length, 'photo')} uploaded for "${task.name}", most recent first.`,
+                ...listed(
+                  task.photos.map((p) => `${day(p.uploadedAt)}${p.caption ? ` — ${p.caption}` : ' (no caption)'}.`),
+                  15,
+                ),
+              ].join('\n'),
+        source: { label: `${task.name} — photos`, href: `/admin/sites/${projectId}?tab=tasks` },
+      };
+    },
+  },
+
+  {
     name: 'site_defects',
     scope: 'site',
     description:
@@ -1024,6 +1066,66 @@ export const LOOKUPS: Lookup[] = [
                 .filter(Boolean)
                 .join('\n'),
         source: { label: `${project.name} — defects`, href: `/admin/sites/${projectId}?tab=snags` },
+      };
+    },
+  },
+
+  {
+    name: 'defect_rework',
+    scope: 'site',
+    description:
+      'The rework history of one defect on a site: every attempt at fixing it, whether the office accepted or rejected each one and why. Needs the defect title. Use for "why did this defect keep bouncing back" rather than the whole snag list.',
+    args: ['title'],
+    run: async ({ projectId, args }) => {
+      const needle = (args.title ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which defect do you mean?');
+      const matches = await prisma.snagItem.findMany({
+        where: { projectId, title: { contains: needle, mode: 'insensitive' } },
+        select: {
+          title: true,
+          status: true,
+          reworkCount: true,
+          attempts: {
+            select: {
+              attempt: true,
+              notes: true,
+              accepted: true,
+              rejectReason: true,
+              reviewedAt: true,
+              submittedBy: { select: { name: true } },
+              createdAt: true,
+            },
+            orderBy: { attempt: 'asc' },
+          },
+        },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No defect matching "${needle}" was found on this site.` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one defect matches "${needle}": ${matches.map((m) => m.title).join(', ')}. Ask about one by its full title.`,
+        };
+      }
+      const snag = matches[0];
+      return {
+        facts:
+          snag.attempts.length === 0
+            ? `${snag.title} is ${titleCase(snag.status)} and has never had a fix submitted.`
+            : [
+                `${snag.title} — ${titleCase(snag.status)}, ${plural(snag.reworkCount, 'rework')} so far.`,
+                ...snag.attempts.map((a) => {
+                  const verdict =
+                    a.accepted === true
+                      ? 'accepted'
+                      : a.accepted === false
+                        ? `rejected${a.rejectReason ? ` — ${a.rejectReason}` : ''}`
+                        : 'not yet reviewed';
+                  return `Attempt ${a.attempt} by ${a.submittedBy.name} on ${day(a.createdAt)}${a.notes ? `: ${a.notes}` : ''} — ${verdict}${a.reviewedAt ? ` (${day(a.reviewedAt)})` : ''}.`;
+                }),
+              ].join('\n'),
+        source: { label: `${snag.title} — defect`, href: `/admin/sites/${projectId}?tab=snags` },
       };
     },
   },
@@ -1121,6 +1223,57 @@ export const LOOKUPS: Lookup[] = [
         ]
           .filter(Boolean)
           .join('\n'),
+        source: { label: `${project.name} — materials`, href: `/admin/sites/${projectId}?tab=stock` },
+      };
+    },
+  },
+
+  {
+    name: 'material_movements',
+    scope: 'site',
+    description:
+      'The receive/use history behind a site\'s stock levels — deliveries in, drawdowns out, and who logged each, most recent first. Use for "how much X came in" or "what happened to the stock", as distinct from site_materials which only gives the current level. Optional item name to filter to one material.',
+    args: ['item'],
+    run: async ({ projectId, args }) => {
+      const item = (args.item ?? '').trim();
+      const [project, movements] = await Promise.all([
+        prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { name: true } }),
+        prisma.stockMovement.findMany({
+          where: {
+            stockItem: {
+              projectId,
+              ...(item ? { name: { contains: item, mode: 'insensitive' } } : {}),
+            },
+          },
+          select: {
+            type: true,
+            quantity: true,
+            reason: true,
+            date: true,
+            stockItem: { select: { name: true, unit: true } },
+            user: { select: { name: true } },
+          },
+          orderBy: { date: 'desc' },
+          take: 40,
+        }),
+      ]);
+
+      return {
+        facts:
+          movements.length === 0
+            ? item
+              ? `No stock movements recorded for anything matching "${item}" at ${project.name}.`
+              : `No stock movements have been recorded at ${project.name}.`
+            : [
+                `Stock movements at ${project.name}${item ? ` for "${item}"` : ''}: ${plural(movements.length, 'entry', 'entries')}, most recent first.`,
+                ...listed(
+                  movements.map(
+                    (m) =>
+                      `${day(m.date)} — ${titleCase(m.type)} ${Number(m.quantity)} ${m.stockItem.unit} of ${m.stockItem.name}: ${m.reason} (logged by ${m.user.name}).`,
+                  ),
+                  20,
+                ),
+              ].join('\n'),
         source: { label: `${project.name} — materials`, href: `/admin/sites/${projectId}?tab=stock` },
       };
     },
@@ -1546,6 +1699,56 @@ export const LOOKUPS: Lookup[] = [
   },
 
   {
+    name: 'device_health',
+    scope: 'office',
+    description:
+      'The biometric attendance devices themselves — which vendor, which site each is assigned to, when each last synced, and how many unresolved sync issues each has. Use for "is the fingerprint device at X working" or "which devices need attention", not for attendance data itself.',
+    run: async () => {
+      const [devices, unresolvedByDevice] = await Promise.all([
+        prisma.attendanceDevice.findMany({
+          select: {
+            id: true,
+            name: true,
+            vendor: true,
+            active: true,
+            lastSyncAt: true,
+            project: { select: { name: true } },
+          },
+          orderBy: { name: 'asc' },
+        }),
+        prisma.attendanceSyncIssue.groupBy({
+          by: ['deviceId'],
+          where: { resolvedAt: null, deviceId: { not: null } },
+          _sum: { occurrences: true },
+        }),
+      ]);
+
+      if (devices.length === 0) {
+        return { facts: 'No biometric devices have been registered.', source: { label: 'Devices', href: '/admin/settings?tab=devices' } };
+      }
+
+      const issuesByDeviceId = new Map(unresolvedByDevice.map((u) => [u.deviceId, u._sum.occurrences ?? 0]));
+      const stale = devices.filter(
+        (d) => d.active && (!d.lastSyncAt || d.lastSyncAt < new Date(Date.now() - 2 * DAY_MS)),
+      );
+
+      return {
+        facts: [
+          `${plural(devices.length, 'device')} registered, ${devices.filter((d) => d.active).length} active.`,
+          stale.length
+            ? `Not synced in over 2 days: ${stale.map((d) => d.name).join(', ')}.`
+            : 'Every active device has synced within the last 2 days.',
+          ...devices.map((d) => {
+            const issues = issuesByDeviceId.get(d.id) ?? 0;
+            return `${d.name} (${titleCase(d.vendor)}) — ${d.active ? 'active' : 'inactive'}, at ${d.project?.name ?? 'no site assigned'}, last synced ${d.lastSyncAt ? day(d.lastSyncAt) : 'never'}${issues > 0 ? `, ${plural(issues, 'unresolved sync issue')}` : ''}.`;
+          }),
+        ].join('\n'),
+        source: { label: 'Devices', href: '/admin/settings?tab=devices' },
+      };
+    },
+  },
+
+  {
     name: 'equipment',
     scope: 'shared',
     description:
@@ -1596,6 +1799,62 @@ export const LOOKUPS: Lookup[] = [
                 .filter(Boolean)
                 .join('\n'),
         source: { label: 'Equipment', href: office ? '/admin/tools' : '/supervisor' },
+      };
+    },
+  },
+
+  {
+    name: 'tool_transfers',
+    scope: 'shared',
+    description:
+      'How equipment has moved between sites and the central store — most recent transfers first, who logged each. Use for "when did X arrive at this site" or "who last had this tool", as distinct from equipment which only gives the current location. Optional tool name to filter to one item.',
+    args: ['tool'],
+    run: async (ctx) => {
+      const office = isOffice(ctx.user.role);
+      const tool = (ctx.args.tool ?? '').trim();
+      const transfers = await prisma.toolTransfer.findMany({
+        where: {
+          ...(tool ? { tool: { name: { contains: tool, mode: 'insensitive' } } } : {}),
+          // A supervisor sees a transfer only if it touches one of their sites.
+          ...(office
+            ? {}
+            : {
+                OR: [
+                  { toProjectId: scopedProjectIds(ctx) },
+                  { fromProjectId: scopedProjectIds(ctx) },
+                ],
+              }),
+        },
+        select: {
+          tool: { select: { name: true } },
+          fromProject: { select: { name: true } },
+          toProject: { select: { name: true } },
+          quantity: true,
+          transferDate: true,
+          notes: true,
+          transferredBy: { select: { name: true } },
+        },
+        orderBy: { transferDate: 'desc' },
+        take: 30,
+      });
+
+      return {
+        facts:
+          transfers.length === 0
+            ? tool
+              ? `No transfers recorded for anything matching "${tool}".`
+              : 'No equipment transfers have been recorded.'
+            : [
+                `${plural(transfers.length, 'transfer')}${tool ? ` matching "${tool}"` : ''}, most recent first:`,
+                ...listed(
+                  transfers.map(
+                    (t) =>
+                      `${day(t.transferDate)} — ${Number(t.quantity)}x ${t.tool.name}: ${t.fromProject?.name ?? 'central store'} → ${t.toProject.name}${t.notes ? ` (${t.notes})` : ''}, logged by ${t.transferredBy.name}.`,
+                  ),
+                  20,
+                ),
+              ].join('\n'),
+        source: { label: 'Equipment transfers', href: office ? '/admin/tools' : '/supervisor' },
       };
     },
   },
@@ -1783,6 +2042,113 @@ export const LOOKUPS: Lookup[] = [
             : 'No payment has ever been recorded for this worker.',
         ].join('\n'),
         source: { label: `${worker.name} — worker`, href: '/admin/workers' },
+      };
+    },
+  },
+
+  {
+    name: 'lead_detail',
+    scope: 'office',
+    description:
+      'One lead by title or client name: its stage, estimated value, expected close date and any quotations raised from it. Use for a question naming a specific lead rather than the whole pipeline.',
+    args: ['name'],
+    run: async ({ args }) => {
+      const needle = (args.name ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which lead do you mean?');
+      const matches = await prisma.lead.findMany({
+        where: {
+          OR: [
+            { title: { contains: needle, mode: 'insensitive' } },
+            { client: { name: { contains: needle, mode: 'insensitive' } } },
+          ],
+        },
+        select: {
+          title: true,
+          stage: true,
+          estimatedValue: true,
+          expectedCloseDate: true,
+          source: true,
+          lostReason: true,
+          client: { select: { name: true } },
+          owner: { select: { name: true } },
+          quotations: { select: { quotationNo: true, status: true, total: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No lead matches "${needle}".` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one lead matches "${needle}": ${matches.map((m) => `${m.title} (${m.client.name})`).join(', ')}. Ask about one by its full title.`,
+        };
+      }
+      const l = matches[0];
+      return {
+        facts: [
+          `${l.title} for ${l.client.name} — ${titleCase(l.stage)}${l.owner ? `, owned by ${l.owner.name}` : ''}.`,
+          `Estimated value: ${l.estimatedValue ? money(Number(l.estimatedValue)) : 'not estimated'}. Expected to close: ${day(l.expectedCloseDate)}.${l.source ? ` Source: ${l.source}.` : ''}`,
+          l.lostReason ? `Lost: ${l.lostReason}.` : '',
+          l.quotations.length
+            ? `Quotations raised: ${l.quotations.map((q) => `${q.quotationNo ?? 'Draft'} — ${titleCase(q.status)}, ${money(Number(q.total))}`).join('; ')}.`
+            : 'No quotation has been raised from this lead yet.',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        source: { label: `${l.title} — lead`, href: '/admin/leads' },
+      };
+    },
+  },
+
+  {
+    name: 'variation_detail',
+    scope: 'office',
+    description:
+      'One contract variation by reference or description: its amount, status, and who approved or rejected it and why. Use for a question naming a specific variation rather than the whole contract summary.',
+    args: ['name'],
+    run: async ({ args }) => {
+      const needle = (args.name ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which variation do you mean?');
+      const matches = await prisma.variation.findMany({
+        where: {
+          OR: [
+            { reference: { contains: needle, mode: 'insensitive' } },
+            { description: { contains: needle, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          reference: true,
+          description: true,
+          amount: true,
+          status: true,
+          requestedDate: true,
+          approvedDate: true,
+          approvedBy: { select: { name: true } },
+          rejectReason: true,
+          contract: { select: { contractNo: true, title: true, project: { select: { name: true } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No variation matches "${needle}".` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one variation matches "${needle}": ${matches.map((m) => `${m.reference} (${m.contract.title})`).join(', ')}. Ask about one by its reference.`,
+        };
+      }
+      const v = matches[0];
+      return {
+        facts: [
+          `${v.reference} on ${v.contract.contractNo ?? v.contract.title}${v.contract.project ? ` (${v.contract.project.name})` : ''}: ${v.description}.`,
+          `Amount: ${money(Number(v.amount))}. ${titleCase(v.status)}, requested ${day(v.requestedDate)}${v.approvedDate ? `, approved ${day(v.approvedDate)} by ${v.approvedBy?.name ?? 'unknown'}` : ''}.`,
+          v.rejectReason ? `Rejected: ${v.rejectReason}.` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        source: { label: `${v.reference} — variation`, href: '/admin/contracts' },
       };
     },
   },
