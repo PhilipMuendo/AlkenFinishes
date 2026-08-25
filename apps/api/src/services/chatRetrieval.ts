@@ -1712,7 +1712,7 @@ export const LOOKUPS: Lookup[] = [
             vendor: true,
             active: true,
             lastSyncAt: true,
-            project: { select: { name: true } },
+            projectId: true,
           },
           orderBy: { name: 'asc' },
         }),
@@ -1727,6 +1727,15 @@ export const LOOKUPS: Lookup[] = [
         return { facts: 'No biometric devices have been registered.', source: { label: 'Devices', href: '/admin/settings?tab=devices' } };
       }
 
+      // No Prisma relation from device to project (projectId is a plain
+      // column), so the names are joined by hand for the ones actually used.
+      const projectIds = [...new Set(devices.map((d) => d.projectId).filter((id): id is string => !!id))];
+      const projectNames = new Map(
+        (await prisma.project.findMany({ where: { id: { in: projectIds } }, select: { id: true, name: true } })).map(
+          (p) => [p.id, p.name],
+        ),
+      );
+
       const issuesByDeviceId = new Map(unresolvedByDevice.map((u) => [u.deviceId, u._sum.occurrences ?? 0]));
       const stale = devices.filter(
         (d) => d.active && (!d.lastSyncAt || d.lastSyncAt < new Date(Date.now() - 2 * DAY_MS)),
@@ -1740,7 +1749,8 @@ export const LOOKUPS: Lookup[] = [
             : 'Every active device has synced within the last 2 days.',
           ...devices.map((d) => {
             const issues = issuesByDeviceId.get(d.id) ?? 0;
-            return `${d.name} (${titleCase(d.vendor)}) — ${d.active ? 'active' : 'inactive'}, at ${d.project?.name ?? 'no site assigned'}, last synced ${d.lastSyncAt ? day(d.lastSyncAt) : 'never'}${issues > 0 ? `, ${plural(issues, 'unresolved sync issue')}` : ''}.`;
+            const site = d.projectId ? (projectNames.get(d.projectId) ?? 'unknown site') : 'no site assigned';
+            return `${d.name} (${titleCase(d.vendor)}) — ${d.active ? 'active' : 'inactive'}, at ${site}, last synced ${d.lastSyncAt ? day(d.lastSyncAt) : 'never'}${issues > 0 ? `, ${plural(issues, 'unresolved sync issue')}` : ''}.`;
           }),
         ].join('\n'),
         source: { label: 'Devices', href: '/admin/settings?tab=devices' },
