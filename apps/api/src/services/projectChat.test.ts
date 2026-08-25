@@ -86,6 +86,7 @@ test('the catalogue reaches every part of the platform', () => {
     'sites_list',
     'workforce',
     'site_attendance',
+    'attendance_disputes',
     'site_programme',
     'site_defects',
     'site_safety',
@@ -111,6 +112,7 @@ test('the catalogue reaches every part of the platform', () => {
     'spend_trend',
     'budget_impact',
     'kenya_tax_guide',
+    'quotation_detail',
   ]) {
     assert.ok(names.has(required), `no lookup answers for ${required}`);
   }
@@ -139,6 +141,7 @@ test('a supervisor is not offered the commercial lookups', () => {
     'budget_impact',
     'company_financials',
     'kenya_tax_guide',
+    'quotation_detail',
   ]) {
     assert.ok(!names.includes(officeOnly), `${officeOnly} was offered to a supervisor`);
   }

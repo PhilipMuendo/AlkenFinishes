@@ -792,6 +792,109 @@ export const LOOKUPS: Lookup[] = [
   },
 
   {
+    name: 'attendance_disputes',
+    scope: 'site',
+    description:
+      'Attendance override requests waiting on a decision for one site — a worker or supervisor disputing a check-in/check-out time, with the reason given and whether it falls inside the site geofence.',
+    run: async ({ projectId }) => {
+      const [project, requests] = await Promise.all([
+        prisma.project.findUniqueOrThrow({ where: { id: projectId }, select: { name: true } }),
+        prisma.attendanceOverrideRequest.findMany({
+          where: { projectId, status: 'PENDING' },
+          select: {
+            date: true,
+            checkIn: true,
+            checkOut: true,
+            reason: true,
+            withinGeofence: true,
+            worker: { select: { name: true } },
+            requestedBy: { select: { name: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        }),
+      ]);
+
+      const time = (d: Date) =>
+        d.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+      return {
+        facts:
+          requests.length === 0
+            ? `No attendance disputes are waiting on a decision at ${project.name}.`
+            : [
+                `${plural(requests.length, 'attendance dispute')} waiting on a decision at ${project.name}:`,
+                ...listed(
+                  requests.map(
+                    (r) =>
+                      `${r.worker.name}, ${day(r.date)}: requested ${time(r.checkIn)}${r.checkOut ? `–${time(r.checkOut)}` : ' (no check-out)'} — "${r.reason}"${r.withinGeofence === false ? ', outside the site geofence' : r.withinGeofence === true ? ', within the site geofence' : ''}. Raised by ${r.requestedBy.name}.`,
+                  ),
+                  15,
+                ),
+              ].join('\n'),
+        source: { label: `${project.name} — attendance disputes`, href: `/admin/sites/${projectId}?tab=attendance` },
+      };
+    },
+  },
+
+  {
+    name: 'quotation_detail',
+    scope: 'office',
+    description:
+      'One quotation by number, title or client name: its line items, value, status, and validity. Use for a question naming a specific quotation rather than the whole pipeline.',
+    args: ['name'],
+    run: async ({ args }) => {
+      const needle = (args.name ?? '').trim();
+      if (!needle) throw new RetrievalDenied('Which quotation do you mean?');
+      const matches = await prisma.quotation.findMany({
+        where: {
+          OR: [
+            { quotationNo: { contains: needle, mode: 'insensitive' } },
+            { title: { contains: needle, mode: 'insensitive' } },
+            { clientNameSnapshot: { contains: needle, mode: 'insensitive' } },
+          ],
+        },
+        select: {
+          quotationNo: true,
+          title: true,
+          status: true,
+          issueDate: true,
+          validUntil: true,
+          clientNameSnapshot: true,
+          subtotal: true,
+          vatAmount: true,
+          total: true,
+          rejectReason: true,
+          lines: { select: { description: true, quantity: true, unit: true, lineTotal: true }, orderBy: { sortOrder: 'asc' } },
+        },
+        orderBy: { issueDate: 'desc' },
+        take: 6,
+      });
+      if (matches.length === 0) {
+        return { facts: `No quotation matches "${needle}".` };
+      }
+      if (matches.length > 1) {
+        return {
+          facts: `More than one quotation matches "${needle}": ${matches.map((m) => `${m.quotationNo ?? 'Draft'} — ${m.title} (${m.clientNameSnapshot})`).join(', ')}. Ask about one by its number.`,
+        };
+      }
+      const q = matches[0];
+      return {
+        facts: [
+          `${q.quotationNo ?? 'Draft (unnumbered)'} — ${q.title} for ${q.clientNameSnapshot}: ${titleCase(q.status)}. Issued ${day(q.issueDate)}, valid to ${day(q.validUntil)}.`,
+          `Subtotal ${money(Number(q.subtotal))}, VAT ${money(Number(q.vatAmount))}, total ${money(Number(q.total))}.`,
+          q.rejectReason ? `Rejected: ${q.rejectReason}.` : '',
+          q.lines.length
+            ? `Lines: ${q.lines.map((l) => `${l.description} — ${Number(l.quantity)} ${l.unit} @ ${money(Number(l.lineTotal))}`).join('; ')}.`
+            : 'No line items.',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        source: { label: `${q.quotationNo ?? q.title} — quotation`, href: '/admin/leads' },
+      };
+    },
+  },
+
+  {
     name: 'team',
     scope: 'office',
     description:
