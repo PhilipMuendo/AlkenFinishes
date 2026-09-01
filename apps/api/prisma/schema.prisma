@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   SUPERADMIN
   SUPERVISOR
+  ACCOUNTANT
 }
 
 enum ProjectStatus {

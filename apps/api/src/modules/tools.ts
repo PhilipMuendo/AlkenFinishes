@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { projectScope, requireSuperadmin } from '../middleware/rbac';
+import { requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 
@@ -26,7 +26,12 @@ const include = { currentProject: { select: { id: true, name: true } } } as cons
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const where = req.user!.role === 'SUPERADMIN' ? {} : { currentProject: projectScope(req.user!) };
+    // Equipment is a site-ops surface an accountant does not get either, so
+    // this checks the literal role rather than the finance-aware projectScope().
+    const where =
+      req.user!.role === 'SUPERADMIN'
+        ? {}
+        : { currentProject: { supervisorId: req.user!.id } };
     res.json(await prisma.tool.findMany({ where, include, orderBy: { name: 'asc' } }));
   }),
 );

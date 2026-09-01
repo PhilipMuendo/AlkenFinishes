@@ -13,6 +13,7 @@ import { monthPeriod, taxPosition } from './taxPosition';
 import { KENYA_TAX_REFERENCE } from './kenyaTaxReference';
 import { gatherDay, factsFor } from './dailyReportDraft';
 import { isOffice } from './payVisibility';
+import { hasFinanceAccess } from '../middleware/rbac';
 import { contractPosition, leadPipeline } from './pipeline';
 import {
   projectFinancials,
@@ -69,8 +70,13 @@ export interface ChatUser {
 }
 
 export type Scope =
-  /** Company money and cross-site totals. Office only. */
+  /**
+   * Team, CRM, equipment/device and activity — office-only in the narrow
+   * sense: Superadmin only, not Accountant.
+   */
   | 'office'
+  /** Company money, tax and payroll. Superadmin and Accountant both. */
+  | 'finance'
   /** One site. Supervisors may use it for sites they are assigned to. */
   | 'site'
   /**
@@ -213,7 +219,7 @@ const scopedProjectIds = (ctx: LookupContext) => ({ in: [...ctx.allowedProjectId
 export const LOOKUPS: Lookup[] = [
   {
     name: 'company_overview',
-    scope: 'office',
+    scope: 'finance',
     description:
       'The state of the business right now: how many sites are running, what is owed to us, what we owe, and what is overdue on both sides.',
     run: async () => {
@@ -240,7 +246,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'company_financials',
-    scope: 'office',
+    scope: 'finance',
     description:
       'Whether the company is profitable and by how much: contract value, spend and estimated profit across every site, plus what has been collected and what remains to be billed. Use for "are we profitable", "how much have we made", "what is our margin" and similar company-wide money questions — not to be confused with company_overview, which covers what is owed rather than what has been earned.',
     run: async () => {
@@ -322,7 +328,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'site_money',
-    scope: 'office',
+    scope: 'finance',
     description:
       'The money on one site: contract value, budget against actual spend, what has been invoiced and what the client still owes. Needs projectId.',
     args: ['projectId'],
@@ -382,7 +388,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'who_we_owe',
-    scope: 'office',
+    scope: 'finance',
     description:
       'Which suppliers are owed money, how much, and how late it is. Biggest debt first.',
     run: async () => {
@@ -421,7 +427,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'owed_to_staff',
-    scope: 'office',
+    scope: 'finance',
     description:
       'What casual/contracted staff (fundis paid for hours worked, not on formal Payroll) are owed from attendance, what has been paid, and tax withheld from them. Biggest balance first.',
     run: async () => {
@@ -459,7 +465,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'who_owes_us',
-    scope: 'office',
+    scope: 'finance',
     description: 'Which client invoices are unpaid or overdue, and by how much.',
     run: async () => {
       const invoices = await prisma.invoice.findMany({
@@ -521,7 +527,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'tax_position',
-    scope: 'office',
+    scope: 'finance',
     description:
       'VAT and withholding for a month: VAT charged out, VAT reclaimable, tax withheld from suppliers and from staff and held for KRA, tax clients withheld from us. Takes a month as YYYY-MM, defaulting to this month.',
     args: ['month'],
@@ -555,7 +561,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'kenya_tax_guide',
-    scope: 'office',
+    scope: 'finance',
     description:
       'General Kenyan tax administration knowledge — VAT/Turnover Tax/Withholding Tax rates, filing deadlines, iTax, what a WHT certificate is. NOT this company\'s own figures (use tax_position or payroll_recent for those) — use this only for a general "how does X tax work in Kenya" or "when is X due" question.',
     run: async () => ({
@@ -566,7 +572,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'payroll_recent',
-    scope: 'office',
+    scope: 'finance',
     description:
       'The most recent payroll runs: period, how many workers, gross, net paid, and what has to be remitted to KRA/NSSF/SHIF and by when — PAYE, NSSF, SHIF, Housing Levy.',
     run: async () => {
@@ -679,7 +685,9 @@ export const LOOKUPS: Lookup[] = [
     description:
       'The fundis: how many there are, what trades they work in, how many are active, and which sites they are assigned to. Answers "how many workers do we have".',
     run: async (ctx) => {
-      const office = isOffice(ctx.user.role);
+      // Fundis/Workers is a site-ops surface Accountant does not get either,
+      // so this checks the literal role rather than isOffice().
+      const office = ctx.user.role === 'SUPERADMIN';
       // A supervisor sees the people on their own sites, not the company roll.
       const workers = await prisma.worker.findMany({
         where: office
@@ -1368,7 +1376,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'site_spend',
-    scope: 'office',
+    scope: 'finance',
     description:
       'Where the money went on a site: expenses by category, budget against actual, what is still awaiting approval, and the biggest individual costs. Needs projectId.',
     args: ['projectId'],
@@ -1431,7 +1439,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'site_invoices',
-    scope: 'office',
+    scope: 'finance',
     description:
       'Every invoice raised on one site and what has been paid against each, including retention and tax withheld by the client. Needs projectId.',
     args: ['projectId'],
@@ -1764,7 +1772,9 @@ export const LOOKUPS: Lookup[] = [
     description:
       'The tool and equipment register: what the company owns, where each item is right now, what is in for maintenance and what is overdue a service.',
     run: async (ctx) => {
-      const office = isOffice(ctx.user.role);
+      // Equipment is a site-ops surface Accountant does not get either, so
+      // this checks the literal role rather than isOffice().
+      const office = ctx.user.role === 'SUPERADMIN';
       const tools = await prisma.tool.findMany({
         // A supervisor is answerable for the kit on their sites, not the whole
         // register — and tools in the central store are nobody's site.
@@ -1820,7 +1830,9 @@ export const LOOKUPS: Lookup[] = [
       'How equipment has moved between sites and the central store — most recent transfers first, who logged each. Use for "when did X arrive at this site" or "who last had this tool", as distinct from equipment which only gives the current location. Optional tool name to filter to one item.',
     args: ['tool'],
     run: async (ctx) => {
-      const office = isOffice(ctx.user.role);
+      // Equipment is a site-ops surface Accountant does not get either, so
+      // this checks the literal role rather than isOffice().
+      const office = ctx.user.role === 'SUPERADMIN';
       const tool = (ctx.args.tool ?? '').trim();
       const transfers = await prisma.toolTransfer.findMany({
         where: {
@@ -1876,7 +1888,9 @@ export const LOOKUPS: Lookup[] = [
       'What is coming up: booked events like milestones, inspections, deliveries and meetings, plus dates the system works out for itself — site deadlines, equipment servicing, retention release. Takes days ahead, default 30.',
     args: ['days'],
     run: async (ctx) => {
-      const office = isOffice(ctx.user.role);
+      // Calendar is a site-ops surface Accountant does not get either, so
+      // this checks the literal role rather than isOffice().
+      const office = ctx.user.role === 'SUPERADMIN';
       const days = Math.min(Math.max(parseInt(ctx.args.days ?? '30', 10) || 30, 1), 180);
       const from = today();
       const to = new Date(from.getTime() + days * DAY_MS);
@@ -1929,7 +1943,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'supplier_detail',
-    scope: 'office',
+    scope: 'finance',
     description:
       'One supplier by name: every bill raised against them, what has been paid on each, and what remains outstanding. Use for a question naming a specific supplier rather than the whole payables list.',
     args: ['name'],
@@ -1998,7 +2012,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'worker_detail',
-    scope: 'office',
+    scope: 'finance',
     description:
       'One worker by name: their trade, current site assignment, what they are owed from attendance, and their recent payment history. Use for a question naming a specific worker rather than the whole staff list.',
     args: ['name'],
@@ -2301,7 +2315,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'spend_trend',
-    scope: 'office',
+    scope: 'finance',
     description:
       'How spend has moved month by month, by category (materials, labour, transport, other) — for one site if projectId is given, company-wide otherwise. Use for "is spend going up", "trend", or a month-by-month breakdown.',
     args: ['projectId'],
@@ -2346,7 +2360,7 @@ export const LOOKUPS: Lookup[] = [
 
   {
     name: 'budget_impact',
-    scope: 'office',
+    scope: 'finance',
     description:
       'What is still PENDING against one site — expenses awaiting approval and material requests awaiting a decision or delivery — set against what budget remains, so the effect of approving everything in the queue can be seen before it happens. Needs projectId.',
     args: ['projectId'],
@@ -2390,13 +2404,17 @@ export const LOOKUP_BY_NAME = new Map(LOOKUPS.map((l) => [l.name, l]));
 
 /** Lookups this user is allowed to use at all. */
 export function lookupsFor(user: ChatUser): Lookup[] {
-  return LOOKUPS.filter((l) => l.scope !== 'office' || isOffice(user.role));
+  return LOOKUPS.filter((l) => {
+    if (l.scope === 'office') return user.role === 'SUPERADMIN';
+    if (l.scope === 'finance') return hasFinanceAccess(user.role);
+    return true;
+  });
 }
 
 /** The sites this user may ask about — the same scoping the project routes use. */
 export async function visibleProjects(user: ChatUser) {
   return prisma.project.findMany({
-    where: user.role === 'SUPERADMIN' ? {} : { supervisorId: user.id },
+    where: hasFinanceAccess(user.role) ? {} : { supervisorId: user.id },
     select: { id: true, name: true, status: true },
     orderBy: { name: 'asc' },
   });
@@ -2418,7 +2436,10 @@ export async function runLookup(
   const lookup = LOOKUP_BY_NAME.get(name);
   if (!lookup) throw new RetrievalDenied(`No such lookup: ${name}`);
 
-  if (lookup.scope === 'office' && !isOffice(user.role)) {
+  if (lookup.scope === 'office' && user.role !== 'SUPERADMIN') {
+    throw new RetrievalDenied('That is office-only information.');
+  }
+  if (lookup.scope === 'finance' && !hasFinanceAccess(user.role)) {
     throw new RetrievalDenied('That is office-only information.');
   }
 

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess } from '../middleware/rbac';
+import { hasFinanceAccess, requireFinanceProjectAccess } from '../middleware/rbac';
 import { signFileUrl } from '../middleware/upload';
 import { projectFinancials } from '../services/finance';
 import { contractPosition } from '../services/pipeline';
@@ -17,12 +17,12 @@ import { weightedProgress } from '../services/progress';
  * is read from the same tables the individual tabs use — this endpoint exists
  * to save round trips, not to introduce a second source of truth.
  *
- * Money is assembled only for a superadmin. A supervisor's response omits the
- * financial sections entirely rather than zeroing them: an absent key cannot
- * leak, and the queries behind it are never run.
+ * Money is assembled only for a superadmin or accountant. A supervisor's
+ * response omits the financial sections entirely rather than zeroing them: an
+ * absent key cannot leak, and the queries behind it are never run.
  */
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireFinanceProjectAccess);
 
 const DAY = 86_400_000;
 const PHOTO_LIMIT = 8;
@@ -32,7 +32,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const projectId = req.params.projectId;
-    const canSeeMoney = req.user!.role === 'SUPERADMIN';
+    const canSeeMoney = hasFinanceAccess(req.user!.role);
 
     const now = new Date();
     const startOfToday = new Date();

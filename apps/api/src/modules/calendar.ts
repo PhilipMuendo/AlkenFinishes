@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { projectScope, requireSuperadmin } from '../middleware/rbac';
+import { requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { derivedEvents } from '../services/calendarFeeds';
 
@@ -63,12 +63,14 @@ router.get(
     // superadmin sees everything, so no project-based restriction applies at
     // all for them — an empty object inside OR still means "match anything",
     // but is easy to misread as a no-op, so it's kept out of the query.
+    // Calendar is a site-ops surface an accountant does not get either, so
+    // this checks the literal role rather than the finance-aware projectScope().
     const projectFilter =
       projectId != null
         ? { projectId }
         : req.user!.role === 'SUPERADMIN'
           ? {}
-          : { OR: [{ project: projectScope(req.user!) }, { projectId: null }] };
+          : { OR: [{ project: { supervisorId: req.user!.id } }, { projectId: null }] };
 
     // Derived events are computed across the window rather than stored, so the
     // window has to be finite even when the caller does not say so.
@@ -89,7 +91,7 @@ router.get(
       derivedEvents({
         from: rangeFrom,
         to: rangeTo,
-        projectFilter: isSuperadmin ? null : projectScope(req.user!),
+        projectFilter: isSuperadmin ? null : { supervisorId: req.user!.id },
         projectId,
         // Payroll and birthdays are company-wide facts; a supervisor has no
         // use for them and no business seeing the roster's dates of birth.

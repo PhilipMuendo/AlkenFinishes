@@ -6,7 +6,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceProjectAccess, requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { removeUploadedFile, signFileUrl } from '../middleware/upload';
 import { env } from '../config/env';
@@ -35,13 +35,13 @@ import {
 import { renderInvoicePdf, type InvoiceWithLines } from '../services/documents/invoicePdf';
 
 /**
- * Invoicing is superadmin-only, matching payments.ts: contract sums, client
- * billing, VAT position and receivables are financial data a site supervisor
- * must never see. requireSuperadmin is stacked at the router level so no route
- * under this resource is reachable by a SUPERVISOR.
+ * Invoicing is Superadmin/Accountant-only, matching payments.ts: contract
+ * sums, client billing, VAT position and receivables are financial data a
+ * site supervisor must never see. requireFinanceRole is stacked at the
+ * router level so no route under this resource is reachable by a SUPERVISOR.
  */
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireSuperadmin, requireProjectAccess);
+router.use(requireAuth, requireFinanceRole, requireFinanceProjectAccess);
 
 const lineInclude = { lines: { orderBy: { sortOrder: 'asc' as const } } } as const;
 
@@ -651,7 +651,7 @@ export default router;
  * site") and so cannot go through requireProjectAccess.
  */
 export const companyInvoicesRouter = Router();
-companyInvoicesRouter.use(requireAuth, requireSuperadmin);
+companyInvoicesRouter.use(requireAuth, requireFinanceRole);
 
 companyInvoicesRouter.get(
   '/',

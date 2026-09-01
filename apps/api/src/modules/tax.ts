@@ -3,21 +3,22 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { monthPeriod, outstandingCertificates, taxPosition } from '../services/taxPosition';
 
 /**
  * The company's tax position, across both sides of the ledger.
  *
- * Superadmin-only: this is the whole company's VAT and withholding exposure.
+ * Superadmin/Accountant-only: this is the whole company's VAT and withholding
+ * exposure.
  *
  * Everything here REPORTS what was entered. Nothing decides what is legally
  * due — the rates are the user's own, and a figure is only as good as what was
  * recorded against the bill or receipt it came from.
  */
 const router = Router();
-router.use(requireAuth, requireSuperadmin);
+router.use(requireAuth, requireFinanceRole);
 
 const periodSchema = z.object({
   from: z.coerce.date().optional(),

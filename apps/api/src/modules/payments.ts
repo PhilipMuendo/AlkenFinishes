@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceProjectAccess, requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 import { env } from '../config/env';
@@ -26,13 +26,14 @@ import { toCents } from '../services/money';
 import { renderReceiptPdf, type PaymentForReceipt } from '../services/documents/receiptPdf';
 
 /**
- * Payments are superadmin-only: contract sum, deposit, and payment history
- * are financial data the site supervisor must never see. requireSuperadmin
- * is stacked at the router level (not per-route, unlike expenses.ts) so no
- * route under this resource is ever reachable by a SUPERVISOR.
+ * Payments are Superadmin/Accountant-only: contract sum, deposit, and payment
+ * history are financial data the site supervisor must never see.
+ * requireFinanceRole is stacked at the router level (not per-route, unlike
+ * expenses.ts) so no route under this resource is ever reachable by a
+ * SUPERVISOR.
  */
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireSuperadmin, requireProjectAccess);
+router.use(requireAuth, requireFinanceRole, requireFinanceProjectAccess);
 
 const include = {
   submittedBy: { select: { id: true, name: true } },

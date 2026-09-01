@@ -21,6 +21,10 @@ test('the office sees the rate', () => {
   assert.equal(visibleWorker(worker(), 'SUPERADMIN').hourlyRate, '250');
 });
 
+test('an accountant sees the rate too', () => {
+  assert.equal(visibleWorker(worker(), 'ACCOUNTANT').hourlyRate, '250');
+});
+
 test('a supervisor does not', () => {
   const w = visibleWorker(worker(), 'SUPERVISOR');
   assert.equal('hourlyRate' in w, false);

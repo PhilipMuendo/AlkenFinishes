@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceRole, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { clearFinanceSettingsCache, getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
@@ -20,10 +20,11 @@ import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '
 import { ApiError } from '../utils/http';
 
 const router = Router();
-router.use(requireAuth, requireSuperadmin);
+router.use(requireAuth);
 
 router.get(
   '/thresholds',
+  requireFinanceRole,
   asyncHandler(async (_req, res) => {
     res.json((await getFinanceSettings()).thresholds);
   }),
@@ -31,6 +32,7 @@ router.get(
 
 router.get(
   '/finance',
+  requireFinanceRole,
   asyncHandler(async (_req, res) => {
     res.json(await getFinanceSettings());
   }),
@@ -38,6 +40,7 @@ router.get(
 
 router.put(
   '/labour-source',
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const { labourCostSource } = z
       .object({ labourCostSource: z.enum(['ATTENDANCE', 'EXPENSES', 'BOTH']) })
@@ -55,6 +58,7 @@ router.put(
 
 router.put(
   '/thresholds',
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = z
       .object({
@@ -101,6 +105,7 @@ const companySchema = z.object({
 
 router.get(
   '/company',
+  requireSuperadmin,
   asyncHandler(async (_req, res) => {
     const profile = await getCompanyProfile();
     res.json({ ...profile, logoUrl: signFileUrl(profile.logoUrl) });
@@ -109,6 +114,7 @@ router.get(
 
 router.put(
   '/company',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const data = companySchema.parse(req.body);
     // The logo is managed by its own upload route; preserve it across edits.
@@ -129,6 +135,7 @@ router.put(
 
 router.post(
   '/company/logo',
+  requireSuperadmin,
   upload.single('logo'),
   asyncHandler(async (req, res) => {
     if (!req.file) throw ApiError.badRequest('logo file is required');
@@ -165,6 +172,7 @@ const invoicingSchema = z.object({
 
 router.get(
   '/invoicing',
+  requireFinanceRole,
   asyncHandler(async (_req, res) => {
     const config = await getInvoicingConfig();
     const year = new Date().getFullYear();
@@ -186,6 +194,7 @@ router.get(
 
 router.put(
   '/invoicing',
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const { startNumber, ...value } = invoicingSchema.parse(req.body);
     await prisma.setting.upsert({
@@ -244,6 +253,7 @@ const payrollSchema = z.object({
 
 router.get(
   '/payroll',
+  requireFinanceRole,
   asyncHandler(async (_req, res) => {
     res.json(await getPayrollConfig());
   }),
@@ -251,6 +261,7 @@ router.get(
 
 router.put(
   '/payroll',
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = payrollSchema.parse(req.body);
     // Bands must ascend, or a slice would be charged twice or skipped.
@@ -275,6 +286,7 @@ router.put(
 
 router.get(
   '/purchase-tax',
+  requireFinanceRole,
   asyncHandler(async (_req, res) => {
     // `receiptScanning` rides along here because the expense form already
     // fetches this and needs to know whether to offer the scan button. It is
@@ -286,6 +298,7 @@ router.get(
 
 router.put(
   '/purchase-tax',
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = purchaseTaxSchema.parse(req.body);
     await prisma.setting.upsert({
@@ -311,6 +324,7 @@ const staffTaxSchema = z.object({
 
 router.get(
   '/staff-tax',
+  requireFinanceRole,
   asyncHandler(async (_req, res) => {
     res.json(await getStaffTaxConfig());
   }),
@@ -318,6 +332,7 @@ router.get(
 
 router.put(
   '/staff-tax',
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = staffTaxSchema.parse(req.body);
     await prisma.setting.upsert({
@@ -341,6 +356,7 @@ const pipelineSchema = z.object({
 
 router.get(
   '/pipeline',
+  requireSuperadmin,
   asyncHandler(async (_req, res) => {
     const config = await getPipelineConfig();
     const invoicing = await getInvoicingConfig();
@@ -364,6 +380,7 @@ router.get(
 
 router.put(
   '/pipeline',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const value = pipelineSchema.parse(req.body);
     await prisma.setting.upsert({
@@ -383,6 +400,7 @@ router.put(
  */
 router.get(
   '/quotation-defaults',
+  requireSuperadmin,
   asyncHandler(async (_req, res) => {
     const [invoicing, pipeline] = await Promise.all([getInvoicingConfig(), getPipelineConfig()]);
     res.json({
@@ -395,6 +413,7 @@ router.get(
 
 router.get(
   '/audit-log',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const { page } = z.object({ page: z.coerce.number().int().min(1).default(1) }).parse(req.query);
     const pageSize = 50;
@@ -425,6 +444,7 @@ const aiBudgetSchema = z.object({
 
 router.get(
   '/ai',
+  requireSuperadmin,
   asyncHandler(async (_req, res) => {
     const [budget, usage] = await Promise.all([getAiBudget(), readUsage()]);
     res.json({
@@ -440,6 +460,7 @@ router.get(
 
 router.put(
   '/ai',
+  requireSuperadmin,
   asyncHandler(async (req, res) => {
     const value = aiBudgetSchema.parse(req.body);
     await prisma.setting.upsert({

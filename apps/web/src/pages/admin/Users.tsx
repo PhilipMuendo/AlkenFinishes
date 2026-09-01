@@ -70,7 +70,7 @@ export function UsersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Team"
-        description="Supervisors and administrators"
+        description="Supervisors, accountants and administrators"
         actions={
           <Button onClick={() => setOpen(true)}>
             <Plus size={16} /> Add user
@@ -101,8 +101,10 @@ export function UsersPage() {
               </Td>
               <Td>{u.email}</Td>
               <Td>
-                <Badge tone={u.role === 'SUPERADMIN' ? 'blue' : 'slate'}>
-                  {u.role === 'SUPERADMIN' ? 'Admin' : 'Supervisor'}
+                <Badge
+                  tone={u.role === 'SUPERADMIN' ? 'blue' : u.role === 'ACCOUNTANT' ? 'yellow' : 'slate'}
+                >
+                  {u.role === 'SUPERADMIN' ? 'Admin' : u.role === 'ACCOUNTANT' ? 'Accountant' : 'Supervisor'}
                 </Badge>
               </Td>
               <Td>{u.projects.map((p) => p.name).join(', ') || '—'}</Td>
@@ -170,6 +172,7 @@ export function UsersPage() {
           <Field label="Role">
             <Select name="role" defaultValue="SUPERVISOR">
               <option value="SUPERVISOR">Site Supervisor</option>
+              <option value="ACCOUNTANT">Accountant</option>
               <option value="SUPERADMIN">Superadmin</option>
             </Select>
           </Field>

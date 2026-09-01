@@ -40,10 +40,18 @@ function monthAgo(): string {
  * computes a new figure. The value of this panel is a clean, printable,
  * dateable snapshot to hand to a client, a bank, or the file.
  */
-export function BusinessReportsPanel({ projectId }: { projectId: string }) {
+export function BusinessReportsPanel({
+  projectId,
+  only,
+}: {
+  projectId: string;
+  /** Restrict to these report types, e.g. the money-only subset the accountant view offers. */
+  only?: readonly string[];
+}) {
   const [from, setFrom] = useState(monthAgo());
   const [to, setTo] = useState(todayISO());
   const [downloading, setDownloading] = useState<string | null>(null);
+  const reports = only ? REPORTS.filter((r) => only.includes(r.type)) : REPORTS;
 
   const download = useMutation({
     mutationFn: async ({ type, ranged }: { type: string; ranged: boolean }) => {
@@ -87,7 +95,7 @@ export function BusinessReportsPanel({ projectId }: { projectId: string }) {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {REPORTS.map((r) => (
+        {reports.map((r) => (
           <Card key={r.type} className="flex items-center justify-between gap-3 p-4">
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600">

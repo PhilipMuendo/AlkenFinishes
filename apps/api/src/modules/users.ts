@@ -27,7 +27,7 @@ const createSchema = z.object({
   password: z.string().min(8),
   name: z.string().min(1),
   phone: z.string().optional(),
-  role: z.enum(['SUPERADMIN', 'SUPERVISOR']),
+  role: z.enum(['SUPERADMIN', 'SUPERVISOR', 'ACCOUNTANT']),
 });
 
 router.get(

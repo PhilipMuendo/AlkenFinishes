@@ -1,8 +1,9 @@
 /**
  * Who may see what a person is paid.
  *
- * Pay rates are the office's business. A supervisor runs the site and records
- * who was on it; what those hours cost is decided and seen by the office.
+ * Pay rates are the office's business — Superadmin and Accountant alike. A
+ * supervisor runs the site and records who was on it; what those hours cost
+ * is decided and seen by the office.
  *
  * The rule has to cover the derived figure as well as the rate itself. An
  * attendance record carries `labourCost`, and cost divided by hours is the
@@ -17,7 +18,7 @@
  */
 
 export function isOffice(role: string): boolean {
-  return role === 'SUPERADMIN';
+  return role === 'SUPERADMIN' || role === 'ACCOUNTANT';
 }
 
 type WithRate = { hourlyRate?: unknown };

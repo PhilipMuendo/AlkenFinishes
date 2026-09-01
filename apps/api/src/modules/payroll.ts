@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import {
   computePayslip,
@@ -25,7 +25,7 @@ import {
  * it is finalised, and finalising is what makes its figures permanent.
  */
 const router = Router();
-router.use(requireAuth, requireSuperadmin);
+router.use(requireAuth, requireFinanceRole);
 
 const serializeLine = (l: {
   hoursWorked: Prisma.Decimal;

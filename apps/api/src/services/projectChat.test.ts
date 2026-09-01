@@ -11,6 +11,7 @@ import {
 
 const office = { id: 'u1', role: 'SUPERADMIN' };
 const supervisor = { id: 'u2', role: 'SUPERVISOR' };
+const accountant = { id: 'u3', role: 'ACCOUNTANT' };
 
 // ---- What each role is even offered ----
 
@@ -157,6 +158,54 @@ test('a supervisor is not offered the commercial lookups', () => {
   }
 });
 
+test('an accountant is not offered team/CRM/equipment lookups', () => {
+  const names = lookupsFor(accountant).map((l) => l.name);
+  for (const officeOnly of [
+    'team',
+    'clients',
+    'pipeline',
+    'contracts',
+    'lead_detail',
+    'variation_detail',
+    'recent_activity',
+    'reporting_compliance',
+    'device_health',
+    'company_operations',
+    'quotation_detail',
+  ]) {
+    assert.ok(!names.includes(officeOnly), `${officeOnly} was offered to an accountant`);
+  }
+});
+
+// equipment/tool_transfers/workforce/upcoming are 'shared' scope, so they are
+// offered to everyone in the catalogue — but their `run()` self-scopes to the
+// literal SUPERADMIN role (not isOffice()), so an accountant sees the same
+// narrow, non-office view a site-less supervisor would. (Their run() bodies
+// hit the database, so that scoping is exercised by manual verification
+// rather than a unit test here, matching how the rest of this suite avoids
+// touching Prisma.)
+
+test('an accountant can ask the finance lookups a supervisor cannot', () => {
+  const names = lookupsFor(accountant).map((l) => l.name);
+  for (const financeLookup of [
+    'company_financials',
+    'who_we_owe',
+    'who_owes_us',
+    'owed_to_staff',
+    'kenya_tax_guide',
+    'tax_position',
+    'payroll_recent',
+    'spend_trend',
+    'budget_impact',
+    'site_spend',
+    'site_invoices',
+    'supplier_detail',
+    'worker_detail',
+  ]) {
+    assert.ok(names.includes(financeLookup), `${financeLookup} was not offered to an accountant`);
+  }
+});
+
 // ---- Permission is enforced at the lookup, not in the prompt --------------
 //
 // Each of these is refused before `run` is reached, so none of them touch the
@@ -191,8 +240,22 @@ test('an invented lookup name is refused', async () => {
   );
 });
 
-test('a projectId smuggled onto an office lookup is still checked', async () => {
-  // site_spend is office-scoped, so the scope test passes — but the site it
+test('a strictly-office lookup asked for by an accountant is refused', async () => {
+  await assert.rejects(
+    () => runLookup(accountant, 'team', {}, new Set()),
+    RetrievalDenied,
+  );
+});
+
+test('a finance lookup asked for by a supervisor is refused', async () => {
+  await assert.rejects(
+    () => runLookup(supervisor, 'tax_position', {}, new Set()),
+    RetrievalDenied,
+  );
+});
+
+test('a projectId smuggled onto a finance lookup is still checked', async () => {
+  // site_spend is finance-scoped, so the scope test passes — but the site it
   // names must still be one this user can see.
   await assert.rejects(
     () => runLookup(office, 'site_spend', { projectId: 'somewhere-else' }, new Set(['mine'])),

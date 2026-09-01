@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import type { Role } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { Wordmark } from '@/components/Wordmark';
 import { ConnectionBar } from '@/components/ConnectionBar';
@@ -41,29 +42,32 @@ import { Assistant } from '@/features/Assistant';
  * Every label matches its own route, so the address bar confirms where the
  * click landed rather than contradicting it.
  */
-type NavEntry = { heading: string } | { to: string; label: string; icon: LucideIcon; end?: boolean };
+type NavEntry =
+  | { heading: string }
+  | { to: string; label: string; icon: LucideIcon; end?: boolean; roles?: Role[] };
 
+/** Absent `roles` means every role that reaches AdminLayout — currently SUPERADMIN and ACCOUNTANT. */
 const nav: NavEntry[] = [
-  { to: '/admin', label: 'Overview', icon: BarChart3, end: true },
+  { to: '/admin', label: 'Overview', icon: BarChart3, end: true, roles: ['SUPERADMIN'] },
   { heading: 'Winning work' },
-  { to: '/admin/clients', label: 'Clients', icon: Contact },
-  { to: '/admin/leads', label: 'Leads', icon: Target },
-  { to: '/admin/quotations', label: 'Quotations', icon: FileText },
-  { to: '/admin/contracts', label: 'Contracts', icon: FileSignature },
+  { to: '/admin/clients', label: 'Clients', icon: Contact, roles: ['SUPERADMIN'] },
+  { to: '/admin/leads', label: 'Leads', icon: Target, roles: ['SUPERADMIN'] },
+  { to: '/admin/quotations', label: 'Quotations', icon: FileText, roles: ['SUPERADMIN'] },
+  { to: '/admin/contracts', label: 'Contracts', icon: FileSignature, roles: ['SUPERADMIN'] },
   { heading: 'On site' },
   { to: '/admin/sites', label: 'Sites', icon: Building2 },
-  { to: '/admin/workers', label: 'Fundis', icon: HardHat },
-  { to: '/admin/equipment', label: 'Equipment', icon: Wrench },
-  { to: '/admin/reports', label: 'Reports', icon: ClipboardList },
-  { to: '/admin/calendar', label: 'Calendar', icon: CalendarDays },
+  { to: '/admin/workers', label: 'Fundis', icon: HardHat, roles: ['SUPERADMIN'] },
+  { to: '/admin/equipment', label: 'Equipment', icon: Wrench, roles: ['SUPERADMIN'] },
+  { to: '/admin/reports', label: 'Reports', icon: ClipboardList, roles: ['SUPERADMIN'] },
+  { to: '/admin/calendar', label: 'Calendar', icon: CalendarDays, roles: ['SUPERADMIN'] },
   { heading: 'Money' },
   { to: '/admin/receivables', label: 'Receivables', icon: ReceiptText },
   { to: '/admin/payables', label: 'Payables', icon: Truck },
   { to: '/admin/payroll', label: 'Payroll', icon: Banknote },
   { to: '/admin/tax', label: 'Tax', icon: Landmark },
   { heading: 'Admin' },
-  { to: '/admin/team', label: 'Team', icon: Users },
-  { to: '/admin/settings', label: 'Settings', icon: Settings },
+  { to: '/admin/team', label: 'Team', icon: Users, roles: ['SUPERADMIN'] },
+  { to: '/admin/settings', label: 'Settings', icon: Settings, roles: ['SUPERADMIN'] },
 ];
 
 function initials(name?: string) {
@@ -72,10 +76,26 @@ function initials(name?: string) {
   return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
 }
 
+/**
+ * A heading with nothing visible under it (every item after it, up to the
+ * next heading, filtered out for this role) is dropped rather than left to
+ * float above whatever heading comes next.
+ */
+function visibleNav(role: Role): NavEntry[] {
+  const items = nav.filter((item) => !('to' in item) || !item.roles || item.roles.includes(role));
+  return items.filter((item, i) => {
+    if (!('heading' in item)) return true;
+    const next = items[i + 1];
+    return !!next && !('heading' in next);
+  });
+}
+
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+  const { user } = useAuth();
+  const items = visibleNav((user?.role as Role) ?? 'SUPERVISOR');
   return (
     <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-3">
-      {nav.map((item, i) =>
+      {items.map((item, i) =>
         'heading' in item ? (
           <p
             key={item.heading}
@@ -120,7 +140,15 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function UserFooter({ name, onSignOut }: { name?: string; onSignOut: () => void }) {
+function UserFooter({
+  name,
+  role,
+  onSignOut,
+}: {
+  name?: string;
+  role?: Role;
+  onSignOut: () => void;
+}) {
   return (
     <div className="border-t border-hairline p-3">
       <div className="flex items-center gap-2.5 rounded-lg px-2 py-1.5">
@@ -129,7 +157,9 @@ function UserFooter({ name, onSignOut }: { name?: string; onSignOut: () => void 
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-fg">{name}</p>
-          <p className="truncate text-xs text-fg-subtle">Administrator</p>
+          <p className="truncate text-xs text-fg-subtle">
+            {role === 'ACCOUNTANT' ? 'Accountant' : 'Administrator'}
+          </p>
         </div>
         <button
           onClick={onSignOut}
@@ -180,7 +210,7 @@ export function AdminLayout() {
           <NotificationBell />
         </div>
         <NavItems />
-        <UserFooter name={user?.name} onSignOut={() => void logout()} />
+        <UserFooter name={user?.name} role={user?.role as Role} onSignOut={() => void logout()} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -224,7 +254,7 @@ export function AdminLayout() {
                 <Wordmark className="text-[15px]" />
               </div>
               <NavItems onNavigate={() => setOpen(false)} />
-              <UserFooter name={user?.name} onSignOut={() => void logout()} />
+              <UserFooter name={user?.name} role={user?.role as Role} onSignOut={() => void logout()} />
             </div>
           </>
         )}
@@ -241,7 +271,7 @@ export function AdminLayout() {
       </div>
 
       <CommandPalette open={palette.open} onClose={() => palette.setOpen(false)} />
-      <Assistant office />
+      <Assistant office={user?.role === 'SUPERADMIN'} />
       <Toaster />
     </div>
   );

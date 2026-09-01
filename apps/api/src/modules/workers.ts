@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { projectScope, requireSuperadmin } from '../middleware/rbac';
+import { requireSuperadmin } from '../middleware/rbac';
 import { visibleWorker, visibleWorkers } from '../services/payVisibility';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
@@ -95,7 +95,9 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const { projectId } = req.query;
-    const scope = req.user!.role === 'SUPERADMIN' ? {} : projectScope(req.user!);
+    // Fundis is a site-ops surface an accountant does not get either, so this
+    // checks the literal role rather than the finance-aware projectScope().
+    const scope = req.user!.role === 'SUPERADMIN' ? {} : { supervisorId: req.user!.id };
     const projectFilter = {
       ...scope,
       ...(typeof projectId === 'string' && projectId ? { id: projectId } : {}),

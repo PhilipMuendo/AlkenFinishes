@@ -4,7 +4,7 @@ import type { BudgetCategory, ExpenseCategory } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
+import { hasFinanceAccess, requireFinanceProjectAccess, requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
 import fs from 'fs';
@@ -28,7 +28,7 @@ import {
 } from '../services/payables';
 
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireProjectAccess);
+router.use(requireAuth, requireFinanceProjectAccess);
 
 const EXPENSE_CATEGORIES = [
   'MATERIALS',
@@ -173,7 +173,7 @@ const serialize = (e: {
 // submissions via /mine, so a rejected claim doesn't vanish without a trace.
 router.get(
   '/',
-  requireSuperadmin,
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const { status } = z
       .object({ status: z.enum(['PENDING', 'APPROVED', 'REJECTED']).optional() })
@@ -214,7 +214,7 @@ router.post(
     // Putting a cost on the payables ledger is an office decision. A
     // supervisor logs what they spent; deciding the company owes a merchant
     // for it — and on what terms — is not theirs to record.
-    const isOffice = req.user!.role === 'SUPERADMIN';
+    const isOffice = hasFinanceAccess(req.user!.role);
     if (data.supplierId && !isOffice) {
       throw ApiError.forbidden('Only the office can put a purchase on the supplier account');
     }
@@ -274,7 +274,7 @@ router.post(
 
 router.post(
   '/:id/approve',
-  requireSuperadmin,
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const existing = await prisma.expense.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
@@ -293,7 +293,7 @@ router.post(
 
 router.post(
   '/:id/reject',
-  requireSuperadmin,
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const { reason } = z.object({ reason: z.string().min(3, 'Give a reason') }).parse(req.body);
     const existing = await prisma.expense.findUnique({ where: { id: req.params.id } });
@@ -318,7 +318,7 @@ router.post(
 
 router.delete(
   '/:id',
-  requireSuperadmin,
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const expense = await prisma.expense.findUnique({
       where: { id: req.params.id },
@@ -355,7 +355,7 @@ router.delete(
  */
 router.post(
   '/scan-receipt',
-  requireSuperadmin,
+  requireFinanceRole,
   upload.single('receipt'),
   asyncHandler(async (req, res) => {
     if (!receiptScanningAvailable()) {
@@ -428,7 +428,7 @@ const paymentSchema = z.object({
  */
 router.get(
   '/:id/payment-suggestion',
-  requireSuperadmin,
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const expense = await prisma.expense.findUnique({
       where: { id: req.params.id },
@@ -480,7 +480,7 @@ router.get(
 
 router.post(
   '/:id/payments',
-  requireSuperadmin,
+  requireFinanceRole,
   upload.single('proof'),
   asyncHandler(async (req, res) => {
     const data = paymentSchema.parse(req.body);
@@ -562,7 +562,7 @@ router.post(
 
 router.delete(
   '/:id/payments/:paymentId',
-  requireSuperadmin,
+  requireFinanceRole,
   asyncHandler(async (req, res) => {
     const payment = await prisma.supplierPayment.findUnique({
       where: { id: req.params.paymentId },

@@ -53,6 +53,14 @@ const InvoicesPage = lazy(() =>
 const ReportsPage = lazy(() =>
   import('./pages/admin/Reports').then((m) => ({ default: m.ReportsPage })),
 );
+const AccountantSitesPage = lazy(() =>
+  import('./pages/admin/AccountantSites').then((m) => ({ default: m.AccountantSitesPage })),
+);
+const AccountantProjectMoneyPage = lazy(() =>
+  import('./pages/admin/AccountantProjectMoney').then((m) => ({
+    default: m.AccountantProjectMoneyPage,
+  })),
+);
 const UsersPage = lazy(() => import('./pages/admin/Users').then((m) => ({ default: m.UsersPage })));
 const SettingsPage = lazy(() =>
   import('./pages/admin/Settings').then((m) => ({ default: m.SettingsPage })),
@@ -107,38 +115,62 @@ export default function App() {
     // and no way back. Panels carry their own boundaries; this is the backstop.
     <ErrorBoundary variant="page" label="Alken Decor">
       <Suspense fallback={<Loading />}>
-        {user.role === 'SUPERADMIN' ? (
+        {user.role === 'SUPERADMIN' || user.role === 'ACCOUNTANT' ? (
           <Routes>
             <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<CompanyDashboardPage />} />
-              <Route path="clients" element={<ClientsPage />} />
-              <Route path="leads" element={<LeadsPage />} />
-              <Route path="quotations" element={<QuotationsPage />} />
-              <Route path="contracts" element={<ContractsPage />} />
-              <Route path="sites" element={<ProjectsPage />} />
-              <Route path="sites/:projectId" element={<ProjectDetailPage />} />
-              <Route path="workers" element={<WorkersPage />} />
-              <Route path="equipment" element={<ToolsPage />} />
+              {user.role === 'SUPERADMIN' ? (
+                <Route index element={<CompanyDashboardPage />} />
+              ) : (
+                <Route index element={<Navigate to="/admin/receivables" replace />} />
+              )}
+              {user.role === 'SUPERADMIN' && <Route path="clients" element={<ClientsPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="leads" element={<LeadsPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="quotations" element={<QuotationsPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="contracts" element={<ContractsPage />} />}
+              {user.role === 'SUPERADMIN' ? (
+                <>
+                  <Route path="sites" element={<ProjectsPage />} />
+                  <Route path="sites/:projectId" element={<ProjectDetailPage />} />
+                </>
+              ) : (
+                <>
+                  <Route path="sites" element={<AccountantSitesPage />} />
+                  <Route path="sites/:projectId" element={<AccountantProjectMoneyPage />} />
+                </>
+              )}
+              {user.role === 'SUPERADMIN' && <Route path="workers" element={<WorkersPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="equipment" element={<ToolsPage />} />}
               <Route path="receivables" element={<InvoicesPage />} />
               <Route path="payables" element={<SuppliersPage />} />
               <Route path="tax" element={<TaxPage />} />
               <Route path="payroll" element={<PayrollPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="calendar" element={<CalendarPage />} />
-              <Route path="team" element={<UsersPage />} />
-              <Route path="settings" element={<SettingsPage />} />
+              {user.role === 'SUPERADMIN' && <Route path="reports" element={<ReportsPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="calendar" element={<CalendarPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="team" element={<UsersPage />} />}
+              {user.role === 'SUPERADMIN' && <Route path="settings" element={<SettingsPage />} />}
               {/* Sections are addressable, so a specific card can be linked to. */}
-              <Route path="settings/:section" element={<SettingsPage />} />
+              {user.role === 'SUPERADMIN' && (
+                <Route path="settings/:section" element={<SettingsPage />} />
+              )}
 
               {/* Renamed routes — see RedirectSite. */}
-              <Route path="projects" element={<Navigate to="/admin/sites" replace />} />
-              <Route path="projects/:projectId" element={<RedirectSite />} />
-              <Route path="tools" element={<Navigate to="/admin/equipment" replace />} />
+              {user.role === 'SUPERADMIN' && (
+                <>
+                  <Route path="projects" element={<Navigate to="/admin/sites" replace />} />
+                  <Route path="projects/:projectId" element={<RedirectSite />} />
+                  <Route path="tools" element={<Navigate to="/admin/equipment" replace />} />
+                  <Route path="users" element={<Navigate to="/admin/team" replace />} />
+                </>
+              )}
               <Route path="invoices" element={<Navigate to="/admin/receivables" replace />} />
               <Route path="suppliers" element={<Navigate to="/admin/payables" replace />} />
-              <Route path="users" element={<Navigate to="/admin/team" replace />} />
             </Route>
-            <Route path="*" element={<Navigate to="/admin" replace />} />
+            <Route
+              path="*"
+              element={
+                <Navigate to={user.role === 'SUPERADMIN' ? '/admin' : '/admin/receivables'} replace />
+              }
+            />
           </Routes>
         ) : (
           <Routes>

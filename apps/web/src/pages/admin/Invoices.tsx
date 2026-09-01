@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, errText } from '@/lib/api';
 import type {
   AgingBucket,
   CompanyReceivables,
@@ -11,12 +11,14 @@ import type {
   Project,
 } from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Field, Select } from '@/components/ui/input';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from '@/components/ui/toast';
 import { INVOICE_TYPE_LABEL } from '@/features/InvoiceEditor';
 import { InvoiceStatusBadge } from '@/features/InvoicesPanel';
 
@@ -64,6 +66,22 @@ export function InvoicesPage() {
       return api<InvoiceRegisterRow[]>(`/invoices${qs ? `?${qs}` : ''}`);
     },
   });
+
+  const [openingId, setOpeningId] = useState('');
+
+  const openPdf = async (r: InvoiceRegisterRow) => {
+    setOpeningId(r.id);
+    try {
+      const { url } = await api<{ url: string }>(
+        `/projects/${r.project.id}/invoices/${r.id}/pdf`,
+      );
+      window.open(url, '_blank', 'noopener');
+    } catch (e) {
+      toast.error(errText(e, 'The invoice PDF could not be opened.'));
+    } finally {
+      setOpeningId('');
+    }
+  };
 
   const totalAr = receivables?.totalAr ?? 0;
 
@@ -182,6 +200,7 @@ export function InvoicesPage() {
                 <Th className="text-right">Amount</Th>
                 <Th className="text-right">Balance</Th>
                 <Th>Status</Th>
+                <Th className="text-right">PDF</Th>
               </tr>
             </thead>
             <tbody>
@@ -222,6 +241,18 @@ export function InvoicesPage() {
                         <Badge tone="slate">{BUCKET_LABEL[r.agingBucket]}</Badge>
                       )}
                     </div>
+                  </Td>
+                  <Td className="text-right">
+                    {r.status !== 'DRAFT' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void openPdf(r)}
+                        disabled={openingId === r.id}
+                      >
+                        {openingId === r.id ? 'Opening…' : 'View'}
+                      </Button>
+                    )}
                   </Td>
                 </tr>
               ))}

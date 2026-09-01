@@ -1,4 +1,4 @@
-export type Role = 'SUPERADMIN' | 'SUPERVISOR';
+export type Role = 'SUPERADMIN' | 'SUPERVISOR' | 'ACCOUNTANT';
 export type BudgetCategory = 'MATERIALS' | 'LABOUR' | 'TRANSPORT' | 'OTHER';
 export type Health = 'GREEN' | 'YELLOW' | 'RED' | 'NONE';
 export type ProjectStatus = 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';

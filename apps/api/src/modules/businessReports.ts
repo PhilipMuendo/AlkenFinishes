@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceProjectAccess, requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { signFileUrl } from '../middleware/upload';
 import { getCompanyProfile } from '../services/invoicing';
@@ -24,7 +24,7 @@ import { renderReportPdf, type ReportSection, type SummaryLine } from '../servic
  * report and the screen it summarises can never quietly disagree.
  */
 const router = Router({ mergeParams: true });
-router.use(requireAuth, requireProjectAccess, requireSuperadmin);
+router.use(requireAuth, requireFinanceRole, requireFinanceProjectAccess);
 
 const REPORT_TYPES = [
   'financial-summary',
@@ -38,6 +38,18 @@ const REPORT_TYPES = [
 ] as const;
 type ReportType = (typeof REPORT_TYPES)[number];
 
+/**
+ * Accountant gets the money-flavoured reports only — progress/attendance/
+ * site-diary are operational, not financial, and stay Superadmin-only.
+ */
+const MONEY_REPORT_TYPES: ReadonlySet<ReportType> = new Set([
+  'financial-summary',
+  'client-statement',
+  'receivables',
+  'variations',
+  'expenses',
+]);
+
 const rangeSchema = z.object({
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
@@ -48,6 +60,9 @@ router.get(
   asyncHandler(async (req, res) => {
     const type = req.params.type as ReportType;
     if (!REPORT_TYPES.includes(type)) throw ApiError.notFound('Unknown report type');
+    if (req.user!.role === 'ACCOUNTANT' && !MONEY_REPORT_TYPES.has(type)) {
+      throw ApiError.forbidden();
+    }
     const { from, to } = rangeSchema.parse(req.query);
     const projectId = req.params.projectId;
 

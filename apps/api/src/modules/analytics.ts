@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
+import {
+  requireFinanceProjectAccess,
+  requireFinanceRole,
+  requireSuperadmin,
+} from '../middleware/rbac';
 import {
   projectFinancials,
   companyFinancials,
@@ -19,16 +23,17 @@ router.use(requireAuth);
 /**
  * One project's financial position.
  *
- * Superadmin-only despite being project-scoped: it returns contract value,
- * actual spend and estimated profit, which is exactly the data the supervisor
- * shell is built to withhold. `requireProjectAccess` alone let an assigned
- * supervisor read their own site's margin straight from the API — the screen
- * never offered it, but the boundary has to hold at the route, not the UI.
+ * Superadmin/Accountant-only despite being project-scoped: it returns
+ * contract value, actual spend and estimated profit, which is exactly the
+ * data the supervisor shell is built to withhold. `requireFinanceProjectAccess`
+ * alone would let an assigned supervisor read their own site's margin
+ * straight from the API — the screen never offered it, but the boundary has
+ * to hold at the route, not the UI.
  */
 router.get(
   '/projects/:projectId',
-  requireSuperadmin,
-  requireProjectAccess,
+  requireFinanceRole,
+  requireFinanceProjectAccess,
   asyncHandler(async (req, res) => {
     const projectId = req.params.projectId;
     const settings = await getFinanceSettings();

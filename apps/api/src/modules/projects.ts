@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { projectScope, requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
+import {
+  projectScope,
+  requireFinanceProjectAccess,
+  requireProjectAccess,
+  requireSuperadmin,
+} from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { projectFinancials } from '../services/finance';
 import { removeUploadedFile } from '../middleware/upload';
@@ -59,7 +64,7 @@ router.post(
 
 router.get(
   '/:projectId',
-  requireProjectAccess,
+  requireFinanceProjectAccess,
   asyncHandler(async (req, res) => {
     const project = await prisma.project.findUniqueOrThrow({
       where: { id: req.params.projectId },

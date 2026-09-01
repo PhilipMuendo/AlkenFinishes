@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
-import { requireSuperadmin } from '../middleware/rbac';
+import { requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import {
   payablesSummary,
@@ -22,7 +22,7 @@ import {
  * see. A supervisor submits an expense; the office decides what is owed on it.
  */
 const router = Router();
-router.use(requireAuth, requireSuperadmin);
+router.use(requireAuth, requireFinanceRole);
 
 const supplierSchema = z.object({
   name: z.string().min(1, 'A supplier needs a name').trim(),
