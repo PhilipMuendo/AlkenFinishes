@@ -95,7 +95,8 @@ export function verify(
     checks.push({
       id: 'adds-up',
       status: 'UNKNOWN',
-      message: 'Not every figure was legible, so the arithmetic could not be checked',
+      message:
+        'Not every figure was printed on the receipt, so the arithmetic could not be checked',
     });
   }
 

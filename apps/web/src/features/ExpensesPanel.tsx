@@ -486,6 +486,7 @@ function ExpenseForm({
           state={readReceipt}
           scan={scan}
           outOfQuota={outOfQuota}
+          onCredit={onCredit}
           onPick={(file) => readReceipt.mutate(file)}
         />
       )}
@@ -618,15 +619,25 @@ function ExpenseForm({
  * reason to trust it, but "the AI read 80,000 and it is 16% of the subtotal
  * and the receipt adds up" is.
  */
+// Checks that only matter once this bill is actually going on a supplier's
+// account — with no supplier chosen, the server zeroes VAT on save
+// regardless of what the receipt says, so an ETR/VAT-rate warning is not
+// yet a real problem, just something to keep in mind if a supplier gets
+// picked. Shown quietly rather than as an alarm until that happens.
+const CREDIT_ONLY_CHECKS = new Set(['tax-invoice', 'vat-rate']);
+
 function ReceiptScanner({
   state,
   scan,
   outOfQuota,
+  onCredit,
   onPick,
 }: {
   state: { isPending: boolean; isError: boolean; error: unknown };
   scan: ScannedReceipt | null;
   outOfQuota: boolean;
+  /** Whether a supplier is currently selected — see CREDIT_ONLY_CHECKS. */
+  onCredit: boolean;
   onPick: (file: File) => void;
 }) {
   // Out of allowance for the day: say so plainly and get out of the way. An
@@ -694,27 +705,28 @@ function ReceiptScanner({
           </p>
 
           <ul className="space-y-1">
-            {scan.checks.map((c) => (
-              <li key={c.id} className="flex items-start gap-1.5 text-xs">
-                {c.status === 'OK' ? (
-                  <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-good-fg" />
-                ) : (
-                  <AlertTriangle
-                    size={14}
-                    className={`mt-0.5 shrink-0 ${
-                      c.status === 'WARN' ? 'text-warn-fg' : 'text-fg-subtle'
-                    }`}
-                  />
-                )}
-                <span className={c.status === 'WARN' ? 'text-warn-fg' : 'text-fg-muted'}>
-                  {c.message}
-                </span>
-              </li>
-            ))}
+            {scan.checks.map((c) => {
+              // Softened, not hidden: still worth knowing, just not an alarm
+              // for a till slip nobody intends to put on a supplier account.
+              const alarming = c.status === 'WARN' && (onCredit || !CREDIT_ONLY_CHECKS.has(c.id));
+              return (
+                <li key={c.id} className="flex items-start gap-1.5 text-xs">
+                  {c.status === 'OK' ? (
+                    <CheckCircle2 size={14} className="mt-0.5 shrink-0 text-good-fg" />
+                  ) : (
+                    <AlertTriangle
+                      size={14}
+                      className={`mt-0.5 shrink-0 ${alarming ? 'text-warn-fg' : 'text-fg-subtle'}`}
+                    />
+                  )}
+                  <span className={alarming ? 'text-warn-fg' : 'text-fg-muted'}>{c.message}</span>
+                </li>
+              );
+            })}
           </ul>
 
           {scan.supplierUnmatched && scan.extracted.supplierName && (
-            <p className="text-xs text-warn-fg">
+            <p className={`text-xs ${onCredit ? 'text-warn-fg' : 'text-fg-muted'}`}>
               “{scan.extracted.supplierName}” is not on your supplier list. Pick the right one
               below, or add them first — a bill on the wrong supplier misstates what both are owed.
             </p>
