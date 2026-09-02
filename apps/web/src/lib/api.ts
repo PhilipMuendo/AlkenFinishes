@@ -43,17 +43,46 @@ export function errText(error: unknown, fallback: string): string {
   return error instanceof ApiRequestError && error.message ? error.message : fallback;
 }
 
+/**
+ * At most one refresh in flight at a time.
+ *
+ * The server ROTATES refresh tokens: each call to /auth/refresh revokes the
+ * one it was given and issues a new one. Any page that fires more than one
+ * request in parallel — which is most of them — gets more than one 401 the
+ * moment the 15-minute access token expires, and without this guard each of
+ * those calls `tryRefresh()` independently with the SAME (still-unrotated)
+ * refreshToken. The first reaches the server and rotates it; every other
+ * concurrent call then presents that now-revoked token, which the server
+ * reads as token theft and revokes EVERY refresh token for the user as a
+ * precaution — including the brand new one the first call just received.
+ * The user is logged out mid-session despite having done nothing wrong.
+ * Sharing one in-flight promise across concurrent callers is what stops
+ * that: only one request ever reaches /auth/refresh per expiry.
+ */
+let refreshPromise: Promise<boolean> | null = null;
+
 async function tryRefresh(): Promise<boolean> {
   if (!refreshToken) return false;
-  const res = await fetch(`${BASE}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
-  if (!res.ok) return false;
-  const data = await res.json();
-  setTokens(data.accessToken, data.refreshToken);
-  return true;
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      try {
+        const res = await fetch(`${BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!res.ok) return false;
+        const data = await res.json();
+        setTokens(data.accessToken, data.refreshToken);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        refreshPromise = null;
+      }
+    })();
+  }
+  return refreshPromise;
 }
 
 export async function api<T = unknown>(
