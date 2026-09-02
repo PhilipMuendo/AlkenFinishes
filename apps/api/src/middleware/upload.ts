@@ -184,6 +184,41 @@ export async function verifyUploads(files: Express.Multer.File[] | undefined): P
   for (const f of files ?? []) await verifyUpload(f);
 }
 
+const MAX_DATA_URL_IMAGE_BYTES = 300 * 1024; // a drawn signature, not a photo
+const SIGNATURE_MAX_DIMENSION = 800;
+
+/**
+ * Saves a `data:image/png;base64,...` payload (a canvas-drawn signature — it
+ * never arrives as a multipart upload, so `verifyUpload()`'s multer path
+ * doesn't apply) through the same checks any other upload gets: real PNG
+ * magic bytes, not just the declared prefix, then a size cap and a resize
+ * through `sharp` so a maliciously huge payload can't be posted to the one
+ * unauthenticated route in this API.
+ */
+export async function saveDataUrlImage(dataUrl: string): Promise<string> {
+  const match = /^data:image\/png;base64,([a-zA-Z0-9+/=]+)$/.exec(dataUrl.trim());
+  if (!match) throw ApiError.badRequest('That does not look like a signature image');
+  const buf = Buffer.from(match[1], 'base64');
+  if (buf.length === 0 || buf.length > MAX_DATA_URL_IMAGE_BYTES) {
+    throw ApiError.badRequest('That signature image is not a usable size');
+  }
+  if (!buf.subarray(0, 8).equals(Buffer.from('\x89PNG\r\n\x1a\n', 'latin1'))) {
+    throw ApiError.badRequest('That does not look like a signature image');
+  }
+  const filename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}.png`;
+  const outPath = path.join(dir, filename);
+  await sharp(buf, { failOn: 'none' })
+    .resize({
+      width: SIGNATURE_MAX_DIMENSION,
+      height: SIGNATURE_MAX_DIMENSION,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .png({ compressionLevel: PNG_COMPRESSION_LEVEL })
+    .toFile(outPath);
+  return fileUrl(filename);
+}
+
 export function fileUrl(filename: string) {
   return `/uploads/${filename}`;
 }

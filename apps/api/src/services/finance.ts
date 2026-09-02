@@ -183,6 +183,10 @@ export interface CompanyFinancials {
     retentionHeld: number;
     overallConsumedPct: number | null;
     overallHealth: ReturnType<typeof health>;
+    /** Approved spend on Expense rows with no projectId — uniforms, office
+     * supplies, and the like. Already folded into totalActual/estimatedProfit
+     * above; broken out here so it reads as its own line rather than a site's. */
+    unassignedExpenses: number;
   };
   projects: ProjectFinancialsRow[];
 }
@@ -229,7 +233,9 @@ export async function companyFinancials(
     }),
   ]);
 
-  const expenseByProject = new Map<string, Record<string, number>>();
+  // Keyed by projectId, which for a company-wide expense is null — see
+  // unassignedActual below, which is the one place that bucket is read.
+  const expenseByProject = new Map<string | null, Record<string, number>>();
   for (const row of expenseAgg) {
     const bucket = expenseByProject.get(row.projectId) ?? {};
     bucket[row.category] = num(row._sum.amount);
@@ -269,7 +275,7 @@ export async function companyFinancials(
     };
   });
 
-  const totals = rows.reduce(
+  const perProjectTotals = rows.reduce(
     (acc, p) => ({
       contractValue: acc.contractValue + p.contractValue,
       totalBudget: acc.totalBudget + p.totalBudget,
@@ -279,6 +285,19 @@ export async function companyFinancials(
     }),
     { contractValue: 0, totalBudget: 0, totalActual: 0, estimatedProfit: 0, totalCollected: 0 },
   );
+
+  // Approved spend with no project attached at all — a per-project reduce
+  // never sees it, so it is added back in explicitly rather than left to
+  // silently vanish from the company-wide totals.
+  const unassignedExpenses = Object.values(expenseByProject.get(null) ?? {}).reduce(
+    (s, v) => s + v,
+    0,
+  );
+  const totals = {
+    ...perProjectTotals,
+    totalActual: perProjectTotals.totalActual + unassignedExpenses,
+    estimatedProfit: perProjectTotals.estimatedProfit - unassignedExpenses,
+  };
   const overallConsumedPct =
     totals.totalBudget > 0 ? Math.round((totals.totalActual / totals.totalBudget) * 100) : null;
 
@@ -293,6 +312,7 @@ export async function companyFinancials(
       retentionHeld: receivables.retentionHeld,
       overallConsumedPct,
       overallHealth: health(overallConsumedPct, fin.thresholds),
+      unassignedExpenses,
     },
     projects: rows,
   };

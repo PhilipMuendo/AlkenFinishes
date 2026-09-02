@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
@@ -18,7 +19,11 @@ import {
   nextVariationRef,
   syncProjectContractValue,
 } from '../services/pipeline';
-import { renderContractPdf, type ContractForPdf } from '../services/documents/contractPdf';
+import {
+  renderContractPdf,
+  type CapturedClientSignature,
+  type ContractForPdf,
+} from '../services/documents/contractPdf';
 
 /**
  * Contracts — the agreement, and the spine of the "enter it once" chain.
@@ -84,6 +89,7 @@ function serialize(c: ContractRow) {
     signedPdfUrl: signFileUrl(c.signedPdfUrl),
     boqUrl: signFileUrl(c.boqUrl),
     specsUrl: signFileUrl(c.specsUrl),
+    clientSignatureImageUrl: signFileUrl(c.clientSignatureImageUrl),
   };
 }
 
@@ -291,6 +297,48 @@ router.post(
     });
     audit(req, 'contract.sign', 'Contract', contract.id, { signedDate });
     res.json(serialize(contract));
+  }),
+);
+
+/**
+ * A one-time link a client can open with no login of their own to sign the
+ * contract in-app (see publicSign.ts). Only makes sense on an issued
+ * contract — nothing to sign before that, and re-issuing a link on an
+ * already-signed one would suggest re-signing is normal, which it isn't.
+ *
+ * The plaintext token is returned exactly once, here, and never stored —
+ * only its hash is. Any prior unused link for this contract is revoked, so
+ * an old link shared by mistake stops working the moment a new one is made.
+ */
+router.post(
+  '/:id/signing-link',
+  asyncHandler(async (req, res) => {
+    const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!contract) throw ApiError.notFound();
+    if (contract.status !== 'ISSUED') {
+      throw ApiError.conflict(
+        contract.status === 'DRAFT'
+          ? 'Issue this contract before sending it for signature'
+          : 'This contract has already been signed',
+      );
+    }
+
+    const token = crypto.randomBytes(32).toString('base64url');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+    await prisma.$transaction([
+      prisma.contractSigningLink.updateMany({
+        where: { contractId: contract.id, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+      prisma.contractSigningLink.create({
+        data: { contractId: contract.id, tokenHash, createdById: req.user!.id, expiresAt },
+      }),
+    ]);
+
+    audit(req, 'contract.signingLink.create', 'Contract', contract.id);
+    res.status(201).json({ token, expiresAt });
   }),
 );
 
@@ -842,6 +890,68 @@ async function generateAndAttachPdf(
       });
     }
   });
+
+  return pdfUrl;
+}
+
+/**
+ * Renders the executed copy once a client has signed through a link
+ * (publicSign.ts) — same rendering path as `generateAndAttachPdf`, but
+ * embeds the captured signature and returns the file without touching the
+ * contract row itself. The public route commits `signedPdfUrl` and the rest
+ * of the signature fields together with the contract's status change, in
+ * its own transaction, since that route also has the link's `usedAt` to
+ * update in the same commit.
+ *
+ * `attributedUserId` — the staff member who issued the signing link — is who
+ * the filed Document row is attributed to, since a client is never a `User`
+ * and `Document.uploadedById` is required.
+ */
+export async function renderClientSignedContractPdf(
+  contractId: string,
+  clientSignature: CapturedClientSignature,
+  attributedUserId: string,
+): Promise<string> {
+  const contract = (await prisma.contract.findUniqueOrThrow({
+    where: { id: contractId },
+    include: {
+      client: true,
+      quotation: { include: { lines: { orderBy: { sortOrder: 'asc' } } } },
+    },
+  })) as ContractForPdf;
+
+  const [company, invoicing, pipeline] = await Promise.all([
+    getCompanyProfile(),
+    getInvoicingConfig(),
+    getPipelineConfig(),
+  ]);
+  const pdfUrl = await renderContractPdf(
+    contract,
+    company,
+    pipeline,
+    invoicing.defaultPaymentTermsDays,
+    invoicing.footerNote,
+    clientSignature,
+  );
+
+  // File it into the project's Documents tab, same as the unsigned copy —
+  // best-effort, and never blocks the signature itself from being recorded.
+  if (contract.projectId) {
+    await prisma.document
+      .create({
+        data: {
+          projectId: contract.projectId,
+          type: 'CONTRACT',
+          name: `Contract ${contract.contractNo ?? contract.id} (signed)`,
+          fileUrl: pdfUrl,
+          mimeType: 'application/pdf',
+          sizeBytes: fs.statSync(uploadPath(pdfUrl)).size,
+          uploadedById: attributedUserId,
+          systemGenerated: true,
+        },
+      })
+      .catch(() => undefined);
+  }
 
   return pdfUrl;
 }

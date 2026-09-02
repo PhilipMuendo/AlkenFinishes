@@ -260,6 +260,7 @@ model User {
   payrollRuns             PayrollRun[]                @relation("PayrollRunCreatedBy")
   workerPayments          WorkerPayment[]             @relation("WorkerPaymentPaidBy")
   notificationReads       NotificationRead[]
+  contractSigningLinks    ContractSigningLink[]       @relation("ContractSigningLinkCreatedBy")
 }
 
 model RefreshToken {
@@ -343,9 +344,14 @@ model BudgetLine {
 }
 
 model Expense {
-  id        String  @id @default(cuid())
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  // NULL means this cost is not tied to any site — uniforms, office
+  // supplies, tools bought ahead of a future contract. Everything else on
+  // this model (category, supplier, VAT, approval) behaves identically
+  // either way; only the RBAC/ownership layer in the API cares which case
+  // it is (companyExpenses.ts vs expenses.ts).
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // The granular category the submitter picks. `category` is derived from it
   // via EXPENSE_CATEGORY_BUDGET_MAP (expenses.ts) and kept in step so budget
@@ -1149,18 +1155,18 @@ enum NotificationType {
 // office-only (SUPERADMIN); projectId set is SUPERADMIN plus that project's
 // own supervisor — see GET /notifications, which mirrors requireProjectAccess.
 model Notification {
-  id          String            @id @default(cuid())
+  id          String             @id @default(cuid())
   type        NotificationType
   // Identifies "the same problem" across scan cycles so it reopens instead of
   // duplicating, e.g. "budget:{projectId}" or "invoice_overdue:{invoiceId}".
-  dedupeKey   String            @unique
+  dedupeKey   String             @unique
   title       String
   body        String
   projectId   String?
-  project     Project?          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  occurrences Int               @default(1)
-  createdAt   DateTime          @default(now())
-  lastSeenAt  DateTime          @default(now())
+  project     Project?           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  occurrences Int                @default(1)
+  createdAt   DateTime           @default(now())
+  lastSeenAt  DateTime           @default(now())
   resolvedAt  DateTime?
   reads       NotificationRead[]
 
@@ -1311,18 +1317,49 @@ model Contract {
   practicalCompletionDate DateTime? @db.Date
 
   generatedPdfUrl String? // rendered by us from the quotation
-  signedPdfUrl    String? // uploaded scan of the executed copy
+  signedPdfUrl    String? // uploaded scan of the executed copy, OR the copy we rendered with the client's captured e-signature
   boqUrl          String?
   specsUrl        String?
   notes           String?
 
+  // Captured when the client executes the contract through a signing link
+  // (publicSign.ts) rather than the old upload-a-scan flow. Null on a
+  // contract that was signed the wet-ink way instead.
+  clientSignerName         String?
+  clientSignedAt           DateTime?
+  clientSignatureIp        String?
+  clientSignatureUserAgent String?
+  clientSignatureImageUrl  String? // set only for a drawn signature; null for a typed one
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  variations Variation[]
+  variations   Variation[]
+  signingLinks ContractSigningLink[]
 
   @@index([clientId])
   @@index([status])
+}
+
+// A one-time, expiring link handed to a client so they can open and sign a
+// contract with no login of their own — clients are never `User` accounts.
+// The token itself is never stored, only its hash, so a leaked database
+// cannot be used to sign contracts; the plaintext exists only in the
+// response body of the request that created it and in whatever channel
+// staff shares it through.
+model ContractSigningLink {
+  id          String    @id @default(cuid())
+  contractId  String
+  contract    Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  createdById String
+  createdBy   User      @relation("ContractSigningLinkCreatedBy", fields: [createdById], references: [id])
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([contractId])
 }
 
 model Variation {

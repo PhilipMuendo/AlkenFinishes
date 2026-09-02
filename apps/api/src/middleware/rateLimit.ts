@@ -52,3 +52,14 @@ export const deviceSyncLimiter = makeLimiter({
   max: 30,
   keyFn: (req) => `dev:${String(req.headers['x-device-key'] ?? req.ip).slice(0, 32)}`,
 });
+
+// A contract signing link is the one place in the API an unauthenticated
+// stranger can act at all. Keyed on the token itself (not just IP) so one
+// client's device doesn't throttle another's, but still bounded per token so
+// a leaked/guessed link can't be hammered.
+export const signLimiter = makeLimiter({
+  windowMs: 15 * 60_000,
+  max: 20,
+  keyFn: (req) => `sign:${req.params.token}:${req.ip}`,
+  message: 'Too many attempts. Try again in a few minutes.',
+});

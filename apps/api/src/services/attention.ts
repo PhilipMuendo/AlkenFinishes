@@ -90,7 +90,10 @@ export async function attentionDigest(): Promise<AttentionDigest> {
     list.push(b);
     budgetByProject.set(b.projectId, list);
   }
-  const expenseByProject = new Map<string, Record<string, number>>();
+  // Keyed by projectId, which is null for a company-wide expense — this
+  // per-site digest has nowhere to show those, so that bucket is simply
+  // never read (they surface on the Company Expenses tab instead).
+  const expenseByProject = new Map<string | null, Record<string, number>>();
   for (const row of expenseAgg) {
     const bucket = expenseByProject.get(row.projectId) ?? {};
     bucket[row.category] = Number(row._sum.amount ?? 0);
@@ -220,7 +223,12 @@ export async function attentionDigest(): Promise<AttentionDigest> {
       pendingByProject.set(r.projectId, e);
     }
   };
-  bump(expensePending, 'expenses');
+  // Company-wide expenses (projectId null) have no site to attach a pending
+  // count to in this digest — they surface on the Company Expenses tab.
+  bump(
+    expensePending.filter((r): r is typeof r & { projectId: string } => r.projectId !== null),
+    'expenses',
+  );
   bump(materialPending, 'materialRequests');
   bump(overridePending, 'attendanceOverrides');
   const pendingApprovals = [...pendingByProject.entries()].map(([projectId, counts]) => ({

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Download, FileSignature, HardHat, Link2, Plus, Trash2, Upload } from 'lucide-react';
+import { Download, FileSignature, HardHat, Link2, Plus, Send, Trash2, Upload } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser, Contract, ContractStatus, Variation } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
@@ -45,6 +45,7 @@ export function ContractsPage() {
   const [varying, setVarying] = useState(false);
   const [converting, setConverting] = useState(false);
   const [attaching, setAttaching] = useState(false);
+  const [signingLinkUrl, setSigningLinkUrl] = useState<string | null>(null);
 
   const { data: contracts, isLoading } = useQuery({
     queryKey: ['contracts', status],
@@ -88,6 +89,20 @@ export function ContractsPage() {
       setSigning(false);
     },
     onError: (e) => toast.error(errText(e, 'The signature was not recorded.')),
+  });
+
+  const createSigningLink = useMutation({
+    mutationFn: (id: string) =>
+      api<{ token: string; expiresAt: string }>(`/contracts/${id}/signing-link`, { body: {} }),
+    onSuccess: (res) => {
+      const url = `${window.location.origin}/sign/${res.token}`;
+      setSigningLinkUrl(url);
+      // Best-effort — clipboard access can be blocked (insecure context, no
+      // permission); the dialog below shows the link either way.
+      navigator.clipboard?.writeText(url).catch(() => undefined);
+      toast.success('Signing link copied. Share it with the client — it works for 14 days.');
+    },
+    onError: (e) => toast.error(errText(e, 'The signing link was not created.')),
   });
 
   const addVariation = useMutation({
@@ -176,7 +191,9 @@ export function ContractsPage() {
     window.open(url, '_blank', 'noopener');
   };
 
-  const actionError = errorMessage(issue.error ?? decideVariation.error);
+  const actionError = errorMessage(
+    issue.error ?? decideVariation.error ?? createSigningLink.error,
+  );
 
   return (
     <div className="space-y-6">
@@ -346,6 +363,14 @@ export function ContractsPage() {
               error={errorMessage(uploadAttachments.error ?? removeAttachment.error) ?? undefined}
             />
 
+            {contract.clientSignerName && (
+              <p className="rounded-lg bg-good-surface p-3 text-sm text-good-fg">
+                Signed electronically by {contract.clientSignerName}
+                {contract.clientSignedAt && ` on ${fmtDate(contract.clientSignedAt)}`}
+                {contract.clientSignatureIp && ` · IP ${contract.clientSignatureIp}`}.
+              </p>
+            )}
+
             {contract.project && (
               <p className="rounded-lg bg-good-surface p-3 text-sm text-good-fg">
                 Running as site{' '}
@@ -368,14 +393,24 @@ export function ContractsPage() {
                 </Button>
               )}
               {contract.status === 'ISSUED' && (
-                <Button
-                  onClick={() => {
-                    sign.reset();
-                    setSigning(true);
-                  }}
-                >
-                  Record signature
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    disabled={createSigningLink.isPending}
+                    onClick={() => createSigningLink.mutate(contract.id)}
+                  >
+                    <Send size={16} /> Send for e-signature
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      sign.reset();
+                      setSigning(true);
+                    }}
+                  >
+                    Record signature (scanned copy)
+                  </Button>
+                </>
               )}
               {!contract.projectId && contract.status !== 'DRAFT' && (
                 <>
@@ -403,6 +438,31 @@ export function ContractsPage() {
             </div>
           </div>
         )}
+      </Dialog>
+
+      {/* ---- Signing link ---- */}
+      <Dialog
+        open={!!signingLinkUrl}
+        onClose={() => setSigningLinkUrl(null)}
+        title="Signing link"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-fg-muted">
+            Already copied to your clipboard. Share it with the client however you normally would
+            — WhatsApp, email — it works for 14 days and only once.
+          </p>
+          <Input readOnly value={signingLinkUrl ?? ''} onFocus={(e) => e.currentTarget.select()} />
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={() => {
+              if (signingLinkUrl) void navigator.clipboard?.writeText(signingLinkUrl);
+              toast.success('Copied.');
+            }}
+          >
+            Copy again
+          </Button>
+        </div>
       </Dialog>
 
       {/* ---- Record signature ---- */}

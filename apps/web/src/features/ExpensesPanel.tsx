@@ -41,10 +41,19 @@ const STATUS_TONE: Record<ExpenseStatus, 'yellow' | 'green' | 'red'> = {
   REJECTED: 'red',
 };
 
-export function ExpensesPanel({ projectId }: { projectId: string }) {
+/**
+ * `projectId` omitted means this is the Company Expenses tab: spend not
+ * tied to any site (uniforms, office supplies, tools bought ahead of a
+ * future contract). Everything below reaches the API through `basePath`
+ * rather than a hardcoded `/projects/:id/expenses`, so the same panel and
+ * its children (ExpenseForm, SupplierPaymentDialog) serve both.
+ */
+export function ExpensesPanel({ projectId }: { projectId?: string }) {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const canBrowse = user?.role === 'SUPERADMIN';
+  const canBrowse = user?.role === 'SUPERADMIN' || user?.role === 'ACCOUNTANT';
+  const basePath = projectId ? `/projects/${projectId}/expenses` : '/company-expenses';
+  const queryKey = ['expenses', projectId ?? 'company'];
   const [open, setOpen] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [rejecting, setRejecting] = useState<Expense | null>(null);
@@ -65,25 +74,26 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   });
 
   const expensesQuery = useQuery({
-    queryKey: ['expenses', projectId],
-    queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses`),
+    queryKey,
+    queryFn: () => api<Expense[]>(basePath),
     enabled: canBrowse,
   });
   const { data: expenses } = expensesQuery;
+  // Company Expenses has no /mine — only finance roles ever reach that tab.
   const { data: mine } = useQuery({
-    queryKey: ['expenses', projectId, 'mine'],
-    queryFn: () => api<Expense[]>(`/projects/${projectId}/expenses/mine`),
-    enabled: !canBrowse,
+    queryKey: [...queryKey, 'mine'],
+    queryFn: () => api<Expense[]>(`${basePath}/mine`),
+    enabled: !canBrowse && !!projectId,
   });
 
   const invalidate = () => {
-    void qc.invalidateQueries({ queryKey: ['expenses', projectId] });
-    void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
+    void qc.invalidateQueries({ queryKey: ['expenses'] });
+    if (projectId) void qc.invalidateQueries({ queryKey: ['analytics', 'project', projectId] });
     void qc.invalidateQueries({ queryKey: ['analytics', 'company'] });
   };
 
   const create = useMutation({
-    mutationFn: (formData: FormData) => api(`/projects/${projectId}/expenses`, { formData }),
+    mutationFn: (formData: FormData) => api(basePath, { formData }),
     onSuccess: () => {
       toast.success(
         canBrowse ? 'Expense logged.' : 'Expense submitted. The office will review it.',
@@ -98,7 +108,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   });
 
   const approve = useMutation({
-    mutationFn: (id: string) => api(`/projects/${projectId}/expenses/${id}/approve`, { body: {} }),
+    mutationFn: (id: string) => api(`${basePath}/${id}/approve`, { body: {} }),
     onSuccess: () => {
       toast.success('Expense approved. It now counts against the budget and is owed to the supplier.');
       invalidate();
@@ -108,7 +118,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
   const reject = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) =>
-      api(`/projects/${projectId}/expenses/${id}/reject`, { body: { reason } }),
+      api(`${basePath}/${id}/reject`, { body: { reason } }),
     onSuccess: () => {
       toast.success('Expense rejected. The reason is on the record.');
       invalidate();
@@ -118,7 +128,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
   });
 
   const remove = useMutation({
-    mutationFn: (id: string) => api(`/projects/${projectId}/expenses/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`${basePath}/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       toast.success('Expense deleted.');
       invalidate();
@@ -185,7 +195,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
         <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
           <ExpenseForm
-            projectId={projectId}
+            basePath={basePath}
             onSubmit={(fd) => create.mutate(fd)}
             pending={create.isPending}
             error={create.error}
@@ -358,7 +368,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
 
       <Dialog open={open} onClose={() => setOpen(false)} title="Record expense">
         <ExpenseForm
-          projectId={projectId}
+          basePath={basePath}
           onSubmit={(fd) => create.mutate(fd)}
           pending={create.isPending}
           error={create.error}
@@ -376,7 +386,7 @@ export function ExpensesPanel({ projectId }: { projectId: string }) {
         {paying && (
           <SupplierPaymentDialog
             key={paying.id}
-            projectId={projectId}
+            basePath={basePath}
             // Read back from the list so the payment history stays live after
             // one is added or removed, rather than freezing at open time.
             expense={expenses?.find((x) => x.id === paying.id) ?? paying}
@@ -420,14 +430,14 @@ function ExpenseForm({
   error,
   suppliers,
   tax,
-  projectId,
+  basePath,
 }: {
   onSubmit: (formData: FormData) => void;
   pending: boolean;
   error: unknown;
   suppliers?: Supplier[];
   tax?: PurchaseTaxConfig;
-  projectId: string;
+  basePath: string;
 }) {
   // A supplier is what turns this from "money already gone" into a bill with a
   // balance. Everything tax-related therefore stays hidden until one is
@@ -444,7 +454,7 @@ function ExpenseForm({
     mutationFn: (file: File) => {
       const fd = new FormData();
       fd.set('receipt', file);
-      return api<ScannedReceipt>(`/projects/${projectId}/expenses/scan-receipt`, { formData: fd });
+      return api<ScannedReceipt>(`${basePath}/scan-receipt`, { formData: fd });
     },
     onSuccess: (result) => {
       setScan(result);

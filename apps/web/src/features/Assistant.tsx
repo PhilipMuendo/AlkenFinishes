@@ -23,13 +23,13 @@ const SUGGESTIONS_OFFICE = [
   'Which sites are active?',
   'Who do we owe the most money to?',
   'How many fundis do we have?',
-  'What needs my attention?',
+  'How do I send a contract for e-signature?',
 ];
 const SUGGESTIONS_SITE = [
   'What happened on site today?',
   'What defects are still open?',
   'Who has been on site this week?',
-  'What materials are we waiting on?',
+  'How do I raise a defect?',
 ];
 
 const ATTENTION_QUESTION = 'What needs my attention?';

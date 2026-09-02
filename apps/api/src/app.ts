@@ -14,6 +14,8 @@ import leadsRouter from './modules/leads';
 import quotationsRouter from './modules/quotations';
 import contractsRouter from './modules/contracts';
 import expensesRouter from './modules/expenses';
+import companyExpensesRouter from './modules/companyExpenses';
+import publicSignRouter from './modules/publicSign';
 import materialRequestsRouter from './modules/materialRequests';
 import snagsRouter from './modules/snags';
 import safetyRouter from './modules/safety';
@@ -70,6 +72,7 @@ export function createApp() {
   v1.use('/contracts', contractsRouter);
   v1.use('/projects', projectsRouter);
   v1.use('/projects/:projectId/expenses', expensesRouter);
+  v1.use('/company-expenses', companyExpensesRouter); // spend not tied to any site
   v1.use('/projects/:projectId/material-requests', materialRequestsRouter);
   v1.use('/projects/:projectId/snags', snagsRouter);
   v1.use('/projects/:projectId/safety-incidents', safetyRouter);
@@ -97,6 +100,9 @@ export function createApp() {
   v1.use('/projects/:projectId/command-centre', commandCentreRouter);
   v1.use('/chat', chatRouter); // read-only Q&A, scoped by the asking user
   v1.use('/notifications', notificationsRouter);
+  // No requireAuth — a client has no login. See publicSign.ts's own docblock
+  // for how it stays scoped to exactly the one contract a token names.
+  v1.use('/sign', publicSignRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);

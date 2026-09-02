@@ -11,6 +11,7 @@ import {
 } from './payables';
 import { monthPeriod, taxPosition } from './taxPosition';
 import { KENYA_TAX_REFERENCE } from './kenyaTaxReference';
+import { MANUAL_TOPICS } from './appManual';
 import { gatherDay, factsFor } from './dailyReportDraft';
 import { isOffice } from './payVisibility';
 import { hasFinanceAccess } from '../middleware/rbac';
@@ -2000,7 +2001,7 @@ export const LOOKUPS: Lookup[] = [
                 0,
               );
               const outstanding = Math.max(0, Number(b.amount) - paid);
-              return `${money(Number(b.amount))} — ${b.description} (${b.project.name})${b.supplierInvoiceNo ? `, invoice ${b.supplierInvoiceNo}` : ''}, ${day(b.expenseDate)}: ${outstanding > 0 ? `${money(outstanding)} outstanding` : 'settled'}.`;
+              return `${money(Number(b.amount))} — ${b.description} (${b.project?.name ?? 'Company expense'})${b.supplierInvoiceNo ? `, invoice ${b.supplierInvoiceNo}` : ''}, ${day(b.expenseDate)}: ${outstanding > 0 ? `${money(outstanding)} outstanding` : 'settled'}.`;
             }),
             10,
           ),
@@ -2399,6 +2400,21 @@ export const LOOKUPS: Lookup[] = [
     },
   },
 ];
+
+// "How do I…" manual content — one static Lookup per MANUAL_TOPICS entry,
+// wired exactly like kenya_tax_guide above: no DB call, and the model only
+// spends tokens on one when the planner actually picks it. Must run before
+// LOOKUP_BY_NAME is built below, so these are included in it too.
+LOOKUPS.push(
+  ...MANUAL_TOPICS.map(
+    (t): Lookup => ({
+      name: `howto_${t.key}`,
+      scope: t.scope,
+      description: t.description,
+      run: async () => ({ facts: t.content, source: { label: 'User guide', href: '/admin' } }),
+    }),
+  ),
+);
 
 export const LOOKUP_BY_NAME = new Map(LOOKUPS.map((l) => [l.name, l]));
 

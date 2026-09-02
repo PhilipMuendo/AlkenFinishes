@@ -1,8 +1,12 @@
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes, useParams } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { LoginPage } from './pages/Login';
+
+const SignContractPage = lazy(() =>
+  import('./pages/public/SignContract').then((m) => ({ default: m.SignContractPage })),
+);
 
 // Route-level code splitting: supervisors never download the admin bundle
 // (recharts included), and vice versa.
@@ -49,6 +53,9 @@ const SuppliersPage = lazy(() =>
 );
 const InvoicesPage = lazy(() =>
   import('./pages/admin/Invoices').then((m) => ({ default: m.InvoicesPage })),
+);
+const CompanyExpensesPage = lazy(() =>
+  import('./pages/admin/CompanyExpenses').then((m) => ({ default: m.CompanyExpensesPage })),
 );
 const ReportsPage = lazy(() =>
   import('./pages/admin/Reports').then((m) => ({ default: m.ReportsPage })),
@@ -98,6 +105,21 @@ function RedirectSite() {
 
 export default function App() {
   const { user, loading } = useAuth();
+  const location = useLocation();
+
+  // Public — a client signing a contract has no session of their own, so
+  // this is checked before the loading/login gates below, which apply to
+  // every other route. The first (and only) unauthenticated route in the app.
+  if (location.pathname.startsWith('/sign/')) {
+    return (
+      <Suspense fallback={<Loading />}>
+        <Routes>
+          <Route path="/sign/:token" element={<SignContractPage />} />
+        </Routes>
+      </Suspense>
+    );
+  }
+
   if (loading) return <Loading />;
 
   if (!user) {
@@ -142,6 +164,7 @@ export default function App() {
               {user.role === 'SUPERADMIN' && <Route path="equipment" element={<ToolsPage />} />}
               <Route path="receivables" element={<InvoicesPage />} />
               <Route path="payables" element={<SuppliersPage />} />
+              <Route path="company-expenses" element={<CompanyExpensesPage />} />
               <Route path="tax" element={<TaxPage />} />
               <Route path="payroll" element={<PayrollPage />} />
               {user.role === 'SUPERADMIN' && <Route path="reports" element={<ReportsPage />} />}

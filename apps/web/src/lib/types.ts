@@ -1034,6 +1034,13 @@ export interface Contract {
   boqUrl: string | null;
   specsUrl: string | null;
   notes: string | null;
+  // Set only when the client signed through a link (publicSign.ts) rather
+  // than the wet-ink upload-a-scan flow.
+  clientSignerName: string | null;
+  clientSignedAt: string | null;
+  clientSignatureIp: string | null;
+  clientSignatureUserAgent: string | null;
+  clientSignatureImageUrl: string | null;
   variations: Variation[];
   position: ContractPosition;
 }

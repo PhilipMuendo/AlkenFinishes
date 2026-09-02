@@ -41,21 +41,19 @@ const num = (v: string) => {
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 export function SupplierPaymentDialog({
-  projectId,
+  basePath,
   expense,
   onDone,
 }: {
-  projectId: string;
+  /** `/projects/:id/expenses` for a site cost, `/company-expenses` for one that isn't. */
+  basePath: string;
   expense: Expense;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
   const { data: suggestion } = useQuery({
-    queryKey: ['expenses', projectId, expense.id, 'payment-suggestion'],
-    queryFn: () =>
-      api<PaymentSuggestion>(
-        `/projects/${projectId}/expenses/${expense.id}/payment-suggestion`,
-      ),
+    queryKey: ['expenses', basePath, expense.id, 'payment-suggestion'],
+    queryFn: () => api<PaymentSuggestion>(`${basePath}/${expense.id}/payment-suggestion`),
   });
 
   const [amount, setAmount] = useState('');
@@ -100,7 +98,7 @@ export function SupplierPaymentDialog({
       if (notes.trim()) fd.set('notes', notes.trim());
       if (isOverpayment && overpayAccepted) fd.set('allowOverpayment', 'true');
       if (proof) fd.set('proof', proof);
-      return api(`/projects/${projectId}/expenses/${expense.id}/payments`, { formData: fd });
+      return api(`${basePath}/${expense.id}/payments`, { formData: fd });
     },
     onSuccess: () => {
       // Withheld tax settles the bill exactly as cash does, so the message has
@@ -122,7 +120,7 @@ export function SupplierPaymentDialog({
 
   const remove = useMutation({
     mutationFn: (paymentId: string) =>
-      api(`/projects/${projectId}/expenses/${expense.id}/payments/${paymentId}`, {
+      api(`${basePath}/${expense.id}/payments/${paymentId}`, {
         method: 'DELETE',
       }),
     onSuccess: () => {
@@ -130,7 +128,7 @@ export function SupplierPaymentDialog({
       void qc.invalidateQueries({ queryKey: ['expenses'] });
       void qc.invalidateQueries({ queryKey: ['suppliers'] });
       void qc.invalidateQueries({
-        queryKey: ['expenses', projectId, expense.id, 'payment-suggestion'],
+        queryKey: ['expenses', basePath, expense.id, 'payment-suggestion'],
       });
       setDeleting(null);
     },
