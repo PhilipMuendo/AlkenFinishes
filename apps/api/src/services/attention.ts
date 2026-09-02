@@ -50,8 +50,22 @@ export interface AttentionDigest {
       attendanceOverrides: number;
       total: number;
     }[];
+    // Not per-project, unlike every group above — each links company-wide
+    // (to Contracts / Company Expenses / Quotations) rather than to a site.
+    signingLinksOutstanding: { id: string; name: string; contractNo: string | null; daysOutstanding: number }[];
+    companyExpensesPending: { id: string; name: string; amount: number; daysOutstanding: number }[];
+    quotationsAwaitingDecision: { id: string; name: string; quotationNo: string | null; daysOutstanding: number }[];
+    staleLeads: { id: string; name: string; stage: string; daysStale: number }[];
   };
 }
+
+const STALE_LEAD_AFTER_DAYS = 10;
+// Lead has no dedicated "stage changed at" column, only `updatedAt` — bumped
+// by any edit, not just a stage move. Imprecise (touching the notes resets
+// the clock without the lead actually having moved), but it is the only
+// signal on the row without a schema change, and "nobody has touched this
+// at all in N days" is still a meaningful staleness signal on its own.
+const OPEN_LEAD_STAGES = ['NEW', 'CONTACTED', 'SITE_VISIT', 'QUOTED'] as const;
 
 export async function attentionDigest(): Promise<AttentionDigest> {
   const settings = await getFinanceSettings();
@@ -198,6 +212,68 @@ export async function attentionDigest(): Promise<AttentionDigest> {
   paymentOverdue.sort((a, b) => b.daysOverdue - a.daysOverdue);
   finishingSoon.sort((a, b) => a.daysLeft - b.daysLeft);
 
+  // Three more things sitting on someone's desk, none of them tied to a
+  // single site: a signing link nobody has opened yet, a company-wide
+  // expense nobody has decided on, a quotation the client hasn't answered.
+  const [staleLinks, staleCompanyExpenses, staleQuotations, staleLeadRows] = await Promise.all([
+    prisma.contractSigningLink.findMany({
+      where: {
+        usedAt: null,
+        revokedAt: null,
+        expiresAt: { gt: new Date(now) },
+        createdAt: { lt: new Date(now - 5 * DAY) },
+      },
+      include: { contract: { select: { id: true, title: true, contractNo: true } } },
+    }),
+    prisma.expense.findMany({
+      where: { projectId: null, status: 'PENDING', createdAt: { lt: new Date(now - 3 * DAY) } },
+      select: { id: true, description: true, amount: true, createdAt: true },
+    }),
+    prisma.quotation.findMany({
+      where: { status: 'SENT', sentAt: { lt: new Date(now - 5 * DAY) } },
+      select: { id: true, title: true, quotationNo: true, sentAt: true },
+    }),
+    prisma.lead.findMany({
+      where: {
+        stage: { in: [...OPEN_LEAD_STAGES] },
+        updatedAt: { lt: new Date(now - STALE_LEAD_AFTER_DAYS * DAY) },
+      },
+      select: { id: true, title: true, stage: true, updatedAt: true },
+    }),
+  ]);
+  const signingLinksOutstanding: AttentionDigest['groups']['signingLinksOutstanding'] = staleLinks
+    .map((l) => ({
+      id: l.contract.id,
+      name: l.contract.title,
+      contractNo: l.contract.contractNo,
+      daysOutstanding: Math.floor((now - l.createdAt.getTime()) / DAY),
+    }))
+    .sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+  const companyExpensesPending: AttentionDigest['groups']['companyExpensesPending'] = staleCompanyExpenses
+    .map((e) => ({
+      id: e.id,
+      name: e.description,
+      amount: Number(e.amount),
+      daysOutstanding: Math.floor((now - e.createdAt.getTime()) / DAY),
+    }))
+    .sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+  const quotationsAwaitingDecision: AttentionDigest['groups']['quotationsAwaitingDecision'] = staleQuotations
+    .map((q) => ({
+      id: q.id,
+      name: q.title,
+      quotationNo: q.quotationNo,
+      daysOutstanding: Math.floor((now - q.sentAt!.getTime()) / DAY),
+    }))
+    .sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+  const staleLeads: AttentionDigest['groups']['staleLeads'] = staleLeadRows
+    .map((l) => ({
+      id: l.id,
+      name: l.title,
+      stage: l.stage,
+      daysStale: Math.floor((now - l.updatedAt.getTime()) / DAY),
+    }))
+    .sort((a, b) => b.daysStale - a.daysStale);
+
   // Things sitting on the owner's desk waiting for a yes/no — grouped by
   // project so "3 pending" points somewhere rather than being a bare count.
   const [expensePending, materialPending, overridePending] = await Promise.all([
@@ -246,7 +322,11 @@ export async function attentionDigest(): Promise<AttentionDigest> {
     unassigned.length +
     wentQuiet.length +
     finishingSoon.length +
-    pendingApprovals.length;
+    pendingApprovals.length +
+    signingLinksOutstanding.length +
+    companyExpensesPending.length +
+    quotationsAwaitingDecision.length +
+    staleLeads.length;
 
   return {
     activeCount,
@@ -260,6 +340,10 @@ export async function attentionDigest(): Promise<AttentionDigest> {
       wentQuiet,
       finishingSoon,
       pendingApprovals,
+      signingLinksOutstanding,
+      companyExpensesPending,
+      quotationsAwaitingDecision,
+      staleLeads,
     },
   };
 }

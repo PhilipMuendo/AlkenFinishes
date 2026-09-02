@@ -261,6 +261,9 @@ model User {
   workerPayments          WorkerPayment[]             @relation("WorkerPaymentPaidBy")
   notificationReads       NotificationRead[]
   contractSigningLinks    ContractSigningLink[]       @relation("ContractSigningLinkCreatedBy")
+  quotationDecisionLinks  QuotationDecisionLink[]     @relation("QuotationDecisionLinkCreatedBy")
+  contractsCountersigned  Contract[]                  @relation("ContractCountersignedBy")
+  supplierStatementLinks  SupplierStatementLink[]     @relation("SupplierStatementLinkCreatedBy")
 }
 
 model RefreshToken {
@@ -504,11 +507,30 @@ model Supplier {
   // have already been reported, and removing it would rewrite that history.
   active Boolean @default(true)
 
-  expenses  Expense[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  expenses       Expense[]
+  statementLinks SupplierStatementLink[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
 
   @@index([active, name])
+}
+
+// A link a supplier can open with no login to see their own balance and
+// bill history — unlike ContractSigningLink/QuotationDecisionLink, NOT
+// single-use: a statement is read-only and meant to be reopened, so it
+// stays valid (no `usedAt`) until it expires or is revoked.
+model SupplierStatementLink {
+  id          String    @id @default(cuid())
+  supplierId  String
+  supplier    Supplier  @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  createdById String
+  createdBy   User      @relation("SupplierStatementLinkCreatedBy", fields: [createdById], references: [id])
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([supplierId])
 }
 
 // One part-payment against a supplier's bill.
@@ -1263,11 +1285,32 @@ model Quotation {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  lines    QuotationLine[]
-  contract Contract?
+  lines         QuotationLine[]
+  contract      Contract?
+  decisionLinks QuotationDecisionLink[]
 
   @@index([clientId, issueDate])
   @@index([status, validUntil])
+}
+
+// A one-time, expiring link a client can open with no login to accept or
+// decline a quotation themselves — same shape and purpose as
+// ContractSigningLink, kept as its own table rather than one shared
+// polymorphic model so the FK to what it's for stays a real, checked
+// reference. See services/accessLink.ts for the token mechanics both share.
+model QuotationDecisionLink {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  tokenHash   String    @unique
+  createdById String
+  createdBy   User      @relation("QuotationDecisionLinkCreatedBy", fields: [createdById], references: [id])
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([quotationId])
 }
 
 model QuotationLine {
@@ -1330,6 +1373,17 @@ model Contract {
   clientSignatureIp        String?
   clientSignatureUserAgent String?
   clientSignatureImageUrl  String? // set only for a drawn signature; null for a typed one
+
+  // The company's own signature on the same document, captured live by
+  // whoever countersigns rather than a saved, reusable signature on their
+  // User record — keeps this feature's footprint small and sidesteps the
+  // bigger question of storing a personal signature outside the moment it's
+  // used. Only settable once the client has already signed.
+  companySignerName        String?
+  companySignedAt          DateTime?
+  companySignatureImageUrl String?
+  companySignedById        String?
+  companySignedBy          User?     @relation("ContractCountersignedBy", fields: [companySignedById], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

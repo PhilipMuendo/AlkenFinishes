@@ -16,6 +16,8 @@ import type { Scope } from './chatRetrieval';
 export interface ManualTopic {
   /** Becomes the lookup name `howto_${key}`. */
   key: string;
+  /** A short heading — used as this topic's section title in the printable handbook. */
+  title: string;
   scope: Scope;
   description: string;
   content: string;
@@ -25,6 +27,7 @@ export const MANUAL_TOPICS: ManualTopic[] = [
   // ---- office ----
   {
     key: 'team',
+    title: 'Team & user accounts',
     scope: 'office',
     description:
       'How to use Team (/admin/team) — adding a user, choosing a role (Site Supervisor, Accountant, Superadmin), resetting a password, disabling vs deleting an account. NOT what each role can see — that is just how the app already behaves for them.',
@@ -40,6 +43,7 @@ Assigned sites shows on each row (comma-joined project names) for supervisors. T
   },
   {
     key: 'crm_pipeline',
+    title: 'Clients, leads & quotations',
     scope: 'office',
     description:
       'How the pre-contract pipeline works — Clients register, the Leads kanban board (stages, marking lost), and Quotations (draft, send, client accepts/declines, raise a contract). NOT how to create a Contract directly, or a Site/Project — see howto_contracts and howto_sites_equipment.',
@@ -51,6 +55,7 @@ Quotations (/admin/quotations): "New quotation" — optionally against a lead (a
   },
   {
     key: 'contracts',
+    title: 'Contracts & signatures',
     scope: 'office',
     description:
       'How to issue a contract, get it signed (send an e-signature link, or record a scanned wet-ink copy), raise a variation, and convert it into a running site. NOT how quotations become contracts in the first place — see howto_crm_pipeline.',
@@ -64,6 +69,7 @@ Once Signed, "Open the site" converts it into a running Project. A Variation (ra
   },
   {
     key: 'sites_equipment',
+    title: 'Sites & equipment',
     scope: 'office',
     description:
       'How to create a new site/project, change its status or supervisor, and manage Equipment (tools) — adding, transferring between sites, retiring. NOT the money side of a site (budget, invoices, payments) — that is on the site\'s own Money tabs, not covered here.',
@@ -75,6 +81,7 @@ Equipment (/admin/equipment): "New tool" registers an item with a quantity, unit
   },
   {
     key: 'calendar',
+    title: 'Calendar',
     scope: 'office',
     description:
       'How the Calendar works — which event types can be added by hand vs are computed automatically from other records. NOT how to change a deadline that already shows on the calendar — that is done on the source record, not here.',
@@ -86,6 +93,7 @@ Only manually-added events show a delete (trash) icon, and deleting one is silen
   },
   {
     key: 'settings',
+    title: 'Settings',
     scope: 'office',
     description:
       'What each tab in Settings controls — Company letterhead, Documents (invoicing/quotation/contract numbering and wording), Money & tax (budget thresholds, labour cost source, purchase/staff withholding tax, payroll deductions), Attendance devices, the Assistant allowance, and the Audit log. NOT this company\'s current configured rates — ask a specific lookup like tax_position or payroll_recent for those.',
@@ -106,6 +114,7 @@ Audit log — an immutable, paginated record of every create/update/delete with 
   // ---- finance ----
   {
     key: 'expenses_approval',
+    title: 'Approving expenses',
     scope: 'finance',
     description:
       'How the office approves, rejects and pays an expense claim — on a site or via Company Expenses for spend not tied to any site. NOT how a supervisor submits their own claim from site — see howto_submitting_expenses.',
@@ -117,6 +126,7 @@ Company Expenses is reached the same way and behaves identically — the only di
   },
   {
     key: 'payables',
+    title: 'Suppliers & payables',
     scope: 'finance',
     description:
       'How to manage Suppliers and record a supplier payment, including withholding tax. NOT how to approve the underlying expense claim that put a bill on the ledger — see howto_expenses_approval.',
@@ -128,6 +138,7 @@ Withholding tax on a payment is suggested automatically (when the company is con
   },
   {
     key: 'receivables',
+    title: 'Receivables',
     scope: 'finance',
     description:
       "How to use Receivables — the cross-project invoice register, viewing an invoice's PDF, and what the aging figures mean. NOT how to raise a new invoice on a specific project — that happens from the project's own Invoices tab.",
@@ -137,6 +148,7 @@ New invoices are raised from inside a specific project (its own Invoices/Money t
   },
   {
     key: 'tax',
+    title: 'Tax',
     scope: 'finance',
     description:
       "How to use the Tax page — this company's current VAT/withholding position and outstanding certificates. NOT how the underlying PAYE/NSSF/SHIF/withholding rates are configured — that's Settings > Money & tax, covered by howto_settings. NOT general Kenyan tax rules/deadlines — that's kenya_tax_guide.",
@@ -148,6 +160,7 @@ This page reflects only what's actually in the books — it doesn't compute a re
   },
   {
     key: 'payroll',
+    title: 'Payroll',
     scope: 'finance',
     description:
       'How to run Payroll for hourly fundis — preview, create a draft run, finalise it. NOT withholding tax on an individual off-payroll staff payment (recorded from Workers/Fundis instead) — see howto_settings for where that toggle lives.',
@@ -157,6 +170,7 @@ Once the figures look right, save the run as a draft, then finalise it — final
   },
   {
     key: 'business_reports',
+    title: 'Business reports',
     scope: 'finance',
     description:
       "How to generate a Business Report (a downloadable PDF snapshot for a client, bank or file) from a project's Export tab — the 8 available types and which ones use a date range. NOT the site-ops Reports feed of daily/weekly updates — see howto_site_reports.",
@@ -169,6 +183,7 @@ The Accountant's project view only offers the money-flavoured types (Financial S
   // ---- site ----
   {
     key: 'site_reports',
+    title: 'Daily & weekly reports',
     scope: 'site',
     description:
       "How to file a daily or weekly site report, and where to browse everything already filed across every site. NOT the downloadable Business Reports export — see howto_business_reports.",
@@ -180,6 +195,7 @@ To browse everything already filed across every site — not just one — office
   },
   {
     key: 'snags_safety',
+    title: 'Snags & safety',
     scope: 'site',
     description:
       'How to raise and resolve a defect (snag), and how to log a safety incident. NOT approving expense claims or material requests — see the relevant howto_ topic for those.',
@@ -189,6 +205,7 @@ A safety incident is logged with when it happened, severity (Near miss / Minor /
   },
   {
     key: 'attendance_materials',
+    title: 'Attendance & materials',
     scope: 'site',
     description:
       "How manual attendance entries and material requests work, and how stock movements are recorded. NOT how fingerprint devices are registered — that's Settings, see howto_settings.",
@@ -201,6 +218,7 @@ Stock itself (on-hand materials) is adjusted directly with "Received"/"Used" but
   // ---- shared ----
   {
     key: 'submitting_expenses',
+    title: 'Submitting an expense claim',
     scope: 'shared',
     description:
       "How a supervisor submits their own expense claim from site, versus how the office approves/pays one. Covers both halves of the same workflow — see howto_expenses_approval for more detail on the approval/payment side.",
@@ -210,6 +228,7 @@ The office (Superadmin or Accountant) sees every claim on the site — or, for s
   },
   {
     key: 'using_assistant',
+    title: 'Using this assistant',
     scope: 'shared',
     description:
       'What this assistant can and can\'t do, how to read its answers, and why it sometimes stops answering for the day. Ask this when a question is about the assistant itself, not about the app\'s other features.',

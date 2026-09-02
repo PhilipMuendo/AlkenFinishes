@@ -51,6 +51,7 @@ export async function renderContractPdf(
   paymentTermsDays: number,
   footerNote?: string,
   clientSignature?: CapturedClientSignature,
+  companySignature?: CapturedClientSignature,
 ): Promise<string> {
   const n = (v: unknown) => Number(v);
   const dlpEnds = dlpEnd(c.practicalCompletionDate, c.defectsLiabilityMonths);
@@ -184,13 +185,15 @@ export async function renderContractPdf(
               {
                 width: '*',
                 stack: clientSignature
-                  ? signedEmployerBlock('For and on behalf of the Employer', c.client.name, clientSignature)
+                  ? signedPartyBlock('For and on behalf of the Employer', c.client.name, clientSignature)
                   : signatureBlock('For and on behalf of the Employer', c.client.name),
               },
               { width: 28, text: '' },
               {
                 width: '*',
-                stack: signatureBlock('For and on behalf of the Contractor', company.name),
+                stack: companySignature
+                  ? signedPartyBlock('For and on behalf of the Contractor', company.name, companySignature)
+                  : signatureBlock('For and on behalf of the Contractor', company.name),
               },
             ],
           },
@@ -347,13 +350,14 @@ function signatureBlock(role: string, party: string): Content[] {
 }
 
 /**
- * The Employer block once a client has signed through a link, in place of
+ * Either party's block once they've signed electronically — the client
+ * through a signing link, or the office countersigning in-app — in place of
  * the blank ruled lines: the captured name (typed) or drawn signature image,
  * a printed date, and — instead of the Position/Witness fields, which are a
  * wet-ink concept a remote e-signature has no equivalent for — the
  * authenticity caption a printed form can't provide on its own.
  */
-function signedEmployerBlock(
+function signedPartyBlock(
   role: string,
   party: string,
   sig: CapturedClientSignature,

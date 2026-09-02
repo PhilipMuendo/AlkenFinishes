@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowUp, ExternalLink, MessageSquare, RotateCcw, Sparkles, X } from 'lucide-react';
+import {
+  ArrowUp,
+  Download,
+  ExternalLink,
+  MessageSquare,
+  RotateCcw,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { ChatAnswer, ChatStatus } from '@/lib/types';
 import { Notice } from '@/components/ui/notice';
+import { toast } from '@/components/ui/toast';
 
 /**
  * Asking the system a question.
@@ -150,6 +159,16 @@ export function Assistant({ office }: { office: boolean }) {
     },
   });
 
+  // The same MANUAL_TOPICS content this assistant answers "how do I…"
+  // questions from, laid out as a document instead — for reading offline or
+  // handing to someone new. Filtered to what this user's role can see,
+  // same as the chat lookups themselves.
+  const handbook = useMutation({
+    mutationFn: () => api<{ url: string }>('/manual/pdf'),
+    onSuccess: (res) => window.open(res.url, '_blank', 'noopener'),
+    onError: (e) => toast.error(errText(e, 'The handbook could not be generated.')),
+  });
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns, ask.isPending, keyboard]);
@@ -262,6 +281,15 @@ export function Assistant({ office }: { office: boolean }) {
                 <h2 className="truncate text-sm font-semibold text-fg">Ask about your projects</h2>
               </div>
               <div className="flex shrink-0 items-center">
+                <button
+                  onClick={() => handbook.mutate()}
+                  disabled={handbook.isPending}
+                  aria-label="Download staff handbook"
+                  title="Download staff handbook"
+                  className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-sunken hover:text-fg disabled:opacity-50"
+                >
+                  <Download size={15} />
+                </button>
                 {turns.length > 0 && (
                   <button
                     onClick={() => {

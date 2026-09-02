@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Phone, Plus, Truck } from 'lucide-react';
+import { Phone, Plus, Send, Truck } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AgingBucket, PayablesReport, Supplier } from '@/lib/types';
 import { fmtMoney } from '@/lib/format';
@@ -35,6 +35,7 @@ export function SuppliersPage() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [retiring, setRetiring] = useState<Supplier | null>(null);
+  const [statementLinkUrl, setStatementLinkUrl] = useState<string | null>(null);
 
   const { data: payables } = useQuery({
     queryKey: ['suppliers', 'payables'],
@@ -82,6 +83,18 @@ export function SuppliersPage() {
       invalidate();
     },
     onError: (e) => toast.error(errText(e, 'The supplier was not reactivated.')),
+  });
+
+  const createStatementLink = useMutation({
+    mutationFn: (id: string) =>
+      api<{ token: string; expiresAt: string }>(`/suppliers/${id}/statement-link`, { body: {} }),
+    onSuccess: (res) => {
+      const url = `${window.location.origin}/statement/${res.token}`;
+      setStatementLinkUrl(url);
+      navigator.clipboard?.writeText(url).catch(() => undefined);
+      toast.success('Statement link copied. Share it with the supplier — it works for 30 days.');
+    },
+    onError: (e) => toast.error(errText(e, 'The statement link was not created.')),
   });
 
   const s = payables?.summary;
@@ -254,6 +267,14 @@ export function SuppliersPage() {
                       <Button size="sm" variant="outline" onClick={() => setEditing(sup)}>
                         Edit
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={createStatementLink.isPending}
+                        onClick={() => createStatementLink.mutate(sup.id)}
+                      >
+                        <Send size={13} /> Statement link
+                      </Button>
                       {sup.active ? (
                         <Button
                           size="sm"
@@ -289,6 +310,34 @@ export function SuppliersPage() {
             : 'Failed to retire that supplier'}
         </p>
       )}
+
+      <Dialog
+        open={!!statementLinkUrl}
+        onClose={() => setStatementLinkUrl(null)}
+        title="Statement link"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-fg-muted">
+            Already copied to your clipboard. Share it however you normally would — it works for
+            30 days and can be reopened as often as needed.
+          </p>
+          <Input
+            readOnly
+            value={statementLinkUrl ?? ''}
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={() => {
+              if (statementLinkUrl) void navigator.clipboard?.writeText(statementLinkUrl);
+              toast.success('Copied.');
+            }}
+          >
+            Copy again
+          </Button>
+        </div>
+      </Dialog>
 
       <Dialog
         open={adding || !!editing}

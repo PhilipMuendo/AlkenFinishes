@@ -48,7 +48,13 @@ const STATUS_TONE: Record<ExpenseStatus, 'yellow' | 'green' | 'red'> = {
  * rather than a hardcoded `/projects/:id/expenses`, so the same panel and
  * its children (ExpenseForm, SupplierPaymentDialog) serve both.
  */
-export function ExpensesPanel({ projectId }: { projectId?: string }) {
+export function ExpensesPanel({
+  projectId,
+  emptyLabel = 'No expenses recorded for this site',
+}: {
+  projectId?: string;
+  emptyLabel?: string;
+}) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const canBrowse = user?.role === 'SUPERADMIN' || user?.role === 'ACCOUNTANT';
@@ -216,7 +222,7 @@ export function ExpensesPanel({ projectId }: { projectId?: string }) {
       <QueryState query={expensesQuery} rows={4} noun="expenses" />
 
       {expenses?.length === 0 ? (
-        <Empty>No expenses recorded for this site</Empty>
+        <Empty>{emptyLabel}</Empty>
       ) : (
         <Table>
           <thead>

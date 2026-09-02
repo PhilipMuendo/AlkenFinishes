@@ -816,6 +816,16 @@ export interface AttentionDigest {
   portfolioCount: number;
   allClear: boolean;
   groups: {
+    invoiceOverdue: {
+      id: string;
+      projectId: string;
+      name: string;
+      invoiceNo: string | null;
+      clientName: string;
+      balance: number;
+      dueDate: string;
+      daysOverdue: number;
+    }[];
     paymentOverdue: {
       id: string;
       name: string;
@@ -835,6 +845,21 @@ export interface AttentionDigest {
       attendanceOverrides: number;
       total: number;
     }[];
+    // Not per-project — each links company-wide rather than to a site.
+    signingLinksOutstanding: {
+      id: string;
+      name: string;
+      contractNo: string | null;
+      daysOutstanding: number;
+    }[];
+    companyExpensesPending: { id: string; name: string; amount: number; daysOutstanding: number }[];
+    quotationsAwaitingDecision: {
+      id: string;
+      name: string;
+      quotationNo: string | null;
+      daysOutstanding: number;
+    }[];
+    staleLeads: { id: string; name: string; stage: string; daysStale: number }[];
   };
 }
 
@@ -918,6 +943,9 @@ export interface Lead {
   lostReason: string | null;
   owner: { id: string; name: string } | null;
   createdAt: string;
+  // No dedicated "stage changed at" column — this is bumped by any edit, so
+  // it's an approximation of when a WON/LOST lead was actually settled.
+  updatedAt: string;
   quotations: { id: string; quotationNo: string | null; status: QuotationStatus; total: number }[];
 }
 
@@ -1041,6 +1069,11 @@ export interface Contract {
   clientSignatureIp: string | null;
   clientSignatureUserAgent: string | null;
   clientSignatureImageUrl: string | null;
+  // Set once the office countersigns (POST /contracts/:id/countersign) —
+  // captured live, the same way the client's own signature is.
+  companySignerName: string | null;
+  companySignedAt: string | null;
+  companySignatureImageUrl: string | null;
   variations: Variation[];
   position: ContractPosition;
 }

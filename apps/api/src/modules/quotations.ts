@@ -13,6 +13,7 @@ import { nextNumber, seriesYear } from '../services/numbering';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPipelineConfig, recalcQuotation } from '../services/pipeline';
 import { renderQuotationPdf, type QuotationWithLines } from '../services/documents/quotationPdf';
+import { generateToken, hashToken } from '../services/accessLink';
 
 /**
  * Quotations — the priced offer that becomes a contract.
@@ -267,39 +268,48 @@ router.post(
       .object({ outcome: z.enum(['ACCEPTED', 'REJECTED']), reason: z.string().optional() })
       .parse(req.body);
 
-    const existing = await prisma.quotation.findUnique({ where: { id: req.params.id } });
-    if (!existing) throw ApiError.notFound();
-    if (existing.status === 'DRAFT') {
-      throw ApiError.conflict('Send this quotation before recording the client’s decision');
-    }
-    if (outcome === 'REJECTED' && !reason?.trim()) {
-      throw ApiError.badRequest('Say why the client turned it down');
-    }
-
-    const quotation = await prisma.$transaction(async (tx) => {
-      const updated = await tx.quotation.update({
-        where: { id: existing.id },
-        data: {
-          status: outcome,
-          decidedAt: new Date(),
-          rejectReason: outcome === 'REJECTED' ? reason!.trim() : null,
-        },
-        include,
-      });
-      if (updated.leadId) {
-        await tx.lead.update({
-          where: { id: updated.leadId },
-          data:
-            outcome === 'ACCEPTED'
-              ? { stage: 'WON', lostReason: null }
-              : { stage: 'LOST', lostReason: reason!.trim() },
-        });
-      }
-      return updated;
-    });
-
+    const quotation = await applyQuotationDecision(req.params.id, outcome, reason);
     audit(req, 'quotation.decision', 'Quotation', quotation.id, { outcome, reason });
     res.json(serialize(quotation));
+  }),
+);
+
+/**
+ * A one-time link a client can open with no login of their own to accept or
+ * decline the quotation themselves — the same pattern as
+ * `POST /contracts/:id/signing-link` (see publicSign.ts / publicQuote.ts).
+ * Only makes sense on a SENT quotation: nothing to decide on a draft, and a
+ * quotation already decided shouldn't get a new link suggesting otherwise.
+ */
+router.post(
+  '/:id/decision-link',
+  asyncHandler(async (req, res) => {
+    const quotation = await prisma.quotation.findUnique({ where: { id: req.params.id } });
+    if (!quotation) throw ApiError.notFound();
+    if (quotation.status !== 'SENT') {
+      throw ApiError.conflict(
+        quotation.status === 'DRAFT'
+          ? 'Send this quotation before sharing a decision link'
+          : 'This quotation has already been decided',
+      );
+    }
+
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+    await prisma.$transaction([
+      prisma.quotationDecisionLink.updateMany({
+        where: { quotationId: quotation.id, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+      prisma.quotationDecisionLink.create({
+        data: { quotationId: quotation.id, tokenHash, createdById: req.user!.id, expiresAt },
+      }),
+    ]);
+
+    audit(req, 'quotation.decisionLink.create', 'Quotation', quotation.id);
+    res.status(201).json({ token, expiresAt });
   }),
 );
 
@@ -356,6 +366,49 @@ router.post(
 );
 
 // ---- helpers ----
+
+/**
+ * Record the client's decision and, if this quotation came off a lead, move
+ * it to WON/LOST with it. Shared by the authenticated `/decision` route and
+ * the public decision-link route (publicQuote.ts) so the two can never
+ * disagree about what accepting or declining actually does.
+ */
+export async function applyQuotationDecision(
+  quotationId: string,
+  outcome: 'ACCEPTED' | 'REJECTED',
+  reason: string | undefined,
+): Promise<QuotationRow> {
+  const existing = await prisma.quotation.findUnique({ where: { id: quotationId } });
+  if (!existing) throw ApiError.notFound();
+  if (existing.status === 'DRAFT') {
+    throw ApiError.conflict('Send this quotation before recording the client’s decision');
+  }
+  if (outcome === 'REJECTED' && !reason?.trim()) {
+    throw ApiError.badRequest('Say why the client turned it down');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.quotation.update({
+      where: { id: existing.id },
+      data: {
+        status: outcome,
+        decidedAt: new Date(),
+        rejectReason: outcome === 'REJECTED' ? reason!.trim() : null,
+      },
+      include,
+    });
+    if (updated.leadId) {
+      await tx.lead.update({
+        where: { id: updated.leadId },
+        data:
+          outcome === 'ACCEPTED'
+            ? { stage: 'WON', lostReason: null }
+            : { stage: 'LOST', lostReason: reason!.trim() },
+      });
+    }
+    return updated;
+  });
+}
 
 function lineData(lines: z.infer<typeof lineSchema>[]) {
   return lines.map((l, i) => ({

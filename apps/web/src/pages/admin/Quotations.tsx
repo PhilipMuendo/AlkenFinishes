@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileSignature, FileText, Plus } from 'lucide-react';
+import { Download, FileSignature, FileText, Plus, Send } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { Client, Lead, Quotation, QuotationStatus } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
@@ -44,6 +44,7 @@ export function QuotationsPage() {
   const [rejecting, setRejecting] = useState<Quotation | null>(null);
   const [converting, setConverting] = useState<Quotation | null>(null);
   const [deleting, setDeleting] = useState<Quotation | null>(null);
+  const [decisionLinkUrl, setDecisionLinkUrl] = useState<string | null>(null);
 
   const { data: quotations, isLoading } = useQuery({
     queryKey: ['quotations', status],
@@ -113,6 +114,18 @@ export function QuotationsPage() {
     onError: (e) => toast.error(errText(e, 'The decision was not saved.')),
   });
 
+  const createDecisionLink = useMutation({
+    mutationFn: (id: string) =>
+      api<{ token: string; expiresAt: string }>(`/quotations/${id}/decision-link`, { body: {} }),
+    onSuccess: (res) => {
+      const url = `${window.location.origin}/quote/${res.token}`;
+      setDecisionLinkUrl(url);
+      navigator.clipboard?.writeText(url).catch(() => undefined);
+      toast.success('Decision link copied. Share it with the client — it works for 14 days.');
+    },
+    onError: (e) => toast.error(errText(e, 'The decision link was not created.')),
+  });
+
   const toContract = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       api(`/contracts/from-quotation/${id}`, { body }),
@@ -137,7 +150,9 @@ export function QuotationsPage() {
 
   // One line for whichever of the detail actions last failed — they are
   // mutually exclusive in practice, and three separate slots would be noise.
-  const actionError = errorMessage(send.error ?? decide.error ?? remove.error);
+  const actionError = errorMessage(
+    send.error ?? decide.error ?? remove.error ?? createDecisionLink.error,
+  );
 
   const openPdf = async (q: Quotation) => {
     const { url } = await api<{ url: string }>(`/quotations/${q.id}/pdf`);
@@ -384,6 +399,16 @@ export function QuotationsPage() {
                 </Button>
               )}
 
+              {viewing.status === 'SENT' && (
+                <Button
+                  variant="outline"
+                  disabled={createDecisionLink.isPending}
+                  onClick={() => createDecisionLink.mutate(viewing.id)}
+                >
+                  <Send size={16} /> Send decision link
+                </Button>
+              )}
+
               {(viewing.status === 'SENT' || viewing.status === 'EXPIRED') && (
                 <>
                   <Button
@@ -415,6 +440,31 @@ export function QuotationsPage() {
             </div>
           </div>
         )}
+      </Dialog>
+
+      {/* ---- Decision link ---- */}
+      <Dialog
+        open={!!decisionLinkUrl}
+        onClose={() => setDecisionLinkUrl(null)}
+        title="Decision link"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-fg-muted">
+            Already copied to your clipboard. Share it however you normally would — it works for
+            14 days and only once.
+          </p>
+          <Input readOnly value={decisionLinkUrl ?? ''} onFocus={(e) => e.currentTarget.select()} />
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={() => {
+              if (decisionLinkUrl) void navigator.clipboard?.writeText(decisionLinkUrl);
+              toast.success('Copied.');
+            }}
+          >
+            Copy again
+          </Button>
+        </div>
       </Dialog>
 
       {/* ---- Decline ---- */}

@@ -1,6 +1,7 @@
 import { kes, toCents } from './money';
 import { AiError, aiAvailable, aiProvider, generate } from './ai';
 import { recordCall } from './aiUsage';
+import { prisma } from '../lib/prisma';
 
 /**
  * Reading a supplier receipt.
@@ -162,6 +163,61 @@ export function verify(
     checks,
     needsReview: checks.some((c) => c.status !== 'OK'),
     suggested: suggestFigures(extracted, expectedVatRatePct),
+  };
+}
+
+/**
+ * Whether an expense already on file looks like the same purchase as the
+ * one just scanned — the same amount, on the same day (give or take one, in
+ * case the receipt or the filer reads the date differently), scoped to the
+ * matched supplier when there is one and to the whole company otherwise.
+ *
+ * Genuinely a separate, DB-touching step from `verify()` above rather than
+ * folded into it — `verify()` stays pure and unit-tested without a database,
+ * exactly as its own docblock describes, and this is the one check that
+ * cannot be done that way. Non-fatal by design: it warns, same as every
+ * other check here, rather than blocking a save that legitimately is a
+ * second, separate purchase for the same amount on the same day.
+ */
+export async function findPossibleDuplicate(
+  amount: number | null,
+  date: string | null,
+  matchedSupplierId: string | null,
+): Promise<Check | null> {
+  if (amount == null || !date) return null;
+  const day = new Date(date);
+  if (Number.isNaN(day.getTime())) return null;
+
+  // date is a bare YYYY-MM-DD, so `day` lands on that date's midnight — one
+  // full day either side covers "today, yesterday or tomorrow" regardless of
+  // what time of day the matched expense itself was recorded at.
+  const from = new Date(day.getTime() - 86_400_000);
+  const to = new Date(day.getTime() + 2 * 86_400_000);
+  const amountCents = toCents(amount);
+  const slack = Math.max(TOLERANCE_CENTS, Math.round(amountCents * 0.005));
+
+  const candidates = await prisma.expense.findMany({
+    where: {
+      status: { not: 'REJECTED' },
+      expenseDate: { gte: from, lt: to },
+      ...(matchedSupplierId ? { supplierId: matchedSupplierId } : {}),
+    },
+    select: {
+      id: true,
+      amount: true,
+      expenseDate: true,
+      submittedBy: { select: { name: true } },
+    },
+    take: 20,
+  });
+
+  const match = candidates.find((c) => near(toCents(Number(c.amount)), amountCents, slack));
+  if (!match) return null;
+
+  return {
+    id: 'duplicate',
+    status: 'WARN',
+    message: `This looks like a receipt already on file — ${kes(toCents(Number(match.amount)))} logged by ${match.submittedBy.name} on ${match.expenseDate.toISOString().slice(0, 10)}. Check it isn't the same purchase before saving.`,
   };
 }
 

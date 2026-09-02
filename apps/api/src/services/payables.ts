@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { kes, sumCents, toCents } from './money';
 import { prisma } from '../lib/prisma';
 import { agingBucket, daysOverdue, isOverdue, type AgingBucket } from './invoicing';
@@ -84,6 +85,52 @@ export interface PayablePayment {
   amount: number;
   whtAmount?: number;
   whtVatAmount?: number;
+}
+
+/**
+ * Costs on the payables ledger, with their payments, for the whole company
+ * (or narrowed by `where`, e.g. to one supplier). Relocated here from
+ * suppliers.ts — which is Superadmin/Accountant-only — so the unauthenticated
+ * supplier statement link (publicStatement.ts) can build the same figures
+ * without importing an authenticated router module.
+ */
+export async function loadSupplierLedger(where: Prisma.ExpenseWhereInput = {}) {
+  const expenses = await prisma.expense.findMany({
+    where: { supplierId: { not: null }, ...where },
+    select: {
+      id: true,
+      supplierId: true,
+      amount: true,
+      vatAmount: true,
+      taxInvoice: true,
+      dueDate: true,
+      expenseDate: true,
+      payments: {
+        select: { amount: true, whtAmount: true, whtVatAmount: true },
+      },
+    },
+  });
+
+  const costs: PayableCost[] = expenses.map((e) => ({
+    id: e.id,
+    supplierId: e.supplierId,
+    amount: Number(e.amount),
+    vatAmount: Number(e.vatAmount),
+    taxInvoice: e.taxInvoice,
+    dueDate: e.dueDate,
+    expenseDate: e.expenseDate,
+  }));
+  const paymentsByCost = new Map<string, PayablePayment[]>(
+    expenses.map((e) => [
+      e.id,
+      e.payments.map((p) => ({
+        amount: Number(p.amount),
+        whtAmount: Number(p.whtAmount),
+        whtVatAmount: Number(p.whtVatAmount),
+      })),
+    ]),
+  );
+  return { costs, paymentsByCost };
 }
 
 export interface PayablePosition {

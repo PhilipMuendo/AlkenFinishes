@@ -14,7 +14,7 @@ export function CompanyExpensesPage() {
         title="Company Expenses"
         description="Spend that isn't tied to any site — uniforms, office supplies, and the like"
       />
-      <ExpensesPanel />
+      <ExpensesPanel emptyLabel="No company expenses recorded yet" />
     </div>
   );
 }

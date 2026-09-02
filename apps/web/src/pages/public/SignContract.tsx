@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Loader2, PenLine } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, Input } from '@/components/ui/input';
 import { Notice } from '@/components/ui/notice';
-import { Tabs } from '@/components/ui/tabs';
 import { fmtDate, fmtMoney } from '@/lib/format';
+import { SignaturePad, type SignaturePadHandle } from '@/features/SignaturePad';
 
 /**
  * A client opens this with no login of their own — clients are never `User`
@@ -59,19 +58,19 @@ export function SignContractPage() {
     enabled: !!token,
   });
 
-  const [method, setMethod] = useState<'TYPED' | 'DRAWN'>('TYPED');
-  const [typedName, setTypedName] = useState('');
   const [consent, setConsent] = useState(false);
-  const canvas = useCanvasSignature();
+  const [ready, setReady] = useState(false);
+  const padRef = useRef<SignaturePadHandle>(null);
 
   const sign = useMutation({
-    mutationFn: () =>
-      publicApi<{ ok: true; signedPdfUrl: string | null }>(`/${token}`, {
-        signerName: typedName.trim(),
-        signatureMethod: method,
-        signatureImage: method === 'DRAWN' ? canvas.toDataUrl() : undefined,
+    mutationFn: () => {
+      const signature = padRef.current?.getSignature();
+      if (!signature) throw new PublicApiError(0, 'Finish your signature before continuing');
+      return publicApi<{ ok: true; signedPdfUrl: string | null }>(`/${token}`, {
+        ...signature,
         consent: true,
-      }),
+      });
+    },
   });
 
   return (
@@ -148,60 +147,7 @@ export function SignContractPage() {
                 </a>
               )}
 
-              <div>
-                <Tabs
-                  tabs={[
-                    { id: 'TYPED', label: 'Type your name' },
-                    { id: 'DRAWN', label: 'Draw your signature' },
-                  ]}
-                  active={method}
-                  onChange={(id) => setMethod(id as 'TYPED' | 'DRAWN')}
-                />
-                <div className="pt-4">
-                  {method === 'TYPED' ? (
-                    <Field label="Your full name">
-                      <Input
-                        value={typedName}
-                        onChange={(e) => setTypedName(e.target.value)}
-                        placeholder="Jane Wanjiru"
-                        autoFocus
-                      />
-                      {typedName.trim() && (
-                        <p
-                          className="mt-3 border-b border-hairline-strong pb-2 text-3xl text-fg"
-                          style={{ fontFamily: 'cursive' }}
-                        >
-                          {typedName}
-                        </p>
-                      )}
-                    </Field>
-                  ) : (
-                    <div className="space-y-2">
-                      <Field label="Your name">
-                        <Input
-                          value={typedName}
-                          onChange={(e) => setTypedName(e.target.value)}
-                          placeholder="Jane Wanjiru"
-                        />
-                      </Field>
-                      <p className="text-xs text-fg-muted">Draw your signature below.</p>
-                      <div className="overflow-hidden rounded-lg border border-hairline-strong bg-white">
-                        <canvas
-                          ref={canvas.ref}
-                          className="h-40 w-full touch-none"
-                          onPointerDown={canvas.onPointerDown}
-                          onPointerMove={canvas.onPointerMove}
-                          onPointerUp={canvas.onPointerUp}
-                          onPointerLeave={canvas.onPointerUp}
-                        />
-                      </div>
-                      <Button type="button" variant="outline" size="sm" onClick={canvas.clear}>
-                        Clear
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <SignaturePad ref={padRef} onReadyChange={setReady} />
 
               <Notice as="label" tone="info" icon={PenLine}>
                 <span className="flex items-start gap-2">
@@ -227,12 +173,7 @@ export function SignContractPage() {
               <Button
                 size="lg"
                 className="w-full"
-                disabled={
-                  sign.isPending ||
-                  !consent ||
-                  !typedName.trim() ||
-                  (method === 'DRAWN' && canvas.isEmpty)
-                }
+                disabled={sign.isPending || !consent || !ready}
                 onClick={() => sign.mutate()}
               >
                 {sign.isPending ? 'Signing…' : 'Sign contract'}
@@ -254,63 +195,3 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** A minimal pointer-driven signature pad, exported as a PNG data URL on submit. */
-function useCanvasSignature() {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  const drawing = useRef(false);
-  const [isEmpty, setIsEmpty] = useState(true);
-
-  useEffect(() => {
-    const c = ref.current;
-    if (!c) return;
-    const resize = () => {
-      const rect = c.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      c.width = rect.width * dpr;
-      c.height = rect.height * dpr;
-      const ctx = c.getContext('2d');
-      if (ctx) {
-        ctx.scale(dpr, dpr);
-        ctx.lineWidth = 2;
-        ctx.lineCap = 'round';
-        ctx.strokeStyle = '#111827';
-      }
-    };
-    resize();
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
-  }, []);
-
-  const point = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
-  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    drawing.current = true;
-    const ctx = ref.current?.getContext('2d');
-    const { x, y } = point(e);
-    ctx?.beginPath();
-    ctx?.moveTo(x, y);
-  };
-  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawing.current) return;
-    const ctx = ref.current?.getContext('2d');
-    const { x, y } = point(e);
-    ctx?.lineTo(x, y);
-    ctx?.stroke();
-    setIsEmpty(false);
-  };
-  const onPointerUp = () => {
-    drawing.current = false;
-  };
-  const clear = () => {
-    const c = ref.current;
-    const ctx = c?.getContext('2d');
-    if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
-    setIsEmpty(true);
-  };
-  const toDataUrl = () => ref.current?.toDataURL('image/png') ?? '';
-
-  return { ref, onPointerDown, onPointerMove, onPointerUp, clear, toDataUrl, isEmpty };
-}

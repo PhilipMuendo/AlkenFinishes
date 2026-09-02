@@ -111,6 +111,34 @@ export function LeadsPage() {
     .filter((l) => l.stage !== 'WON' && l.stage !== 'LOST')
     .reduce((s, l) => s + (l.estimatedValue ?? 0), 0);
 
+  // Win rate and the pattern in why deals are lost — the two things the
+  // settled columns are actually useful for beyond a plain count. Computed
+  // client-side from the leads already fetched, no extra request.
+  const stats = useMemo(() => {
+    const won = byStage.WON;
+    const lost = byStage.LOST;
+    const settledCount = won.length + lost.length;
+    const winRate = settledCount > 0 ? Math.round((won.length / settledCount) * 100) : null;
+    const avgDaysToClose =
+      won.length > 0
+        ? Math.round(
+            won.reduce(
+              (s, l) =>
+                s + (new Date(l.updatedAt).getTime() - new Date(l.createdAt).getTime()) / 86_400_000,
+              0,
+            ) / won.length,
+          )
+        : null;
+    const reasonCounts = new Map<string, number>();
+    for (const l of lost) {
+      if (!l.lostReason) continue;
+      const key = l.lostReason.trim();
+      reasonCounts.set(key, (reasonCounts.get(key) ?? 0) + 1);
+    }
+    const topReasons = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    return { winRate, avgDaysToClose, topReasons };
+  }, [byStage]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -218,8 +246,41 @@ export function LeadsPage() {
           </button>
 
           {showSettled && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              {(['WON', 'LOST'] as const).map((s) => (
+            <div className="mt-3 space-y-3">
+              {(stats.winRate != null || stats.topReasons.length > 0) && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-hairline bg-surface-muted/50 px-3 py-2.5">
+                    <p className="text-xs text-fg-subtle">Win rate</p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums text-fg">
+                      {stats.winRate != null ? `${stats.winRate}%` : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-hairline bg-surface-muted/50 px-3 py-2.5">
+                    <p className="text-xs text-fg-subtle">Avg. days to close a win</p>
+                    <p className="mt-0.5 text-lg font-semibold tabular-nums text-fg">
+                      {stats.avgDaysToClose != null ? stats.avgDaysToClose : '—'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-hairline bg-surface-muted/50 px-3 py-2.5 sm:col-span-1">
+                    <p className="text-xs text-fg-subtle">Why we lose</p>
+                    {stats.topReasons.length === 0 ? (
+                      <p className="mt-0.5 text-sm text-fg-muted">No reasons recorded yet</p>
+                    ) : (
+                      <ul className="mt-1 space-y-0.5">
+                        {stats.topReasons.map(([reason, count]) => (
+                          <li key={reason} className="truncate text-xs text-fg">
+                            {reason}
+                            {count > 1 && <span className="text-fg-subtle"> · {count}×</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                {(['WON', 'LOST'] as const).map((s) => (
                 <section key={s} className="rounded-xl border border-hairline bg-surface-muted/50">
                   <header className="border-b border-hairline px-3 py-2.5">
                     <h2 className="text-sm font-semibold text-fg">{STAGE_LABEL[s]}</h2>
@@ -245,6 +306,7 @@ export function LeadsPage() {
                   </div>
                 </section>
               ))}
+              </div>
             </div>
           )}
         </div>

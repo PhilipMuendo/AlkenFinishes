@@ -18,6 +18,12 @@ router.use(requireAuth);
 
 const projectSchema = z.object({
   name: z.string().min(1),
+  // Either is accepted: a real client from the register (preferred — see the
+  // handler below, which snapshots its name the same way
+  // contracts.ts's convert-to-project already does), or a plain typed name
+  // for a job with no Client record yet. clientName stays required so an
+  // existing caller sending only that keeps working unchanged.
+  clientId: z.string().optional(),
   clientName: z.string().min(1),
   location: z.string().min(1),
   contractValue: z.coerce.number().nonnegative(),
@@ -55,8 +61,18 @@ router.post(
   '/',
   requireSuperadmin,
   asyncHandler(async (req, res) => {
-    const data = projectSchema.parse(req.body);
-    const project = await prisma.project.create({ data, include });
+    const { clientId, ...data } = projectSchema.parse(req.body);
+    // clientName is always the server's own snapshot when a real client was
+    // chosen — never trust the client-typed name to agree with the record it
+    // claims to be, the same rule convert-to-project already follows.
+    const clientName = clientId
+      ? (await prisma.client.findUniqueOrThrow({ where: { id: clientId }, select: { name: true } }))
+          .name
+      : data.clientName;
+    const project = await prisma.project.create({
+      data: { ...data, clientId, clientName },
+      include,
+    });
     audit(req, 'project.create', 'Project', project.id, { name: project.name });
     res.status(201).json(project);
   }),

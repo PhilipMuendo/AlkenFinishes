@@ -11,6 +11,7 @@ import path from 'path';
 import { env } from '../config/env';
 import {
   ExtractionError,
+  findPossibleDuplicate,
   matchSupplier,
   receiptScanningAvailable,
   scanReceipt,
@@ -292,6 +293,16 @@ router.post(
         select: { id: true, name: true },
       });
       const supplier = matchSupplier(extracted.supplierName, suppliers);
+
+      const duplicate = await findPossibleDuplicate(
+        result.suggested.amount,
+        extracted.date,
+        supplier?.id ?? null,
+      );
+      if (duplicate) {
+        result.checks.push(duplicate);
+        result.needsReview = true;
+      }
 
       audit(req, 'companyExpense.scanReceipt', 'Expense', 'draft', {
         matched: !!supplier,

@@ -1,18 +1,17 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import {
+  loadSupplierLedger,
   payablesSummary,
   paymentSettles,
   supplierPositions,
-  type PayableCost,
-  type PayablePayment,
 } from '../services/payables';
+import { generateToken, hashToken } from '../services/accessLink';
 
 /**
  * Suppliers and the payables ledger.
@@ -34,44 +33,60 @@ const supplierSchema = z.object({
   active: z.coerce.boolean().optional(),
 });
 
-/** Costs on the ledger, with their payments, for the whole company. */
-async function loadLedger(where: Prisma.ExpenseWhereInput = {}) {
-  const expenses = await prisma.expense.findMany({
-    where: { supplierId: { not: null }, ...where },
-    select: {
-      id: true,
-      supplierId: true,
-      amount: true,
-      vatAmount: true,
-      taxInvoice: true,
-      dueDate: true,
-      expenseDate: true,
+/**
+ * A supplier's balance, aging position and bill history — the exact shape
+ * `GET /:id` returns. Exported so the public statement link
+ * (publicStatement.ts) shows the client this same view, not a second
+ * hand-rolled one that could drift from it.
+ */
+export async function buildSupplierStatement(supplierId: string) {
+  const supplier = await prisma.supplier.findUnique({ where: { id: supplierId } });
+  if (!supplier) return null;
+
+  const { costs, paymentsByCost } = await loadSupplierLedger({ supplierId: supplier.id });
+  const [position] = supplierPositions(costs, paymentsByCost);
+
+  // Every bill against this supplier, newest first, with its own position.
+  const bills = await prisma.expense.findMany({
+    where: { supplierId: supplier.id },
+    include: {
+      project: { select: { id: true, name: true } },
       payments: {
-        select: { amount: true, whtAmount: true, whtVatAmount: true },
+        orderBy: { paymentDate: 'desc' },
+        include: { paidBy: { select: { id: true, name: true } } },
       },
     },
+    orderBy: { expenseDate: 'desc' },
+    take: 500,
   });
 
-  const costs: PayableCost[] = expenses.map((e) => ({
-    id: e.id,
-    supplierId: e.supplierId,
-    amount: Number(e.amount),
-    vatAmount: Number(e.vatAmount),
-    taxInvoice: e.taxInvoice,
-    dueDate: e.dueDate,
-    expenseDate: e.expenseDate,
-  }));
-  const paymentsByCost = new Map<string, PayablePayment[]>(
-    expenses.map((e) => [
-      e.id,
-      e.payments.map((p) => ({
-        amount: Number(p.amount),
-        whtAmount: Number(p.whtAmount),
-        whtVatAmount: Number(p.whtVatAmount),
-      })),
-    ]),
-  );
-  return { costs, paymentsByCost };
+  return {
+    ...supplier,
+    position: position ?? null,
+    bills: bills.map((b) => ({
+      id: b.id,
+      projectId: b.projectId,
+      project: b.project,
+      description: b.description,
+      supplierInvoiceNo: b.supplierInvoiceNo,
+      amount: Number(b.amount),
+      vatAmount: Number(b.vatAmount),
+      taxInvoice: b.taxInvoice,
+      expenseDate: b.expenseDate,
+      dueDate: b.dueDate,
+      status: b.status,
+      paid: b.payments.reduce(
+        (s, p) =>
+          s +
+          paymentSettles({
+            amount: Number(p.amount),
+            whtAmount: Number(p.whtAmount),
+            whtVatAmount: Number(p.whtVatAmount),
+          }),
+        0,
+      ),
+    })),
+  };
 }
 
 router.get(
@@ -86,7 +101,7 @@ router.get(
         where: includeInactive === 'true' ? {} : { active: true },
         orderBy: { name: 'asc' },
       }),
-      loadLedger(),
+      loadSupplierLedger(),
     ]);
     const positions = new Map(
       supplierPositions(ledger.costs, ledger.paymentsByCost).map((p) => [p.supplierId, p]),
@@ -110,7 +125,7 @@ router.get(
 router.get(
   '/payables',
   asyncHandler(async (_req, res) => {
-    const { costs, paymentsByCost } = await loadLedger();
+    const { costs, paymentsByCost } = await loadSupplierLedger();
     const positions = supplierPositions(costs, paymentsByCost);
     const names = new Map(
       (
@@ -153,53 +168,41 @@ router.post(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
+    const statement = await buildSupplierStatement(req.params.id);
+    if (!statement) throw ApiError.notFound('Supplier not found');
+    res.json(statement);
+  }),
+);
+
+/**
+ * A reusable link a supplier can open with no login of their own to see
+ * their own balance and bill history — same pattern as the contract
+ * signing/quotation decision links, but not single-use: a statement is
+ * read-only, meant to be reopened, so it stays valid until it expires or is
+ * revoked rather than being consumed on first view.
+ */
+router.post(
+  '/:id/statement-link',
+  asyncHandler(async (req, res) => {
     const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
     if (!supplier) throw ApiError.notFound('Supplier not found');
 
-    const { costs, paymentsByCost } = await loadLedger({ supplierId: supplier.id });
-    const [position] = supplierPositions(costs, paymentsByCost);
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-    // Every bill against this supplier, newest first, with its own position.
-    const bills = await prisma.expense.findMany({
-      where: { supplierId: supplier.id },
-      include: {
-        project: { select: { id: true, name: true } },
-        payments: {
-          orderBy: { paymentDate: 'desc' },
-          include: { paidBy: { select: { id: true, name: true } } },
-        },
-      },
-      orderBy: { expenseDate: 'desc' },
-      take: 500,
-    });
+    await prisma.$transaction([
+      prisma.supplierStatementLink.updateMany({
+        where: { supplierId: supplier.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+      prisma.supplierStatementLink.create({
+        data: { supplierId: supplier.id, tokenHash, createdById: req.user!.id, expiresAt },
+      }),
+    ]);
 
-    res.json({
-      ...supplier,
-      position: position ?? null,
-      bills: bills.map((b) => ({
-        id: b.id,
-        projectId: b.projectId,
-        project: b.project,
-        description: b.description,
-        supplierInvoiceNo: b.supplierInvoiceNo,
-        amount: Number(b.amount),
-        vatAmount: Number(b.vatAmount),
-        taxInvoice: b.taxInvoice,
-        expenseDate: b.expenseDate,
-        dueDate: b.dueDate,
-        status: b.status,
-        paid: b.payments.reduce(
-          (s, p) =>
-            s +
-            paymentSettles({
-              amount: Number(p.amount),
-              whtAmount: Number(p.whtAmount),
-              whtVatAmount: Number(p.whtVatAmount),
-            }),
-          0,
-        ),
-      })),
-    });
+    audit(req, 'supplier.statementLink.create', 'Supplier', supplier.id);
+    res.status(201).json({ token, expiresAt });
   }),
 );
 
@@ -237,7 +240,7 @@ router.delete(
     const supplier = await prisma.supplier.findUnique({ where: { id: req.params.id } });
     if (!supplier) throw ApiError.notFound('Supplier not found');
 
-    const { costs, paymentsByCost } = await loadLedger({ supplierId: supplier.id });
+    const { costs, paymentsByCost } = await loadSupplierLedger({ supplierId: supplier.id });
     const [position] = supplierPositions(costs, paymentsByCost);
     if (position && position.outstanding > 0) {
       throw ApiError.conflict(

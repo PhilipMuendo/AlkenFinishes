@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
@@ -9,7 +8,14 @@ import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { removeUploadedFile, signFileUrl, upload, verifyUpload } from '../middleware/upload';
+import {
+  removeUploadedFile,
+  saveDataUrlImage,
+  signFileUrl,
+  upload,
+  verifyUpload,
+} from '../middleware/upload';
+import { generateToken, hashToken } from '../services/accessLink';
 import { env } from '../config/env';
 import { nextNumber, seriesYear } from '../services/numbering';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
@@ -90,6 +96,7 @@ function serialize(c: ContractRow) {
     boqUrl: signFileUrl(c.boqUrl),
     specsUrl: signFileUrl(c.specsUrl),
     clientSignatureImageUrl: signFileUrl(c.clientSignatureImageUrl),
+    companySignatureImageUrl: signFileUrl(c.companySignatureImageUrl),
   };
 }
 
@@ -323,8 +330,8 @@ router.post(
       );
     }
 
-    const token = crypto.randomBytes(32).toString('base64url');
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const token = generateToken();
+    const tokenHash = hashToken(token);
     const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
     await prisma.$transaction([
@@ -339,6 +346,75 @@ router.post(
 
     audit(req, 'contract.signingLink.create', 'Contract', contract.id);
     res.status(201).json({ token, expiresAt });
+  }),
+);
+
+const countersignSchema = z.object({
+  signerName: z.string().trim().min(2, 'Enter the name to sign as'),
+  signatureMethod: z.enum(['TYPED', 'DRAWN']),
+  signatureImage: z.string().optional(),
+});
+
+/**
+ * The office's own signature on the same executed document — the client
+ * signs first (through a link or the old scan-upload route), then whoever
+ * countersigns here captures their name/signature live, the same way a
+ * client does, rather than a saved signature reused across contracts.
+ */
+router.post(
+  '/:id/countersign',
+  asyncHandler(async (req, res) => {
+    const contract = await prisma.contract.findUnique({ where: { id: req.params.id } });
+    if (!contract) throw ApiError.notFound();
+    if (contract.status !== 'SIGNED') {
+      throw ApiError.conflict('The client has to sign before this can be countersigned');
+    }
+    if (contract.companySignerName) {
+      throw ApiError.conflict('This contract has already been countersigned');
+    }
+
+    const data = countersignSchema.parse(req.body);
+    if (data.signatureMethod === 'DRAWN' && !data.signatureImage) {
+      throw ApiError.badRequest('Draw your signature before continuing');
+    }
+
+    const signedAt = new Date();
+    const imageUrl =
+      data.signatureMethod === 'DRAWN' && data.signatureImage
+        ? await saveDataUrlImage(data.signatureImage)
+        : null;
+
+    let pdfUrl: string;
+    try {
+      pdfUrl = await renderCountersignedContractPdf(contract.id, {
+        name: data.signerName,
+        imageUrl,
+        signedAt,
+        ip: req.ip ?? 'unknown',
+      });
+    } catch (e) {
+      if (imageUrl) removeUploadedFile(imageUrl);
+      throw e;
+    }
+
+    if (contract.signedPdfUrl) removeUploadedFile(contract.signedPdfUrl);
+    const updated = await prisma.contract.update({
+      where: { id: contract.id },
+      data: {
+        signedPdfUrl: pdfUrl,
+        companySignerName: data.signerName,
+        companySignedAt: signedAt,
+        companySignatureImageUrl: imageUrl,
+        companySignedById: req.user!.id,
+      },
+      include,
+    });
+
+    audit(req, 'contract.countersign', 'Contract', contract.id, {
+      signerName: data.signerName,
+      signatureMethod: data.signatureMethod,
+    });
+    res.json(serialize(updated));
   }),
 );
 
@@ -954,6 +1030,52 @@ export async function renderClientSignedContractPdf(
   }
 
   return pdfUrl;
+}
+
+/**
+ * Renders the executed copy once the office countersigns (`POST
+ * /:id/countersign`) — same rendering path again, but this time BOTH
+ * signature blocks need to be present: the client's, already on the
+ * contract row from when they signed, and the company's, just captured.
+ * Re-reading the client's own fields here rather than trusting the caller
+ * to pass them through is what stops a countersign from ever silently
+ * dropping the client's signature off the document.
+ */
+export async function renderCountersignedContractPdf(
+  contractId: string,
+  companySignature: CapturedClientSignature,
+): Promise<string> {
+  const contract = (await prisma.contract.findUniqueOrThrow({
+    where: { id: contractId },
+    include: {
+      client: true,
+      quotation: { include: { lines: { orderBy: { sortOrder: 'asc' } } } },
+    },
+  })) as ContractForPdf;
+
+  const [company, invoicing, pipeline] = await Promise.all([
+    getCompanyProfile(),
+    getInvoicingConfig(),
+    getPipelineConfig(),
+  ]);
+  const clientSignature: CapturedClientSignature | undefined = contract.clientSignerName
+    ? {
+        name: contract.clientSignerName,
+        imageUrl: contract.clientSignatureImageUrl,
+        signedAt: contract.clientSignedAt ?? contract.signedDate ?? new Date(),
+        ip: contract.clientSignatureIp ?? 'unknown',
+      }
+    : undefined;
+
+  return renderContractPdf(
+    contract,
+    company,
+    pipeline,
+    invoicing.defaultPaymentTermsDays,
+    invoicing.footerNote,
+    clientSignature,
+    companySignature,
+  );
 }
 
 export default router;

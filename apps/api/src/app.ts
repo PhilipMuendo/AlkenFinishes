@@ -16,6 +16,9 @@ import contractsRouter from './modules/contracts';
 import expensesRouter from './modules/expenses';
 import companyExpensesRouter from './modules/companyExpenses';
 import publicSignRouter from './modules/publicSign';
+import publicQuoteRouter from './modules/publicQuote';
+import publicStatementRouter from './modules/publicStatement';
+import manualRouter from './modules/manual';
 import materialRequestsRouter from './modules/materialRequests';
 import snagsRouter from './modules/snags';
 import safetyRouter from './modules/safety';
@@ -100,9 +103,12 @@ export function createApp() {
   v1.use('/projects/:projectId/command-centre', commandCentreRouter);
   v1.use('/chat', chatRouter); // read-only Q&A, scoped by the asking user
   v1.use('/notifications', notificationsRouter);
+  v1.use('/manual', manualRouter);
   // No requireAuth — a client has no login. See publicSign.ts's own docblock
   // for how it stays scoped to exactly the one contract a token names.
   v1.use('/sign', publicSignRouter);
+  v1.use('/quote', publicQuoteRouter);
+  v1.use('/statement', publicStatementRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);

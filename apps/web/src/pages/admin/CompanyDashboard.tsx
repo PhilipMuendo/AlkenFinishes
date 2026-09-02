@@ -9,8 +9,13 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  FileSignature,
   FileText,
+  Receipt,
+  Send,
+  Target,
   UserX,
+  Wallet,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -33,10 +38,21 @@ interface Section {
   icon: LucideIcon;
   tone: Tone;
   detail: (item: any) => string;
+  /** Defaults to a per-site link. Overridden for groups with no single site. */
+  href?: (item: any) => string;
 }
 
 // Ordered by urgency: money first, then risk, then operational nudges.
 const SECTIONS: Section[] = [
+  {
+    key: 'invoiceOverdue',
+    label: 'Invoices overdue',
+    hint: 'Individual invoices past their own due date',
+    icon: Receipt,
+    tone: 'red',
+    detail: (i) => `${fmtMoney(i.balance)} · ${i.daysOverdue}d overdue`,
+    href: (i) => `/admin/sites/${i.projectId}`,
+  },
   {
     key: 'paymentOverdue',
     label: 'Payments overdue',
@@ -85,7 +101,50 @@ const SECTIONS: Section[] = [
     tone: 'amber',
     detail: (i) => `${i.total} pending`,
   },
+  {
+    key: 'signingLinksOutstanding',
+    label: 'Signature not yet collected',
+    hint: 'Contracts sent for e-signature 5+ days ago, still unsigned',
+    icon: FileSignature,
+    tone: 'amber',
+    detail: (i) => `${i.contractNo ?? 'Draft'} · sent ${i.daysOutstanding}d ago`,
+    href: () => '/admin/contracts',
+  },
+  {
+    key: 'companyExpensesPending',
+    label: 'Company expenses pending',
+    hint: 'Spend not tied to a site, awaiting approval 3+ days',
+    icon: Wallet,
+    tone: 'amber',
+    detail: (i) => `${fmtMoney(i.amount)} · ${i.daysOutstanding}d waiting`,
+    href: () => '/admin/company-expenses',
+  },
+  {
+    key: 'quotationsAwaitingDecision',
+    label: 'Quotations awaiting a reply',
+    hint: 'Sent to the client 5+ days ago, no decision yet',
+    icon: Send,
+    tone: 'blue',
+    detail: (i) => `${i.quotationNo ?? 'Draft'} · sent ${i.daysOutstanding}d ago`,
+    href: () => '/admin/quotations',
+  },
+  {
+    key: 'staleLeads',
+    label: 'Leads gone quiet',
+    hint: 'No activity in 10+ days',
+    icon: Target,
+    tone: 'blue',
+    detail: (i) => `${STAGE_LABEL[i.stage as keyof typeof STAGE_LABEL] ?? i.stage} · ${i.daysStale}d quiet`,
+    href: () => '/admin/leads',
+  },
 ];
+
+const STAGE_LABEL = {
+  NEW: 'New',
+  CONTACTED: 'Contacted',
+  SITE_VISIT: 'Site visit',
+  QUOTED: 'Quoted',
+};
 
 const toneChip: Record<Tone, string> = {
   red: 'bg-danger-surface text-danger-fg',
@@ -100,6 +159,7 @@ const toneText: Record<Tone, string> = {
 
 function AttentionSection({ section, items }: { section: Section; items: Item[] }) {
   const { icon: Icon, tone } = section;
+  const hrefFor = section.href ?? ((item: Item) => `/admin/sites/${item.id}`);
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-3 border-b border-hairline px-4 py-3">
@@ -118,7 +178,7 @@ function AttentionSection({ section, items }: { section: Section; items: Item[] 
         {items.map((item) => (
           <li key={item.id}>
             <Link
-              to={`/admin/sites/${item.id}`}
+              to={hrefFor(item)}
               className="flex items-center justify-between gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken"
             >
               <span className="truncate text-sm font-medium text-fg">{item.name}</span>

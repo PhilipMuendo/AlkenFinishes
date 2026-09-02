@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler, ApiError } from '../utils/http';
 import { audit } from '../middleware/audit';
 import { signFileUrl, saveDataUrlImage, removeUploadedFile } from '../middleware/upload';
 import { signLimiter } from '../middleware/rateLimit';
+import { hashToken, isLinkUsable, looksLikeToken } from '../services/accessLink';
 import { renderClientSignedContractPdf } from './contracts';
 
 /**
@@ -20,20 +20,15 @@ import { renderClientSignedContractPdf } from './contracts';
 const router = Router();
 router.use(signLimiter);
 
-function hashToken(token: string): string {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
-
 const INVALID_LINK = 'This link is invalid or has expired. Ask us to send a new one.';
 
 async function loadLink(token: string) {
-  if (!token || token.length > 128) return null;
+  if (!looksLikeToken(token)) return null;
   const link = await prisma.contractSigningLink.findUnique({
     where: { tokenHash: hashToken(token) },
     include: { contract: { include: { client: true } } },
   });
-  if (!link) return null;
-  if (link.revokedAt || link.usedAt || link.expiresAt.getTime() < Date.now()) return null;
+  if (!link || !isLinkUsable(link)) return null;
   return link;
 }
 

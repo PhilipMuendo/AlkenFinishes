@@ -7,6 +7,14 @@ import { LoginPage } from './pages/Login';
 const SignContractPage = lazy(() =>
   import('./pages/public/SignContract').then((m) => ({ default: m.SignContractPage })),
 );
+const DecideQuotationPage = lazy(() =>
+  import('./pages/public/DecideQuotation').then((m) => ({ default: m.DecideQuotationPage })),
+);
+const SupplierStatementPage = lazy(() =>
+  import('./pages/public/SupplierStatement').then((m) => ({
+    default: m.SupplierStatementPage,
+  })),
+);
 
 // Route-level code splitting: supervisors never download the admin bundle
 // (recharts included), and vice versa.
@@ -107,14 +115,19 @@ export default function App() {
   const { user, loading } = useAuth();
   const location = useLocation();
 
-  // Public — a client signing a contract has no session of their own, so
-  // this is checked before the loading/login gates below, which apply to
-  // every other route. The first (and only) unauthenticated route in the app.
-  if (location.pathname.startsWith('/sign/')) {
+  // Public — a client with no session of their own, so these are checked
+  // before the loading/login gates below, which apply to every other route.
+  if (
+    location.pathname.startsWith('/sign/') ||
+    location.pathname.startsWith('/quote/') ||
+    location.pathname.startsWith('/statement/')
+  ) {
     return (
       <Suspense fallback={<Loading />}>
         <Routes>
           <Route path="/sign/:token" element={<SignContractPage />} />
+          <Route path="/quote/:token" element={<DecideQuotationPage />} />
+          <Route path="/statement/:token" element={<SupplierStatementPage />} />
         </Routes>
       </Suspense>
     );

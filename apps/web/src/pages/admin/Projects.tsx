@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import type { AppUser, Project } from '@/lib/types';
+import type { AppUser, Client, Project } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { Combobox } from '@/components/ui/combobox';
 import { Dialog } from '@/components/ui/dialog';
 import { Field, Input, Select } from '@/components/ui/input';
 import { Empty } from '@/components/ui/table';
@@ -24,6 +25,11 @@ export function ProjectsPage() {
     queryFn: () => api<AppUser[]>('/users'),
   });
   const supervisors = users?.filter((u) => u.role === 'SUPERVISOR' && u.active) ?? [];
+  const { data: clients } = useQuery({
+    queryKey: ['clients', ''],
+    queryFn: () => api<Client[]>('/clients'),
+    enabled: open,
+  });
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api('/projects', { body }),
@@ -38,9 +44,21 @@ export function ProjectsPage() {
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
+    const clientId = fd.get('clientId');
+    // The server re-derives and snapshots the name from clientId when one is
+    // chosen — this is only what shows on screen until that response comes
+    // back, and the fallback for a client with no register entry.
+    const clientName = clientId
+      ? (clients?.find((c) => c.id === clientId)?.name ?? '')
+      : String(fd.get('clientNameFreeText') ?? '').trim();
+    if (!clientId && !clientName) {
+      toast.error('Pick a client from the list, or type their name.');
+      return;
+    }
     create.mutate({
       name: fd.get('name'),
-      clientName: fd.get('clientName'),
+      clientId: clientId || undefined,
+      clientName,
       location: fd.get('location'),
       contractValue: Number(fd.get('contractValue')),
       startDate: fd.get('startDate'),
@@ -93,8 +111,19 @@ export function ProjectsPage() {
           <Field label="Site name">
             <Input name="name" required placeholder="Karen Residence" />
           </Field>
-          <Field label="Client name">
-            <Input name="clientName" required />
+          <Field
+            label="Client"
+            hint="Not on the list yet? Leave this blank and type their name below instead."
+          >
+            <Combobox
+              name="clientId"
+              placeholder="Search clients…"
+              aria-label="Client"
+              options={(clients ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            />
+          </Field>
+          <Field label="Or type a client name (no register entry yet)">
+            <Input name="clientNameFreeText" placeholder="Leave blank if you picked one above" />
           </Field>
           <Field label="Location">
             <Input name="location" required />

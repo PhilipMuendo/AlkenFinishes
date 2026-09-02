@@ -1,7 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Download, FileSignature, HardHat, Link2, Plus, Send, Trash2, Upload } from 'lucide-react';
+import {
+  Download,
+  FileSignature,
+  HardHat,
+  Link2,
+  PenLine,
+  Plus,
+  Send,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
 import type { AppUser, Contract, ContractStatus, Variation } from '@/lib/types';
 import { fmtDate, fmtMoney, todayISO } from '@/lib/format';
@@ -17,6 +27,7 @@ import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { PageHeader } from '@/components/ui/page-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/toast';
+import { SignaturePad, type SignaturePadHandle } from '@/features/SignaturePad';
 
 const STATUS_TONE: Record<ContractStatus, 'slate' | 'blue' | 'green' | 'red' | 'yellow'> = {
   DRAFT: 'slate',
@@ -46,6 +57,9 @@ export function ContractsPage() {
   const [converting, setConverting] = useState(false);
   const [attaching, setAttaching] = useState(false);
   const [signingLinkUrl, setSigningLinkUrl] = useState<string | null>(null);
+  const [countersigning, setCountersigning] = useState(false);
+  const [countersignReady, setCountersignReady] = useState(false);
+  const countersignPadRef = useRef<SignaturePadHandle>(null);
 
   const { data: contracts, isLoading } = useQuery({
     queryKey: ['contracts', status],
@@ -103,6 +117,22 @@ export function ContractsPage() {
       toast.success('Signing link copied. Share it with the client — it works for 14 days.');
     },
     onError: (e) => toast.error(errText(e, 'The signing link was not created.')),
+  });
+
+  const countersign = useMutation({
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { signerName: string; signatureMethod: 'TYPED' | 'DRAWN'; signatureImage?: string };
+    }) => api<Contract>(`/contracts/${id}/countersign`, { body }),
+    onSuccess: () => {
+      toast.success('Countersigned. The executed copy now carries both signatures.');
+      invalidate();
+      setCountersigning(false);
+    },
+    onError: (e) => toast.error(errText(e, 'The countersignature was not recorded.')),
   });
 
   const addVariation = useMutation({
@@ -371,6 +401,13 @@ export function ContractsPage() {
               </p>
             )}
 
+            {contract.companySignerName && (
+              <p className="rounded-lg bg-good-surface p-3 text-sm text-good-fg">
+                Countersigned by {contract.companySignerName}
+                {contract.companySignedAt && ` on ${fmtDate(contract.companySignedAt)}`}.
+              </p>
+            )}
+
             {contract.project && (
               <p className="rounded-lg bg-good-surface p-3 text-sm text-good-fg">
                 Running as site{' '}
@@ -412,6 +449,13 @@ export function ContractsPage() {
                   </Button>
                 </>
               )}
+              {contract.status === 'SIGNED' &&
+                contract.clientSignerName &&
+                !contract.companySignerName && (
+                  <Button onClick={() => setCountersigning(true)}>
+                    <PenLine size={16} /> Countersign
+                  </Button>
+                )}
               {!contract.projectId && contract.status !== 'DRAFT' && (
                 <>
                   {/* For jobs already running when the office came on board:
@@ -461,6 +505,34 @@ export function ContractsPage() {
             }}
           >
             Copy again
+          </Button>
+        </div>
+      </Dialog>
+
+      {/* ---- Countersign ---- */}
+      <Dialog
+        open={countersigning}
+        onClose={() => setCountersigning(false)}
+        title="Countersign this contract"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-fg-muted">
+            The client has already signed. Add the company&rsquo;s signature to the same document.
+          </p>
+          <SignaturePad ref={countersignPadRef} onReadyChange={setCountersignReady} />
+          {countersign.isError && (
+            <p className="text-sm text-danger-fg">{errorMessage(countersign.error)}</p>
+          )}
+          <Button
+            className="w-full"
+            disabled={!countersignReady || countersign.isPending}
+            onClick={() => {
+              const signature = countersignPadRef.current?.getSignature();
+              if (!signature || !contract) return;
+              countersign.mutate({ id: contract.id, body: signature });
+            }}
+          >
+            {countersign.isPending ? 'Saving…' : 'Countersign'}
           </Button>
         </div>
       </Dialog>
