@@ -264,6 +264,9 @@ model User {
   quotationDecisionLinks  QuotationDecisionLink[]     @relation("QuotationDecisionLinkCreatedBy")
   contractsCountersigned  Contract[]                  @relation("ContractCountersignedBy")
   supplierStatementLinks  SupplierStatementLink[]     @relation("SupplierStatementLinkCreatedBy")
+  vatFilings              VatFiling[]
+  incomeTaxInstalments    IncomeTaxInstalment[]
+  incomeTaxReturns        IncomeTaxReturn[]
 }
 
 model RefreshToken {
@@ -1548,6 +1551,67 @@ model Setting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+// One row per calendar month (the Kenyan VAT period). `netVatPayable` is a
+// SNAPSHOT taken at the moment a filing is recorded, never recomputed later —
+// so this stays a record of what was actually filed, even if a bill entered
+// afterwards would change today's live figure for the same month.
+model VatFiling {
+  id            String    @id @default(cuid())
+  periodFrom    DateTime
+  periodTo      DateTime
+  netVatPayable Decimal   @db.Decimal(14, 2)
+  filedAt       DateTime?
+  paidAt        DateTime?
+  itaxAckNo     String?
+  notes         String?
+  createdById   String
+  createdBy     User      @relation(fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now())
+
+  @@unique([periodFrom, periodTo])
+}
+
+// A quarter of the self-declared "instalment tax" a business estimates it
+// will owe for the year and pays in four advance instalments. `dueDate`
+// starts at a default and stays editable — KRA's exact day is easy to get
+// subtly wrong and belongs to the user to confirm, not this app to assert.
+model IncomeTaxInstalment {
+  id                  String    @id @default(cuid())
+  taxYear             Int
+  instalmentNo         Int
+  dueDate             DateTime
+  estimatedTaxForYear Decimal   @db.Decimal(14, 2) @default(0)
+  amountPaid          Decimal   @db.Decimal(14, 2) @default(0)
+  paidAt              DateTime?
+  itaxAckNo           String?
+  notes               String?
+  createdById         String
+  createdBy           User      @relation(fields: [createdById], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([taxYear, instalmentNo])
+}
+
+// The annual self-assessment return. `taxableProfitEstimate` is seeded once
+// from companyFinancials() as a STARTING SUGGESTION and never silently
+// overwritten afterward — it excludes company expenses and prior-year losses,
+// so the user is expected to correct it, not trust it as a filed figure.
+model IncomeTaxReturn {
+  id                    String    @id @default(cuid())
+  taxYear               Int       @unique
+  taxableProfitEstimate Decimal   @db.Decimal(14, 2) @default(0)
+  taxDue                Decimal   @db.Decimal(14, 2) @default(0)
+  filedAt               DateTime?
+  paidAt                DateTime?
+  itaxAckNo             String?
+  notes                 String?
+  createdById           String
+  createdBy             User      @relation(fields: [createdById], references: [id])
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model AuditLog {

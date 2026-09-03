@@ -212,3 +212,55 @@ export async function outstandingCertificates() {
     ),
   }));
 }
+
+/**
+ * Whether a given VAT period has actually been filed and paid on iTax.
+ *
+ * Deliberately separate from `taxPosition()`: that function computes what is
+ * owed for a period LIVE, from whatever has been entered so far, and keeps
+ * recomputing as more bills/invoices land. This is a filing record — a fact
+ * about what was actually submitted, frozen the moment it was recorded. The
+ * two are shown side by side on the Tax page rather than merged into one.
+ */
+export async function getVatFiling(period: TaxPeriod) {
+  return prisma.vatFiling.findUnique({
+    where: { periodFrom_periodTo: { periodFrom: period.from, periodTo: period.to } },
+    include: { createdBy: { select: { id: true, name: true } } },
+  });
+}
+
+/**
+ * Record (or correct) a period's filing. `netVatPayable` is always taken from
+ * a fresh `taxPosition()` call at the moment of recording, never from the
+ * caller — so what gets frozen here is genuinely what the period showed when
+ * someone filed it, not a number that could be hand-typed to disagree with
+ * the ledger it is supposed to summarise.
+ */
+export async function recordVatFiling(
+  period: TaxPeriod,
+  data: { filedAt?: Date | null; paidAt?: Date | null; itaxAckNo?: string | null; notes?: string | null },
+  userId: string,
+) {
+  const pos = await taxPosition(period);
+  return prisma.vatFiling.upsert({
+    where: { periodFrom_periodTo: { periodFrom: period.from, periodTo: period.to } },
+    create: {
+      periodFrom: period.from,
+      periodTo: period.to,
+      netVatPayable: pos.vat.netVatPayable,
+      filedAt: data.filedAt ?? null,
+      paidAt: data.paidAt ?? null,
+      itaxAckNo: data.itaxAckNo ?? null,
+      notes: data.notes ?? null,
+      createdById: userId,
+    },
+    update: {
+      netVatPayable: pos.vat.netVatPayable,
+      ...(data.filedAt !== undefined && { filedAt: data.filedAt }),
+      ...(data.paidAt !== undefined && { paidAt: data.paidAt }),
+      ...(data.itaxAckNo !== undefined && { itaxAckNo: data.itaxAckNo }),
+      ...(data.notes !== undefined && { notes: data.notes }),
+    },
+    include: { createdBy: { select: { id: true, name: true } } },
+  });
+}

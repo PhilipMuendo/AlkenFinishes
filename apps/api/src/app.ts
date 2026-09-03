@@ -33,6 +33,7 @@ import workersRouter from './modules/workers';
 import toolsRouter from './modules/tools';
 import suppliersRouter from './modules/suppliers';
 import taxRouter from './modules/tax';
+import incomeTaxRouter from './modules/incomeTax';
 import payrollRouter from './modules/payroll';
 import attendanceRouter, { deviceRouter, adminDeviceRouter } from './modules/attendance';
 import iclockRouter from './modules/iclock';
@@ -93,6 +94,7 @@ export function createApp() {
   v1.use('/tools', toolsRouter);
   v1.use('/suppliers', suppliersRouter); // supplier list + company-wide payables
   v1.use('/tax', taxRouter); // VAT position and withholding, both sides
+  v1.use('/income-tax', incomeTaxRouter); // Corporation Tax instalments and the annual return
   v1.use('/payroll', payrollRouter);
   v1.use('/attendance', deviceRouter); // POST /attendance/device-sync (API-key auth)
   v1.use('/devices', adminDeviceRouter);

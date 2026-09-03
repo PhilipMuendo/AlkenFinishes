@@ -2,12 +2,19 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileCheck, Landmark } from 'lucide-react';
 import { api, ApiRequestError, errText } from '@/lib/api';
-import type { OutstandingCertificate, TaxPosition } from '@/lib/types';
+import type {
+  IncomeTaxInstalment,
+  IncomeTaxReturn,
+  IncomeTaxYearRecords,
+  OutstandingCertificate,
+  TaxPosition,
+  VatFiling,
+} from '@/lib/types';
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
-import { Field, Input } from '@/components/ui/input';
+import { Field, Input, Textarea } from '@/components/ui/input';
 import { QueryState } from '@/components/ui/query-state';
 import { Table, Td, Th, Empty } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
@@ -32,6 +39,7 @@ export function TaxPage() {
   const qc = useQueryClient();
   const [month, setMonth] = useState(monthValue(new Date()));
   const [certifying, setCertifying] = useState<OutstandingCertificate | null>(null);
+  const [filingOpen, setFilingOpen] = useState(false);
 
   const [year, mon] = month.split('-').map(Number);
   const from = new Date(year, mon - 1, 1);
@@ -44,6 +52,12 @@ export function TaxPage() {
         `/tax/position?from=${from.toISOString()}&to=${to.toISOString()}`,
       ),
   });
+  const filingQuery = useQuery({
+    queryKey: ['tax', 'vat-filing', month],
+    queryFn: () =>
+      api<VatFiling | null>(`/tax/vat-filing?from=${from.toISOString()}&to=${to.toISOString()}`),
+  });
+  const { data: filing } = filingQuery;
   const certsQuery = useQuery({
     queryKey: ['tax', 'certificates'],
     queryFn: () => api<OutstandingCertificate[]>('/tax/certificates-outstanding'),
@@ -61,8 +75,27 @@ export function TaxPage() {
     onError: (e) => toast.error(errText(e, 'The certificate was not recorded.')),
   });
 
+  const recordFiling = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/tax/vat-filing', {
+        method: 'POST',
+        body: { from: from.toISOString(), to: to.toISOString(), ...body },
+      }),
+    onSuccess: () => {
+      toast.success('Filing recorded.');
+      void qc.invalidateQueries({ queryKey: ['tax', 'vat-filing'] });
+      setFilingOpen(false);
+    },
+    onError: (e) => toast.error(errText(e, 'The filing was not recorded.')),
+  });
+
   const vat = data?.vat;
   const w = data?.withholding;
+  // VAT is due the 20th of the month following the period. Only worth
+  // flagging once that date is actually in the past — a fresh, unfiled
+  // current month is normal, not overdue.
+  const vatDueDate = new Date(to.getFullYear(), to.getMonth() + 1, 20);
+  const vatOverdue = !filing?.filedAt && vatDueDate < new Date();
 
   return (
     <div className="space-y-5">
@@ -113,6 +146,29 @@ export function TaxPage() {
               tick the box on the bill once you have them.
             </p>
           )}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-hairline pt-2">
+            <div className="text-xs">
+              {filing?.paidAt ? (
+                <span className="text-fg-muted">
+                  Paid {fmtDate(filing.paidAt)}
+                  {filing.itaxAckNo ? ` · Ack ${filing.itaxAckNo}` : ''}
+                </span>
+              ) : filing?.filedAt ? (
+                <span className="text-fg-muted">
+                  Filed {fmtDate(filing.filedAt)}, not yet marked paid
+                  {filing.itaxAckNo ? ` · Ack ${filing.itaxAckNo}` : ''}
+                </span>
+              ) : (
+                <span className={vatOverdue ? 'font-medium text-danger-fg' : 'text-fg-muted'}>
+                  Not yet filed{vatOverdue ? ' — overdue (due the 20th)' : ''}
+                </span>
+              )}
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setFilingOpen(true)}>
+              Record filing
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -217,12 +273,63 @@ export function TaxPage() {
         )}
       </Card>
 
+      <IncomeTaxSection />
+
       <p className="flex items-start gap-2 text-xs text-fg-subtle">
         <Landmark size={14} className="mt-0.5 shrink-0" />
         These figures report what has been entered against each invoice, bill and receipt. They do
         not decide what is legally due, and they are not a filed return — check them against your
         records before submitting anything to KRA.
       </p>
+
+      <Dialog
+        open={filingOpen}
+        onClose={() => {
+          setFilingOpen(false);
+          recordFiling.reset();
+        }}
+        title="Record VAT filing"
+      >
+        <form
+          key={filing?.id ?? month}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const filedAt = String(fd.get('filedAt') || '');
+            const paidAt = String(fd.get('paidAt') || '');
+            recordFiling.mutate({
+              filedAt: filedAt || null,
+              paidAt: paidAt || null,
+              itaxAckNo: String(fd.get('itaxAckNo') || '').trim() || null,
+              notes: String(fd.get('notes') || '').trim() || null,
+            });
+          }}
+          className="space-y-3"
+        >
+          <p className="text-sm text-fg-muted">
+            Net VAT for {month}: {fmtMoney(Math.abs(vat?.netVatPayable ?? 0))}
+            {(vat?.netVatPayable ?? 0) < 0 ? ' (credit carried forward)' : ' payable'}.
+          </p>
+          <Field label="Filed on">
+            <Input name="filedAt" type="date" defaultValue={filing?.filedAt?.slice(0, 10) ?? ''} />
+          </Field>
+          <Field label="Paid on">
+            <Input name="paidAt" type="date" defaultValue={filing?.paidAt?.slice(0, 10) ?? ''} />
+          </Field>
+          <Field label="iTax acknowledgement no.">
+            <Input name="itaxAckNo" defaultValue={filing?.itaxAckNo ?? ''} />
+          </Field>
+          <Field label="Notes">
+            <Textarea name="notes" rows={2} defaultValue={filing?.notes ?? ''} />
+          </Field>
+          {recordFiling.isError && (
+            <p className="text-sm text-danger-fg">{errText(recordFiling.error, 'Failed to save')}</p>
+          )}
+          <Button type="submit" className="w-full" disabled={recordFiling.isPending}>
+            Save
+          </Button>
+        </form>
+      </Dialog>
 
       <Dialog
         open={!!certifying}
@@ -266,6 +373,305 @@ export function TaxPage() {
         )}
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Corporation Tax: the four instalment payments and the annual return, for
+ * one tax year at a time. Hidden entirely (with a pointer to Settings) unless
+ * the company has switched this on — most of what's here would otherwise be
+ * an empty, unexplained set of zero-value rows.
+ */
+function IncomeTaxSection() {
+  const qc = useQueryClient();
+  const [taxYear, setTaxYear] = useState(new Date().getFullYear());
+  const [editingInstalment, setEditingInstalment] = useState<IncomeTaxInstalment | null>(null);
+  const [editingReturn, setEditingReturn] = useState<IncomeTaxReturn | null>(null);
+
+  const query = useQuery({
+    queryKey: ['income-tax', taxYear],
+    queryFn: () => api<IncomeTaxYearRecords>(`/income-tax/${taxYear}`),
+  });
+  const { data } = query;
+
+  const saveInstalment = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      api(`/income-tax/instalments/${id}`, { method: 'PUT', body }),
+    onSuccess: () => {
+      toast.success('Instalment updated.');
+      void qc.invalidateQueries({ queryKey: ['income-tax', taxYear] });
+      setEditingInstalment(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The instalment was not saved.')),
+  });
+
+  const saveReturn = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api(`/income-tax/return/${taxYear}`, { method: 'PUT', body }),
+    onSuccess: () => {
+      toast.success('Return updated.');
+      void qc.invalidateQueries({ queryKey: ['income-tax', taxYear] });
+      setEditingReturn(null);
+    },
+    onError: (e) => toast.error(errText(e, 'The return was not saved.')),
+  });
+
+  if (!query.isFetched && !data) return null; // nothing to show while first loading — no layout jump
+  if (data && !data.config.enabled) return null;
+
+  const ret = data?.return;
+  const returnDue = new Date(taxYear + 1, 5, 30); // 30 June of the following year
+  const returnOverdue = ret && !ret.filedAt && returnDue < new Date();
+
+  return (
+    <>
+      <div className="flex flex-wrap items-end justify-between gap-3 pt-2">
+        <div>
+          <h2 className="text-sm font-semibold text-fg">Income tax (Corporation Tax)</h2>
+          <p className="text-xs text-fg-muted">Instalment payments and the annual return</p>
+        </div>
+        <Field label="Tax year">
+          <Input
+            type="number"
+            value={taxYear}
+            onChange={(e) => setTaxYear(Number(e.target.value) || taxYear)}
+            className="w-28"
+          />
+        </Field>
+      </div>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-1">
+          <CardTitle className="text-sm">Instalment tax</CardTitle>
+          <p className="text-xs text-fg-muted">
+            Four advance payments toward the year's estimated tax. Due dates are a starting point —
+            confirm the current date on iTax.
+          </p>
+        </CardHeader>
+        <QueryState query={query} rows={4} noun="instalments" />
+        {data && (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Due</Th>
+                <Th priority="sm" className="text-right">Estimated tax for year</Th>
+                <Th className="text-right">Due this instalment</Th>
+                <Th priority="lg">Status</Th>
+                <Th />
+              </tr>
+            </thead>
+            <tbody>
+              {data.instalments.map((i) => {
+                const overdue = !i.paidAt && new Date(i.dueDate) < new Date();
+                return (
+                  <tr key={i.id}>
+                    <Td className="whitespace-nowrap">
+                      #{i.instalmentNo} · {fmtDate(i.dueDate)}
+                    </Td>
+                    <Td priority="sm" className="text-right tabular-nums">
+                      {fmtMoney(i.estimatedTaxForYear)}
+                    </Td>
+                    <Td className="text-right font-medium tabular-nums">
+                      {fmtMoney(i.estimatedTaxForYear / 4)}
+                    </Td>
+                    <Td priority="lg">
+                      {i.paidAt ? (
+                        <span className="text-fg-muted">
+                          Paid {fmtDate(i.paidAt)}
+                          {i.itaxAckNo ? ` · ${i.itaxAckNo}` : ''}
+                        </span>
+                      ) : (
+                        <span className={overdue ? 'font-medium text-danger-fg' : 'text-fg-muted'}>
+                          {overdue ? 'Overdue' : 'Not yet paid'}
+                        </span>
+                      )}
+                    </Td>
+                    <Td className="text-right">
+                      <Button size="sm" variant="outline" onClick={() => setEditingInstalment(i)}>
+                        Record payment
+                      </Button>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
+      </Card>
+
+      {ret && (
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-sm">Annual return</CardTitle>
+            <p className="text-xs text-fg-muted">
+              Due 30 June {taxYear + 1}. Taxable profit is a starting suggestion from the company's
+              own project figures — it excludes company expenses and any prior-year losses, so
+              correct it before relying on it.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Line label="Taxable profit (estimate)" value={ret.taxableProfitEstimate} />
+            <div className="border-t border-hairline pt-2">
+              <Line label="Tax due" value={ret.taxDue} strong />
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <span className={returnOverdue ? 'text-xs font-medium text-danger-fg' : 'text-xs text-fg-muted'}>
+                {ret.paidAt
+                  ? `Paid ${fmtDate(ret.paidAt)}${ret.itaxAckNo ? ` · ${ret.itaxAckNo}` : ''}`
+                  : ret.filedAt
+                    ? `Filed ${fmtDate(ret.filedAt)}, not yet marked paid`
+                    : returnOverdue
+                      ? 'Not yet filed — overdue'
+                      : 'Not yet filed'}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setEditingReturn(ret)}>
+                Record filing
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog
+        open={!!editingInstalment}
+        onClose={() => {
+          setEditingInstalment(null);
+          saveInstalment.reset();
+        }}
+        title={editingInstalment ? `Instalment #${editingInstalment.instalmentNo}` : ''}
+      >
+        {editingInstalment && (
+          <form
+            key={editingInstalment.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const paidAt = String(fd.get('paidAt') || '');
+              saveInstalment.mutate({
+                id: editingInstalment.id,
+                body: {
+                  dueDate: new Date(String(fd.get('dueDate'))).toISOString(),
+                  estimatedTaxForYear: Number(fd.get('estimatedTaxForYear')),
+                  amountPaid: Number(fd.get('amountPaid')),
+                  paidAt: paidAt || null,
+                  itaxAckNo: String(fd.get('itaxAckNo') || '').trim() || null,
+                  notes: String(fd.get('notes') || '').trim() || null,
+                },
+              });
+            }}
+            className="space-y-3"
+          >
+            <Field label="Due date">
+              <Input
+                name="dueDate"
+                type="date"
+                defaultValue={editingInstalment.dueDate.slice(0, 10)}
+                required
+              />
+            </Field>
+            <Field label="Estimated tax for the year">
+              <Input
+                name="estimatedTaxForYear"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={editingInstalment.estimatedTaxForYear}
+              />
+            </Field>
+            <Field label="Amount paid this instalment">
+              <Input
+                name="amountPaid"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={editingInstalment.amountPaid}
+              />
+            </Field>
+            <Field label="Paid on">
+              <Input name="paidAt" type="date" defaultValue={editingInstalment.paidAt?.slice(0, 10) ?? ''} />
+            </Field>
+            <Field label="iTax acknowledgement no.">
+              <Input name="itaxAckNo" defaultValue={editingInstalment.itaxAckNo ?? ''} />
+            </Field>
+            <Field label="Notes">
+              <Textarea name="notes" rows={2} defaultValue={editingInstalment.notes ?? ''} />
+            </Field>
+            {saveInstalment.isError && (
+              <p className="text-sm text-danger-fg">{errText(saveInstalment.error, 'Failed to save')}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={saveInstalment.isPending}>
+              Save
+            </Button>
+          </form>
+        )}
+      </Dialog>
+
+      <Dialog
+        open={!!editingReturn}
+        onClose={() => {
+          setEditingReturn(null);
+          saveReturn.reset();
+        }}
+        title="Annual return"
+      >
+        {editingReturn && (
+          <form
+            key={editingReturn.id}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              const filedAt = String(fd.get('filedAt') || '');
+              const paidAt = String(fd.get('paidAt') || '');
+              saveReturn.mutate({
+                taxableProfitEstimate: Number(fd.get('taxableProfitEstimate')),
+                taxDue: Number(fd.get('taxDue')),
+                filedAt: filedAt || null,
+                paidAt: paidAt || null,
+                itaxAckNo: String(fd.get('itaxAckNo') || '').trim() || null,
+                notes: String(fd.get('notes') || '').trim() || null,
+              });
+            }}
+            className="space-y-3"
+          >
+            <Field label="Taxable profit (estimate)">
+              <Input
+                name="taxableProfitEstimate"
+                type="number"
+                step="0.01"
+                defaultValue={editingReturn.taxableProfitEstimate}
+              />
+            </Field>
+            <Field label="Tax due">
+              <Input
+                name="taxDue"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={editingReturn.taxDue}
+              />
+            </Field>
+            <Field label="Filed on">
+              <Input name="filedAt" type="date" defaultValue={editingReturn.filedAt?.slice(0, 10) ?? ''} />
+            </Field>
+            <Field label="Paid on">
+              <Input name="paidAt" type="date" defaultValue={editingReturn.paidAt?.slice(0, 10) ?? ''} />
+            </Field>
+            <Field label="iTax acknowledgement no.">
+              <Input name="itaxAckNo" defaultValue={editingReturn.itaxAckNo ?? ''} />
+            </Field>
+            <Field label="Notes">
+              <Textarea name="notes" rows={2} defaultValue={editingReturn.notes ?? ''} />
+            </Field>
+            {saveReturn.isError && (
+              <p className="text-sm text-danger-fg">{errText(saveReturn.error, 'Failed to save')}</p>
+            )}
+            <Button type="submit" className="w-full" disabled={saveReturn.isPending}>
+              Save
+            </Button>
+          </form>
+        )}
+      </Dialog>
+    </>
   );
 }
 

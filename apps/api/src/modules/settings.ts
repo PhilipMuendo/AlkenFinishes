@@ -10,6 +10,7 @@ import { clearFinanceSettingsCache, getFinanceSettings } from '../services/finan
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPurchaseTaxConfig } from '../services/payables';
 import { getStaffTaxConfig } from '../services/workerPay';
+import { getIncomeTaxConfig } from '../services/incomeTax';
 import { getPayrollConfig } from '../services/payroll';
 import { receiptScanningAvailable } from '../services/receiptExtraction';
 import { aiAvailable, aiProvider } from '../services/ai';
@@ -341,6 +342,39 @@ router.put(
       update: { value },
     });
     audit(req, 'settings.staffTax', 'Setting', 'staffTax', value);
+    res.json(value);
+  }),
+);
+
+// ---- Tax on the company's own profit (Corporation Tax) ----
+//
+// Off by default, same convention as the other tax cards: nothing is assumed
+// due until a human confirms this company files Corporation Tax (rather than
+// Turnover Tax, or is otherwise exempt) and sets the current rate.
+const incomeTaxSchema = z.object({
+  enabled: z.coerce.boolean(),
+  ratePct: z.coerce.number().min(0).max(100),
+});
+
+router.get(
+  '/income-tax-config',
+  requireFinanceRole,
+  asyncHandler(async (_req, res) => {
+    res.json(await getIncomeTaxConfig());
+  }),
+);
+
+router.put(
+  '/income-tax-config',
+  requireFinanceRole,
+  asyncHandler(async (req, res) => {
+    const value = incomeTaxSchema.parse(req.body);
+    await prisma.setting.upsert({
+      where: { key: 'incomeTax' },
+      create: { key: 'incomeTax', value },
+      update: { value },
+    });
+    audit(req, 'settings.incomeTax', 'Setting', 'incomeTax', value);
     res.json(value);
   }),
 );

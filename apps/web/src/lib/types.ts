@@ -271,6 +271,58 @@ export interface StaffTaxConfig {
   defaultWhtRatePct: number;
 }
 
+/** GET/PUT /tax/vat-filing. `null` means nobody has recorded a filing for that period. */
+export interface VatFiling {
+  id: string;
+  periodFrom: string;
+  periodTo: string;
+  netVatPayable: number;
+  filedAt: string | null;
+  paidAt: string | null;
+  itaxAckNo: string | null;
+  notes: string | null;
+  createdBy: { id: string; name: string };
+  createdAt: string;
+}
+
+/** GET/PUT /settings/income-tax-config */
+export interface IncomeTaxConfig {
+  enabled: boolean;
+  ratePct: number;
+}
+
+/** One of the four instalment-tax payments for a tax year. */
+export interface IncomeTaxInstalment {
+  id: string;
+  taxYear: number;
+  instalmentNo: number;
+  dueDate: string;
+  estimatedTaxForYear: number;
+  amountPaid: number;
+  paidAt: string | null;
+  itaxAckNo: string | null;
+  notes: string | null;
+}
+
+/** The annual self-assessment return for a tax year. */
+export interface IncomeTaxReturn {
+  id: string;
+  taxYear: number;
+  taxableProfitEstimate: number;
+  taxDue: number;
+  filedAt: string | null;
+  paidAt: string | null;
+  itaxAckNo: string | null;
+  notes: string | null;
+}
+
+/** GET /income-tax/:taxYear */
+export interface IncomeTaxYearRecords {
+  config: IncomeTaxConfig;
+  instalments: IncomeTaxInstalment[];
+  return: IncomeTaxReturn;
+}
+
 /** Why a scan failed, when the form needs to do more than show the message. */
 export type ScanFailure =
   | 'NOT_CONFIGURED'

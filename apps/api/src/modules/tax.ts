@@ -5,7 +5,13 @@ import { ApiError, asyncHandler } from '../utils/http';
 import { requireAuth } from '../middleware/auth';
 import { requireFinanceRole } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
-import { monthPeriod, outstandingCertificates, taxPosition } from '../services/taxPosition';
+import {
+  getVatFiling,
+  monthPeriod,
+  outstandingCertificates,
+  recordVatFiling,
+  taxPosition,
+} from '../services/taxPosition';
 
 /**
  * The company's tax position, across both sides of the ledger.
@@ -47,6 +53,51 @@ router.get(
   '/certificates-outstanding',
   asyncHandler(async (_req, res) => {
     res.json(await outstandingCertificates());
+  }),
+);
+
+/**
+ * Whether a VAT period has been filed/paid on iTax.
+ *
+ * `null` means no filing has been recorded for that period at all — not an
+ * error, just "nobody has marked this yet".
+ */
+router.get(
+  '/vat-filing',
+  asyncHandler(async (req, res) => {
+    const { from, to } = periodSchema.parse(req.query);
+    const period = from && to ? { from, to } : monthPeriod();
+    if (period.from > period.to) throw ApiError.badRequest('The period ends before it starts');
+    res.json(await getVatFiling(period));
+  }),
+);
+
+/** Record or correct a period's filing/payment status. */
+router.post(
+  '/vat-filing',
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        from: z.coerce.date(),
+        to: z.coerce.date(),
+        filedAt: z.coerce.date().nullable().optional(),
+        paidAt: z.coerce.date().nullable().optional(),
+        itaxAckNo: z.string().trim().nullable().optional(),
+        notes: z.string().trim().nullable().optional(),
+      })
+      .parse(req.body);
+    if (body.from > body.to) throw ApiError.badRequest('The period ends before it starts');
+
+    const filing = await recordVatFiling(
+      { from: body.from, to: body.to },
+      { filedAt: body.filedAt, paidAt: body.paidAt, itaxAckNo: body.itaxAckNo, notes: body.notes },
+      req.user!.id,
+    );
+    audit(req, 'tax.vatFiling', 'VatFiling', filing.id, {
+      filedAt: filing.filedAt,
+      paidAt: filing.paidAt,
+    });
+    res.json(filing);
   }),
 );
 

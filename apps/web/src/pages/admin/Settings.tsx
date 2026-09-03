@@ -14,6 +14,7 @@ import type {
   PayrollConfig,
   PurchaseTaxConfig,
   StaffTaxConfig,
+  IncomeTaxConfig,
   Worker,
 } from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
@@ -355,6 +356,7 @@ export function SettingsPage() {
 
           <PurchaseTaxCard />
           <StaffTaxCard />
+          <IncomeTaxCard />
           <PayrollCard />
         </>
       )}
@@ -1319,6 +1321,99 @@ function StaffTaxCard() {
           )}
           <Button type="submit" disabled={save.isPending}>
             Save tax settings
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Corporation Tax on the company's own profit — separate from every other tax
+ * card here, which is about money moving through the business (VAT,
+ * withholding, payroll). Off by default: nothing on the Tax page assumes an
+ * instalment or return is due until this is switched on and a rate is set.
+ */
+function IncomeTaxCard() {
+  const qc = useQueryClient();
+  const query = useQuery({
+    queryKey: ['settings', 'income-tax-config'],
+    queryFn: () => api<IncomeTaxConfig>('/settings/income-tax-config'),
+  });
+  const { data } = query;
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      api('/settings/income-tax-config', { method: 'PUT', body }),
+    onSuccess: () => {
+      toast.success('Income tax settings saved.');
+      void qc.invalidateQueries({ queryKey: ['settings', 'income-tax-config'] });
+    },
+    onError: (e) => toast.error(errText(e, 'The settings were not saved.')),
+  });
+
+  if (!data) return <QueryState query={query} rows={2} noun="these settings" />;
+  const isEnabled = enabled ?? data.enabled;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Income tax (Corporation Tax)</CardTitle>
+        <p className="text-xs text-fg-muted">
+          Tracks the company's own instalment-tax payments and annual return on the Tax page. This
+          is not the same as VAT or withholding — it is tax on this business's profit.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <form
+          key={String(data.enabled) + data.ratePct}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            save.mutate({
+              enabled: isEnabled,
+              ratePct: isEnabled ? Number(fd.get('ratePct')) : data.ratePct,
+            });
+          }}
+          className="space-y-3"
+        >
+          <label className="flex items-start gap-2.5 rounded-lg border border-hairline p-3 text-sm">
+            <input
+              type="checkbox"
+              checked={isEnabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="mt-0.5 size-4"
+            />
+            <span>
+              <span className="font-medium text-fg">Track Corporation Tax on the Tax page</span>
+              <span className="mt-0.5 block text-xs text-fg-muted">
+                Leave this off if the company files Turnover Tax instead, or if this isn't tracked
+                in the app. When off, the Tax page hides the instalments and return.
+              </span>
+            </span>
+          </label>
+
+          {isEnabled && (
+            <Field label="Corporation Tax rate %">
+              <Input
+                name="ratePct"
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                defaultValue={data.ratePct}
+              />
+            </Field>
+          )}
+
+          {save.isError && (
+            <p className="text-sm text-danger-fg">
+              {save.error instanceof ApiRequestError ? save.error.message : 'Failed to save'}
+            </p>
+          )}
+          <Button type="submit" disabled={save.isPending}>
+            Save income tax settings
           </Button>
         </form>
       </CardContent>
