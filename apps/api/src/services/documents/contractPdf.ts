@@ -108,7 +108,15 @@ export async function renderContractPdf(
             stack: [
               { text: c.contractNo ?? 'DRAFT — NOT ISSUED', style: 'docNumber' },
               {
-                text: c.signedDate ? `Signed  ${printDate(c.signedDate)}` : 'Not yet executed',
+                // c.signedDate is a stale read the moment the client signs:
+                // this renders before the transaction that sets it commits
+                // (see renderClientSignedContractPdf's docblock for why —
+                // a failed render must never leave a half-committed sign).
+                // clientSignature.signedAt is that same instant, already in
+                // hand, so it stands in until the DB row catches up.
+                text: (c.signedDate ?? clientSignature?.signedAt)
+                  ? `Signed  ${printDate((c.signedDate ?? clientSignature!.signedAt) as Date)}`
+                  : 'Not yet executed',
                 style: 'companyMeta',
               },
             ],
