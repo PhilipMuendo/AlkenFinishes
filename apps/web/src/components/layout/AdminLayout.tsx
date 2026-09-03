@@ -69,7 +69,11 @@ const nav: NavEntry[] = [
   { to: '/admin/company-expenses', label: 'Company Expenses', icon: ShoppingBag },
   { heading: 'Admin' },
   { to: '/admin/team', label: 'Team', icon: Users, roles: ['SUPERADMIN'] },
+  // Superadmin lands on the full Settings page (Company tab first); the
+  // Accountant's own entry goes straight to Money & tax, the only section
+  // they can reach — see the role check inside SettingsPage itself.
   { to: '/admin/settings', label: 'Settings', icon: Settings, roles: ['SUPERADMIN'] },
+  { to: '/admin/settings/money', label: 'Settings', icon: Settings, roles: ['ACCOUNTANT'] },
 ];
 
 function initials(name?: string) {

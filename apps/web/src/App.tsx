@@ -188,6 +188,12 @@ export default function App() {
               {user.role === 'SUPERADMIN' && (
                 <Route path="settings/:section" element={<SettingsPage />} />
               )}
+              {/* The Accountant's only reachable settings section — SettingsPage
+                  itself enforces this, this route just keeps a typed URL for
+                  any other section from resolving to something at all. */}
+              {user.role === 'ACCOUNTANT' && (
+                <Route path="settings/money" element={<SettingsPage />} />
+              )}
 
               {/* Renamed routes — see RedirectSite. */}
               {user.role === 'SUPERADMIN' && (

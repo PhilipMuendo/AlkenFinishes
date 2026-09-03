@@ -18,6 +18,7 @@ import type {
   Worker,
 } from '@/lib/types';
 import { fmtDate, fmtTime } from '@/lib/format';
+import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog } from '@/components/ui/dialog';
@@ -101,8 +102,21 @@ type LabourSource = 'ATTENDANCE' | 'EXPENSES' | 'BOTH';
 export function SettingsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // The Accountant gets money/tax configuration only — every other section
+  // (company letterhead, document numbering, attendance devices, the
+  // assistant's AI budget, the audit log) stays Superadmin-only, matching
+  // what the API already enforces for those routes. Forcing the section
+  // here (rather than trusting the URL) means a typed /admin/settings/audit
+  // still lands on Money & tax instead of a page full of failed requests.
+  const isAccountant = user?.role === 'ACCOUNTANT';
+  const visibleSections = isAccountant ? SECTIONS.filter((s) => s.id === 'money') : SECTIONS;
   const { section: requested } = useParams();
-  const section = requested && SECTION_IDS.has(requested) ? requested : 'company';
+  const section = isAccountant
+    ? 'money'
+    : requested && SECTION_IDS.has(requested)
+      ? requested
+      : 'company';
 
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [deviceVendor, setDeviceVendor] = useState<DeviceVendor>('ZKTECO');
@@ -272,14 +286,20 @@ export function SettingsPage() {
     <div className="max-w-2xl space-y-6">
       <PageHeader
         title="Settings"
-        description="Budget rules, documents, attendance devices and the audit trail"
+        description={
+          isAccountant
+            ? 'Tax rates and payroll deductions'
+            : 'Budget rules, documents, attendance devices and the audit trail'
+        }
       />
 
-      <Tabs
-        tabs={SECTIONS.map((s) => ({ id: s.id, label: s.label }))}
-        active={section}
-        onChange={(id) => navigate(`/admin/settings/${id}`)}
-      />
+      {visibleSections.length > 1 && (
+        <Tabs
+          tabs={visibleSections.map((s) => ({ id: s.id, label: s.label }))}
+          active={section}
+          onChange={(id) => navigate(`/admin/settings/${id}`)}
+        />
+      )}
 
       {section === 'company' && <CompanyLetterheadCard />}
 
