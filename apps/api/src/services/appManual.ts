@@ -132,7 +132,7 @@ Company Expenses is reached the same way and behaves identically — the only di
       'How to manage Suppliers and record a supplier payment, including withholding tax. NOT how to approve the underlying expense claim that put a bill on the ledger — see howto_expenses_approval.',
     content: `Payables (/admin/payables) lists every supplier and, at the top, who is owed the most and how overdue it is, aged into buckets (current, 1–30, 31–60, 61–90, 90+ days). "Add supplier" takes a name, contact, KRA PIN and notes.
 
-A supplier's balance is built entirely from expense claims with that supplier attached and a supplier's own detail view lists every bill against them with its own position. Recording a payment happens from the expense itself (see howto_expenses_approval) — the payables list is where you see who to pay next, not where the payment is entered.
+A supplier's balance is built entirely from expense claims with that supplier attached and a supplier's own detail view lists every bill against them with its own position. Recording a payment happens from the expense itself (see "Approving expenses") — the payables list is where you see who to pay next, not where the payment is entered.
 
 Withholding tax on a payment is suggested automatically (when the company is configured as a withholding agent in Settings) but always editable — it's calculated on the ex-VAT outstanding balance, never on a VAT-inclusive figure. A payment can be deleted only if the withheld tax on it hasn't already been remitted to KRA.`,
   },
@@ -224,7 +224,7 @@ Stock itself (on-hand materials) is adjusted directly with "Received"/"Used" but
       "How a supervisor submits their own expense claim from site, versus how the office approves/pays one. Covers both halves of the same workflow — see howto_expenses_approval for more detail on the approval/payment side.",
     content: `A supervisor logs an expense from their site's Expenses tab: category, amount, description, date, and optionally a receipt photo — a "Scan receipt" option, where available, reads a photographed receipt and fills the form in for you to check before saving, it never saves on its own. A supervisor sees only their own submitted claims and whether each was accepted or rejected (with the reason, if rejected) — not the site's full spend history or what's owed to any supplier, which stays office-only.
 
-The office (Superadmin or Accountant) sees every claim on the site — or, for spend that isn't tied to any site at all, on Company Expenses — and approves, rejects or pays it; see howto_expenses_approval for that side in full.`,
+The office (Superadmin or Accountant) sees every claim on the site — or, for spend that isn't tied to any site at all, on Company Expenses — and approves, rejects or pays it; see "Approving expenses" for that side in full.`,
   },
   {
     key: 'using_assistant',
