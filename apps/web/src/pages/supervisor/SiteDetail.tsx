@@ -7,6 +7,7 @@ import {
   Boxes,
   CalendarRange,
   Camera,
+  CheckSquare,
   ChevronLeft,
   ClipboardCheck,
   ClipboardList,
@@ -36,6 +37,7 @@ import { PhotosPanel } from '@/features/PhotosPanel';
 import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 import { WeeklyProgressPanel } from '@/features/WeeklyProgressPanel';
 import { QualityInspectionPanel } from '@/features/QualityInspectionPanel';
+import { HandoverPanel } from '@/features/HandoverPanel';
 
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
@@ -103,6 +105,13 @@ const ACTIONS = [
     label: 'Safety',
     hint: 'Log an incident',
     icon: ShieldAlert,
+    chip: CHIP,
+  },
+  {
+    id: 'handover',
+    label: 'Handover',
+    hint: 'Sign-off checklist',
+    icon: CheckSquare,
     chip: CHIP,
   },
 ] as const;
@@ -207,6 +216,7 @@ export function SiteDetailPage() {
       {view === 'quality' && <QualityInspectionPanel projectId={projectId} />}
       {view === 'snags' && <SnagsPanel projectId={projectId} />}
       {view === 'safety' && <SafetyPanel projectId={projectId} />}
+      {view === 'handover' && <HandoverPanel projectId={projectId} />}
     </div>
   );
 }

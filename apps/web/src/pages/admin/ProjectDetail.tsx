@@ -25,6 +25,9 @@ import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
 import { BusinessReportsPanel } from '@/features/BusinessReportsPanel';
 import { CommandCentrePanel } from '@/features/CommandCentrePanel';
+import { WeeklyProgressPanel } from '@/features/WeeklyProgressPanel';
+import { QualityInspectionPanel } from '@/features/QualityInspectionPanel';
+import { HandoverPanel } from '@/features/HandoverPanel';
 
 /**
  * Fourteen flat tabs overflowed the bar and made everything equally important.
@@ -43,6 +46,7 @@ const GROUPS = [
       { id: 'tasks', label: 'Tasks & programme' },
       { id: 'reports', label: 'Daily reports' },
       { id: 'weekly', label: 'Weekly summaries' },
+      { id: 'weekly-progress', label: 'Weekly progress' },
       { id: 'attendance', label: 'Attendance' },
       { id: 'photos', label: 'Photos' },
       { id: 'documents', label: 'Documents' },
@@ -52,8 +56,10 @@ const GROUPS = [
     id: 'quality',
     label: 'Quality & safety',
     tabs: [
+      { id: 'quality-inspection', label: 'Quality inspection' },
       { id: 'snags', label: 'Snag list' },
       { id: 'safety', label: 'Safety' },
+      { id: 'handover', label: 'Handover' },
     ],
   },
   {
@@ -273,8 +279,11 @@ export function ProjectDetailPage() {
       {tab === 'reports' && <ReportsPanel projectId={projectId} canSubmit={false} />}
       {tab === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit={false} />}
       {tab === 'photos' && <PhotosPanel projectId={projectId} />}
+      {tab === 'weekly-progress' && <WeeklyProgressPanel projectId={projectId} />}
+      {tab === 'quality-inspection' && <QualityInspectionPanel projectId={projectId} />}
       {tab === 'snags' && <SnagsPanel projectId={projectId} />}
       {tab === 'safety' && <SafetyPanel projectId={projectId} />}
+      {tab === 'handover' && <HandoverPanel projectId={projectId} />}
       {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}
     </div>
   );

@@ -868,6 +868,28 @@ export interface QualityChecklistsResponse {
   default: string;
 }
 
+export interface HandoverItem {
+  label: string;
+  checked: boolean;
+}
+
+/** GET/PUT /projects/:id/handover */
+export interface HandoverChecklist {
+  id: string;
+  items: HandoverItem[]; // all nine, auto + manual merged, in display order
+  manualItems: HandoverItem[]; // the six stored ones — what a PUT should send back
+  notes: string | null;
+  photoUrls: string[];
+  pdfUrl: string | null;
+  complete: boolean;
+  clientSignerName: string | null;
+  clientSignedAt: string | null;
+  companySignerName: string | null;
+  companySignedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Unified cross-site feed item from GET /reports (super admin).
 export interface ReportFeedItem {
   id: string;

@@ -15,6 +15,9 @@ const SupplierStatementPage = lazy(() =>
     default: m.SupplierStatementPage,
   })),
 );
+const SignHandoverPage = lazy(() =>
+  import('./pages/public/SignHandover').then((m) => ({ default: m.SignHandoverPage })),
+);
 
 // Route-level code splitting: supervisors never download the admin bundle
 // (recharts included), and vice versa.
@@ -128,6 +131,7 @@ export default function App() {
           <Route path="/sign/:token" element={<SignContractPage />} />
           <Route path="/quote/:token" element={<DecideQuotationPage />} />
           <Route path="/statement/:token" element={<SupplierStatementPage />} />
+          <Route path="/handover/:token" element={<SignHandoverPage />} />
         </Routes>
       </Suspense>
     );

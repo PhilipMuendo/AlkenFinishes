@@ -18,6 +18,8 @@ import companyExpensesRouter from './modules/companyExpenses';
 import publicSignRouter from './modules/publicSign';
 import publicQuoteRouter from './modules/publicQuote';
 import publicStatementRouter from './modules/publicStatement';
+import publicHandoverRouter from './modules/publicHandover';
+import handoverRouter from './modules/handover';
 import manualRouter from './modules/manual';
 import materialRequestsRouter from './modules/materialRequests';
 import snagsRouter from './modules/snags';
@@ -92,6 +94,7 @@ export function createApp() {
   v1.use('/projects/:projectId/weekly-reports', weeklyReportsRouter);
   v1.use('/projects/:projectId/weekly-progress', weeklyProgressRouter);
   v1.use('/projects/:projectId/quality-inspections', qualityInspectionsRouter);
+  v1.use('/projects/:projectId/handover', handoverRouter);
   v1.use('/invoices', companyInvoicesRouter); // cross-project A/R register
   v1.use('/reports', reportsRouter);
   v1.use('/workers', workersRouter);
@@ -115,6 +118,7 @@ export function createApp() {
   v1.use('/sign', publicSignRouter);
   v1.use('/quote', publicQuoteRouter);
   v1.use('/statement', publicStatementRouter);
+  v1.use('/handover', publicHandoverRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);
