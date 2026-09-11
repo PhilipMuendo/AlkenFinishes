@@ -8,6 +8,7 @@ import {
   CalendarRange,
   Camera,
   ChevronLeft,
+  ClipboardCheck,
   ClipboardList,
   Fingerprint,
   HardHat,
@@ -34,6 +35,7 @@ import { SafetyPanel } from '@/features/SafetyPanel';
 import { PhotosPanel } from '@/features/PhotosPanel';
 import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 import { WeeklyProgressPanel } from '@/features/WeeklyProgressPanel';
+import { QualityInspectionPanel } from '@/features/QualityInspectionPanel';
 
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
@@ -82,6 +84,13 @@ const ACTIONS = [
   },
   { id: 'tools', label: 'Equipment', hint: 'What is on site right now', icon: Wrench, chip: CHIP },
   { id: 'photos', label: 'Photos', hint: 'Site photo gallery', icon: Camera, chip: CHIP },
+  {
+    id: 'quality',
+    label: 'Quality Inspection',
+    hint: 'Run the checklist',
+    icon: ClipboardCheck,
+    chip: CHIP,
+  },
   {
     id: 'snags',
     label: 'Snag list',
@@ -195,6 +204,7 @@ export function SiteDetailPage() {
       {view === 'weekly-progress' && <WeeklyProgressPanel projectId={projectId} />}
       {view === 'tools' && <ToolsReadOnlyPanel />}
       {view === 'photos' && <PhotosPanel projectId={projectId} />}
+      {view === 'quality' && <QualityInspectionPanel projectId={projectId} />}
       {view === 'snags' && <SnagsPanel projectId={projectId} />}
       {view === 'safety' && <SafetyPanel projectId={projectId} />}
     </div>

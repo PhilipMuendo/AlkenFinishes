@@ -839,6 +839,35 @@ export interface WeeklyProgressReport {
   generatedAt: string;
 }
 
+export type QualityItemStatus = 'PENDING' | 'PASS' | 'FAIL';
+
+export interface QualityChecklistItem {
+  label: string;
+  status: QualityItemStatus;
+}
+
+/** GET/POST/PATCH /projects/:id/quality-inspections */
+export interface QualityInspection {
+  id: string;
+  area: string;
+  checklistName: string;
+  items: QualityChecklistItem[];
+  overallStatus: QualityItemStatus;
+  notes: string | null;
+  photoUrls: string[];
+  task: { id: string; phase: string; name: string } | null;
+  inspectedBy: { id: string; name: string };
+  inspectedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** GET /projects/:id/quality-inspections/checklists */
+export interface QualityChecklistsResponse {
+  names: string[];
+  default: string;
+}
+
 // Unified cross-site feed item from GET /reports (super admin).
 export interface ReportFeedItem {
   id: string;

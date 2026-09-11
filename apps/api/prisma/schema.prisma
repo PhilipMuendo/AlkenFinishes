@@ -124,6 +124,12 @@ enum SafetyIncidentSeverity {
   SERIOUS
 }
 
+enum QualityCheckStatus {
+  PENDING
+  PASS
+  FAIL
+}
+
 // Only the types someone actually books. Deadlines, payroll, service dates,
 // birthdays, retention and warranty expiry are NOT here on purpose: they are
 // derived from records that already exist (see services/calendarFeeds.ts), and
@@ -268,6 +274,7 @@ model User {
   incomeTaxInstalments    IncomeTaxInstalment[]
   incomeTaxReturns        IncomeTaxReturn[]
   weeklyProgressReports   WeeklyProgressReport[]
+  qualityInspections      QualityInspection[]
 }
 
 model RefreshToken {
@@ -330,6 +337,7 @@ model Project {
   toolTransfersTo   ToolTransfer[]              @relation("ToolTransferTo")
   materialRequests  MaterialRequest[]
   snags             SnagItem[]
+  qualityInspections QualityInspection[]
   safetyIncidents   SafetyIncident[]
   overrideRequests  AttendanceOverrideRequest[]
   calendarEvents    CalendarEvent[]
@@ -804,7 +812,8 @@ model Task {
   actualQuantity  Decimal? @db.Decimal(14, 2)
   unit            String? // "m²", "days", "units" — whatever the quantity is measured in
 
-  photos TaskPhoto[]
+  photos             TaskPhoto[]
+  qualityInspections QualityInspection[]
 
   @@index([projectId, phase])
 }
@@ -1542,6 +1551,35 @@ model SnagAttempt {
 
   @@unique([snagId, attempt])
   @@index([snagId])
+}
+
+// A round of the standing quality checklist against one area — "checked
+// continuously, not only at the end". `items` is the filled checklist as one
+// Json array ({label, status}[]), the same reasoning as PayrollSettings'
+// payeBands: it is filled in and submitted as one form, not queried point by
+// point. `overallStatus` is stored (not purely derived) so a list of
+// inspections can be filtered/sorted by pass/fail without re-reading every
+// row's items.
+model QualityInspection {
+  id            String             @id @default(cuid())
+  projectId     String
+  project       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taskId        String?
+  task          Task?              @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  area          String // "Bedroom 1" — free text, not geocoded, same as SnagItem.location
+  checklistName String // which checklist was used, e.g. "General finishing checklist"
+  items         Json // {label: string, status: PENDING|PASS|FAIL}[]
+  overallStatus QualityCheckStatus @default(PENDING)
+  notes         String?
+  photoUrls     String[]           @default([])
+
+  inspectedById String
+  inspectedBy   User     @relation(fields: [inspectedById], references: [id])
+  inspectedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([projectId, overallStatus])
 }
 
 model SafetyIncident {
