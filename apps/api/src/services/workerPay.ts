@@ -1,6 +1,7 @@
 import { kes, sumCents, toCents } from './money';
 import { prisma } from '../lib/prisma';
 import { withholdingOn } from './payables';
+import { cachedSetting } from './settingsCache';
 
 export { withholdingOn };
 
@@ -34,9 +35,21 @@ export const DEFAULT_STAFF_TAX: StaffTaxConfig = {
   defaultWhtRatePct: 0,
 };
 
+const staffTaxCache = cachedSetting(async (): Promise<StaffTaxConfig> => {
+  const row = await prisma.staffTaxSettings.upsert({ where: { id: 1 }, create: {}, update: {} });
+  return {
+    withholdingAgent: row.withholdingAgent,
+    defaultWhtRatePct: Number(row.defaultWhtRatePct),
+  };
+});
+
 export async function getStaffTaxConfig(): Promise<StaffTaxConfig> {
-  const row = await prisma.setting.findUnique({ where: { key: 'staffTax' } });
-  return { ...DEFAULT_STAFF_TAX, ...((row?.value ?? {}) as Partial<StaffTaxConfig>) };
+  return staffTaxCache.get();
+}
+
+/** Called by the settings route after the row is saved. */
+export function clearStaffTaxCache() {
+  staffTaxCache.clear();
 }
 
 /** One payment. `amount` is cash the worker received; `whtAmount` went to KRA instead. */

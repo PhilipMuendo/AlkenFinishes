@@ -29,11 +29,10 @@ async function main() {
     },
   });
 
-  await prisma.setting.upsert({
-    where: { key: 'budgetThresholds' },
-    update: {},
-    create: { key: 'budgetThresholds', value: { yellowPct: 80, redPct: 100 } },
-  });
+  // Budget thresholds now live in the FinanceSettings table (see
+  // services/finance.ts) with real column defaults — a fresh install gets
+  // yellowPct=80/redPct=100 the moment anything reads getFinanceSettings(),
+  // no seeding needed here any more.
 
   // Invoice numbering and tax defaults. `update: {}` keeps this idempotent —
   // once the owner edits these in Settings, re-seeding never overwrites them.

@@ -1553,6 +1553,57 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
+// Six singleton tables that used to be untyped `Setting.value: Json` blobs
+// under keys like 'purchaseTax'/'payroll'. Each still has exactly one row
+// (id fixed at 1), so the access pattern is unchanged — find/upsert by a
+// known id instead of a known key — but the shape is now a real, migration-
+// tracked schema instead of a JSON blob only a hand-maintained Zod schema
+// (modules/settings.ts) knew the shape of.
+
+model FinanceSettings {
+  id               Int    @id @default(1)
+  yellowPct        Int    @default(80)
+  redPct           Int    @default(100)
+  labourCostSource String @default("BOTH") // ATTENDANCE | EXPENSES | BOTH
+}
+
+model PurchaseTaxSettings {
+  id                   Int     @id @default(1)
+  vatRatePct           Decimal @default(16) @db.Decimal(5, 2)
+  billsIncludeVat      Boolean @default(true)
+  defaultWhtRatePct    Decimal @default(0) @db.Decimal(5, 2)
+  defaultWhtVatRatePct Decimal @default(0) @db.Decimal(5, 2)
+  withholdingAgent     Boolean @default(false)
+}
+
+model StaffTaxSettings {
+  id                Int     @id @default(1)
+  withholdingAgent  Boolean @default(false)
+  defaultWhtRatePct Decimal @default(0) @db.Decimal(5, 2)
+}
+
+model IncomeTaxSettings {
+  id      Int     @id @default(1)
+  enabled Boolean @default(false)
+  ratePct Decimal @default(30) @db.Decimal(5, 2)
+}
+
+// payeBands/nssfTiers stay Json: each is an ordered list of small tuples
+// ({upTo, ratePct} / {upTo, employeePct, employerPct}) edited as a whole via
+// one form, not rows anyone queries or filters independently — a join table
+// would add real complexity for zero query-pattern benefit.
+model PayrollSettings {
+  id                     Int     @id @default(1)
+  enabled                Boolean @default(false)
+  personalReliefPerMonth Decimal @default(2400) @db.Decimal(10, 2)
+  shifRatePct            Decimal @default(2.75) @db.Decimal(5, 2)
+  shifMinimum            Decimal @default(300) @db.Decimal(10, 2)
+  housingLevyEmployeePct Decimal @default(1.5) @db.Decimal(5, 2)
+  housingLevyEmployerPct Decimal @default(1.5) @db.Decimal(5, 2)
+  payeBands              Json
+  nssfTiers              Json
+}
+
 // One row per calendar month (the Kenyan VAT period). `netVatPayable` is a
 // SNAPSHOT taken at the moment a filing is recorded, never recomputed later —
 // so this stays a record of what was actually filed, even if a bill entered

@@ -1,5 +1,7 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { kes, sumCents, toCents } from './money';
+import { cachedSetting } from './settingsCache';
 
 /**
  * Statutory deductions on wages.
@@ -79,19 +81,39 @@ export const DEFAULT_PAYROLL_CONFIG: PayrollConfig = {
   housingLevyEmployerPct: 1.5,
 };
 
-export async function getPayrollConfig(): Promise<PayrollConfig> {
-  const row = await prisma.setting.findUnique({ where: { key: 'payroll' } });
-  const v = (row?.value ?? {}) as Partial<PayrollConfig>;
+const payrollConfigCache = cachedSetting(async (): Promise<PayrollConfig> => {
+  const row = await prisma.payrollSettings.upsert({
+    where: { id: 1 },
+    // payeBands/nssfTiers have no schema-level default (they're Json, not a
+    // scalar) — the migration seeds them for an already-existing row, but a
+    // genuinely fresh install still needs an explicit value here.
+    create: {
+      payeBands: DEFAULT_PAYROLL_CONFIG.payeBands as unknown as Prisma.InputJsonValue,
+      nssfTiers: DEFAULT_PAYROLL_CONFIG.nssfTiers as unknown as Prisma.InputJsonValue,
+    },
+    update: {},
+  });
+  const payeBands = row.payeBands as unknown as PayeBand[];
+  const nssfTiers = row.nssfTiers as unknown as NssfTier[];
   return {
-    ...DEFAULT_PAYROLL_CONFIG,
-    ...v,
-    // Arrays must be replaced wholesale, never merged: a spread would leave
-    // stale bands behind a shorter edited list.
-    payeBands: Array.isArray(v.payeBands) && v.payeBands.length
-      ? v.payeBands
-      : DEFAULT_PAYROLL_CONFIG.payeBands,
-    nssfTiers: Array.isArray(v.nssfTiers) ? v.nssfTiers : DEFAULT_PAYROLL_CONFIG.nssfTiers,
+    enabled: row.enabled,
+    payeBands: Array.isArray(payeBands) && payeBands.length ? payeBands : DEFAULT_PAYROLL_CONFIG.payeBands,
+    personalReliefPerMonth: Number(row.personalReliefPerMonth),
+    nssfTiers: Array.isArray(nssfTiers) ? nssfTiers : DEFAULT_PAYROLL_CONFIG.nssfTiers,
+    shifRatePct: Number(row.shifRatePct),
+    shifMinimum: Number(row.shifMinimum),
+    housingLevyEmployeePct: Number(row.housingLevyEmployeePct),
+    housingLevyEmployerPct: Number(row.housingLevyEmployerPct),
   };
+});
+
+export async function getPayrollConfig(): Promise<PayrollConfig> {
+  return payrollConfigCache.get();
+}
+
+/** Called by the settings route after the row is saved. */
+export function clearPayrollConfigCache() {
+  payrollConfigCache.clear();
 }
 
 // ---- The computation ----

@@ -2,6 +2,7 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { env } from '../config/env';
 import { companyReceivables } from './invoicing';
+import { cachedSetting } from './settingsCache';
 
 export interface Thresholds {
   yellowPct: number; // consumption % at which category turns yellow
@@ -31,42 +32,35 @@ export interface FinanceSettings {
 }
 
 /**
- * Two rows that change a few times a year, read on nearly every request.
+ * A row that changes a few times a year, read on nearly every request.
  *
  * `projectFinancials` calls this, and the dashboard calls that once per site —
  * so an eight-site overview was doing sixteen queries for two values that had
  * not moved since the owner last opened Settings. Cached for a minute, and
- * cleared outright when either row is written, so a threshold change shows up
+ * cleared outright when the row is written, so a threshold change shows up
  * on the next screen rather than a minute later.
  */
-const SETTINGS_TTL_MS = 60_000;
-let settingsCache: { at: number; value: FinanceSettings } | null = null;
-
-/** Called by the settings routes after either row is saved. */
-export function clearFinanceSettingsCache() {
-  settingsCache = null;
-}
-
-export async function getFinanceSettings(): Promise<FinanceSettings> {
-  if (settingsCache && Date.now() - settingsCache.at < SETTINGS_TTL_MS) {
-    return settingsCache.value;
-  }
-  const [t, l] = await Promise.all([
-    prisma.setting.findUnique({ where: { key: 'budgetThresholds' } }),
-    prisma.setting.findUnique({ where: { key: 'labourCostSource' } }),
-  ]);
-  const tv = (t?.value ?? {}) as Partial<Thresholds>;
-  const lv = l?.value as LabourCostSource | undefined;
-  const value: FinanceSettings = {
-    thresholds: {
-      yellowPct: tv.yellowPct ?? DEFAULT_THRESHOLDS.yellowPct,
-      redPct: tv.redPct ?? DEFAULT_THRESHOLDS.redPct,
-    },
+const financeSettingsCache = cachedSetting(async (): Promise<FinanceSettings> => {
+  const row = await prisma.financeSettings.upsert({
+    where: { id: 1 },
+    create: {},
+    update: {},
+  });
+  const lv = row.labourCostSource;
+  return {
+    thresholds: { yellowPct: row.yellowPct, redPct: row.redPct },
     labourCostSource:
       lv === 'ATTENDANCE' || lv === 'EXPENSES' || lv === 'BOTH' ? lv : DEFAULT_LABOUR_SOURCE,
   };
-  settingsCache = { at: Date.now(), value };
-  return value;
+});
+
+/** Called by the settings routes after either field is saved. */
+export function clearFinanceSettingsCache() {
+  financeSettingsCache.clear();
+}
+
+export async function getFinanceSettings(): Promise<FinanceSettings> {
+  return financeSettingsCache.get();
 }
 
 export function health(consumedPct: number | null, t: Thresholds): 'GREEN' | 'YELLOW' | 'RED' | 'NONE' {

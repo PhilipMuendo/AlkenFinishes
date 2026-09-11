@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { companyFinancials } from './finance';
+import { cachedSetting } from './settingsCache';
 
 /**
  * Corporation Tax on the company itself — the one Kenyan tax obligation this
@@ -20,9 +21,18 @@ export const DEFAULT_INCOME_TAX_CONFIG: IncomeTaxConfig = {
   ratePct: 30, // Kenyan resident-company standard rate, as of the last review — see kenyaTaxReference.ts
 };
 
+const incomeTaxConfigCache = cachedSetting(async (): Promise<IncomeTaxConfig> => {
+  const row = await prisma.incomeTaxSettings.upsert({ where: { id: 1 }, create: {}, update: {} });
+  return { enabled: row.enabled, ratePct: Number(row.ratePct) };
+});
+
 export async function getIncomeTaxConfig(): Promise<IncomeTaxConfig> {
-  const row = await prisma.setting.findUnique({ where: { key: 'incomeTax' } });
-  return { ...DEFAULT_INCOME_TAX_CONFIG, ...((row?.value ?? {}) as Partial<IncomeTaxConfig>) };
+  return incomeTaxConfigCache.get();
+}
+
+/** Called by the settings route after the row is saved. */
+export function clearIncomeTaxConfigCache() {
+  incomeTaxConfigCache.clear();
 }
 
 /**

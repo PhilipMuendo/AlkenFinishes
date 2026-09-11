@@ -8,10 +8,10 @@ import { requireFinanceRole, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { clearFinanceSettingsCache, getFinanceSettings } from '../services/finance';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
-import { getPurchaseTaxConfig } from '../services/payables';
-import { getStaffTaxConfig } from '../services/workerPay';
-import { getIncomeTaxConfig } from '../services/incomeTax';
-import { getPayrollConfig } from '../services/payroll';
+import { clearPurchaseTaxCache, getPurchaseTaxConfig } from '../services/payables';
+import { clearStaffTaxCache, getStaffTaxConfig } from '../services/workerPay';
+import { clearIncomeTaxConfigCache, getIncomeTaxConfig } from '../services/incomeTax';
+import { clearPayrollConfigCache, getPayrollConfig } from '../services/payroll';
 import { receiptScanningAvailable } from '../services/receiptExtraction';
 import { aiAvailable, aiProvider } from '../services/ai';
 import { allowanceFor, getAiBudget, readUsage, totalCalls } from '../services/aiUsage';
@@ -46,13 +46,13 @@ router.put(
     const { labourCostSource } = z
       .object({ labourCostSource: z.enum(['ATTENDANCE', 'EXPENSES', 'BOTH']) })
       .parse(req.body);
-    await prisma.setting.upsert({
-      where: { key: 'labourCostSource' },
-      create: { key: 'labourCostSource', value: labourCostSource },
-      update: { value: labourCostSource },
+    await prisma.financeSettings.upsert({
+      where: { id: 1 },
+      create: { labourCostSource },
+      update: { labourCostSource },
     });
     clearFinanceSettingsCache();
-    audit(req, 'settings.labourSource', 'Setting', 'labourCostSource', { labourCostSource });
+    audit(req, 'settings.labourSource', 'FinanceSettings', '1', { labourCostSource });
     res.json({ labourCostSource });
   }),
 );
@@ -68,13 +68,13 @@ router.put(
       })
       .refine((v) => v.redPct > v.yellowPct, { message: 'redPct must exceed yellowPct' })
       .parse(req.body);
-    await prisma.setting.upsert({
-      where: { key: 'budgetThresholds' },
-      create: { key: 'budgetThresholds', value },
-      update: { value },
+    await prisma.financeSettings.upsert({
+      where: { id: 1 },
+      create: value,
+      update: value,
     });
     clearFinanceSettingsCache();
-    audit(req, 'settings.thresholds', 'Setting', 'budgetThresholds', value);
+    audit(req, 'settings.thresholds', 'FinanceSettings', '1', value);
     res.json(value);
   }),
 );
@@ -275,12 +275,13 @@ router.put(
         throw ApiError.badRequest('Each tax band must end above the one before it');
       }
     }
-    await prisma.setting.upsert({
-      where: { key: 'payroll' },
-      create: { key: 'payroll', value },
-      update: { value },
+    await prisma.payrollSettings.upsert({
+      where: { id: 1 },
+      create: value,
+      update: value,
     });
-    audit(req, 'settings.payroll', 'Setting', 'payroll', { enabled: value.enabled });
+    clearPayrollConfigCache();
+    audit(req, 'settings.payroll', 'PayrollSettings', '1', { enabled: value.enabled });
     res.json(value);
   }),
 );
@@ -302,12 +303,13 @@ router.put(
   requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = purchaseTaxSchema.parse(req.body);
-    await prisma.setting.upsert({
-      where: { key: 'purchaseTax' },
-      create: { key: 'purchaseTax', value },
-      update: { value },
+    await prisma.purchaseTaxSettings.upsert({
+      where: { id: 1 },
+      create: value,
+      update: value,
     });
-    audit(req, 'settings.purchaseTax', 'Setting', 'purchaseTax', value);
+    clearPurchaseTaxCache();
+    audit(req, 'settings.purchaseTax', 'PurchaseTaxSettings', '1', value);
     res.json(value);
   }),
 );
@@ -336,12 +338,13 @@ router.put(
   requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = staffTaxSchema.parse(req.body);
-    await prisma.setting.upsert({
-      where: { key: 'staffTax' },
-      create: { key: 'staffTax', value },
-      update: { value },
+    await prisma.staffTaxSettings.upsert({
+      where: { id: 1 },
+      create: value,
+      update: value,
     });
-    audit(req, 'settings.staffTax', 'Setting', 'staffTax', value);
+    clearStaffTaxCache();
+    audit(req, 'settings.staffTax', 'StaffTaxSettings', '1', value);
     res.json(value);
   }),
 );
@@ -369,12 +372,13 @@ router.put(
   requireFinanceRole,
   asyncHandler(async (req, res) => {
     const value = incomeTaxSchema.parse(req.body);
-    await prisma.setting.upsert({
-      where: { key: 'incomeTax' },
-      create: { key: 'incomeTax', value },
-      update: { value },
+    await prisma.incomeTaxSettings.upsert({
+      where: { id: 1 },
+      create: value,
+      update: value,
     });
-    audit(req, 'settings.incomeTax', 'Setting', 'incomeTax', value);
+    clearIncomeTaxConfigCache();
+    audit(req, 'settings.incomeTax', 'IncomeTaxSettings', '1', value);
     res.json(value);
   }),
 );

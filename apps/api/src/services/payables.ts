@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { kes, sumCents, toCents } from './money';
 import { prisma } from '../lib/prisma';
 import { agingBucket, daysOverdue, isOverdue, type AgingBucket } from './invoicing';
+import { cachedSetting } from './settingsCache';
 
 /**
  * Payables: what we owe suppliers, and what we have paid so far.
@@ -57,9 +58,24 @@ export const DEFAULT_PURCHASE_TAX: PurchaseTaxConfig = {
   withholdingAgent: false,
 };
 
+const purchaseTaxCache = cachedSetting(async (): Promise<PurchaseTaxConfig> => {
+  const row = await prisma.purchaseTaxSettings.upsert({ where: { id: 1 }, create: {}, update: {} });
+  return {
+    vatRatePct: Number(row.vatRatePct),
+    billsIncludeVat: row.billsIncludeVat,
+    defaultWhtRatePct: Number(row.defaultWhtRatePct),
+    defaultWhtVatRatePct: Number(row.defaultWhtVatRatePct),
+    withholdingAgent: row.withholdingAgent,
+  };
+});
+
 export async function getPurchaseTaxConfig(): Promise<PurchaseTaxConfig> {
-  const row = await prisma.setting.findUnique({ where: { key: 'purchaseTax' } });
-  return { ...DEFAULT_PURCHASE_TAX, ...((row?.value ?? {}) as Partial<PurchaseTaxConfig>) };
+  return purchaseTaxCache.get();
+}
+
+/** Called by the settings route after the row is saved. */
+export function clearPurchaseTaxCache() {
+  purchaseTaxCache.clear();
 }
 
 /** A cost that may be owed. `supplierId` null means it is not on the ledger. */
