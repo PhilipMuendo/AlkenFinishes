@@ -167,6 +167,10 @@ const budgetSchema = z.object({
     z.object({
       category: z.enum(['MATERIALS', 'LABOUR', 'TRANSPORT', 'OTHER']),
       allocated: z.coerce.number().nonnegative(),
+      // Only meaningful on the LABOUR row — the weekly Planned vs Actual
+      // report's planned man-days figure. Accepted on any row and simply
+      // unused elsewhere, rather than rejecting it on the others.
+      plannedLabourDays: z.coerce.number().nonnegative().nullable().optional(),
     }),
   ),
 });
@@ -190,8 +194,13 @@ router.put(
       lines.map((line) =>
         prisma.budgetLine.upsert({
           where: { projectId_category: { projectId, category: line.category } },
-          create: { projectId, category: line.category, allocated: line.allocated },
-          update: { allocated: line.allocated },
+          create: {
+            projectId,
+            category: line.category,
+            allocated: line.allocated,
+            plannedLabourDays: line.plannedLabourDays,
+          },
+          update: { allocated: line.allocated, plannedLabourDays: line.plannedLabourDays },
         }),
       ),
     );

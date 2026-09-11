@@ -21,6 +21,11 @@ const taskSchema = z.object({
   weight: z.coerce.number().positive('Weight must be greater than zero').optional(),
   notes: z.string().nullable().optional(),
   sortOrder: z.coerce.number().int().optional(),
+  // For the weekly Planned vs Actual report. Optional — most tasks track
+  // progress by completionPct alone; a quantity only makes sense for some.
+  plannedQuantity: z.coerce.number().nonnegative().nullable().optional(),
+  actualQuantity: z.coerce.number().nonnegative().nullable().optional(),
+  unit: z.string().trim().max(20).nullable().optional(),
 });
 
 /**

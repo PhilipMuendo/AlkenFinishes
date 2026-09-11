@@ -12,6 +12,7 @@ const CATEGORIES: BudgetCategory[] = ['MATERIALS', 'LABOUR', 'TRANSPORT', 'OTHER
 interface BudgetLine {
   category: BudgetCategory;
   allocated: string;
+  plannedLabourDays: string | null;
 }
 
 export function BudgetPanel({ projectId }: { projectId: string }) {
@@ -22,6 +23,7 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
   });
   const { data } = budgetQuery;
   const [values, setValues] = useState<Record<string, string>>({});
+  const [plannedLabourDays, setPlannedLabourDays] = useState('');
 
   useEffect(() => {
     if (data) {
@@ -30,6 +32,7 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
         next[cat] = String(Number(data.find((l) => l.category === cat)?.allocated ?? 0));
       }
       setValues(next);
+      setPlannedLabourDays(data.find((l) => l.category === 'LABOUR')?.plannedLabourDays ?? '');
     }
   }, [data]);
 
@@ -41,6 +44,9 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
           lines: CATEGORIES.map((category) => ({
             category,
             allocated: Number(values[category] ?? 0),
+            ...(category === 'LABOUR'
+              ? { plannedLabourDays: plannedLabourDays === '' ? null : Number(plannedLabourDays) }
+              : {}),
           })),
         },
       }),
@@ -62,16 +68,35 @@ export function BudgetPanel({ projectId }: { projectId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {CATEGORIES.map((cat) => (
-          <Field key={cat} label={cat.charAt(0) + cat.slice(1).toLowerCase()}>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              inputMode="decimal"
-              value={values[cat] ?? ''}
-              onChange={(e) => setValues((v) => ({ ...v, [cat]: e.target.value }))}
-            />
-          </Field>
+          <div key={cat}>
+            <Field label={cat.charAt(0) + cat.slice(1).toLowerCase()}>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                value={values[cat] ?? ''}
+                onChange={(e) => setValues((v) => ({ ...v, [cat]: e.target.value }))}
+              />
+            </Field>
+            {cat === 'LABOUR' && (
+              <div className="mt-2">
+                <Field
+                  label="Planned labour (man-days)"
+                  hint="Used by the weekly Planned vs Actual report — optional"
+                >
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    inputMode="numeric"
+                    value={plannedLabourDays}
+                    onChange={(e) => setPlannedLabourDays(e.target.value)}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
         ))}
         <p className="text-sm text-fg-muted">
           Total budget:{' '}

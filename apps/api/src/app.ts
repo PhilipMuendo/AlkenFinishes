@@ -41,6 +41,7 @@ import stockRouter from './modules/stock';
 import documentsRouter from './modules/documents';
 import dailyReportsRouter from './modules/dailyReports';
 import weeklyReportsRouter from './modules/weeklyReports';
+import weeklyProgressRouter from './modules/weeklyProgress';
 import reportsRouter from './modules/reports';
 import analyticsRouter from './modules/analytics';
 import settingsRouter from './modules/settings';
@@ -88,6 +89,7 @@ export function createApp() {
   v1.use('/projects/:projectId/documents', documentsRouter);
   v1.use('/projects/:projectId/daily-reports', dailyReportsRouter);
   v1.use('/projects/:projectId/weekly-reports', weeklyReportsRouter);
+  v1.use('/projects/:projectId/weekly-progress', weeklyProgressRouter);
   v1.use('/invoices', companyInvoicesRouter); // cross-project A/R register
   v1.use('/reports', reportsRouter);
   v1.use('/workers', workersRouter);

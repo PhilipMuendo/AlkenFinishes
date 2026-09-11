@@ -62,7 +62,7 @@ export const endOfWeek = (d: Date) => {
   return out;
 };
 
-const weekBounds = (weekEnding: Date) => {
+export const weekBounds = (weekEnding: Date) => {
   const to = new Date(weekEnding);
   to.setHours(23, 59, 59, 999);
   const from = new Date(weekEnding);

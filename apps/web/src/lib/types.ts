@@ -683,6 +683,10 @@ export interface Task {
   weight: number;
   notes: string | null;
   photos: { id: string; fileUrl: string; caption: string | null }[];
+  /** For the weekly Planned vs Actual report. Null on tasks that don't track a quantity. */
+  plannedQuantity: number | null;
+  actualQuantity: number | null;
+  unit: string | null;
 }
 
 /** Server-computed weighting summary — never recalculated in the browser. */
@@ -806,6 +810,33 @@ export interface WeeklyReport {
   createdAt: string;
   /** Later than `createdAt` when the week's report was filed again and revised. */
   updatedAt: string;
+}
+
+/** GET /projects/:id/weekly-progress/preview and the `data` inside a WeeklyProgressReport. */
+export interface WeeklyProgressData {
+  weekEnding: string;
+  quantities: { item: string; unit: string; planned: number; actual: number; variance: number }[];
+  completion: { overallPct: number; byPhase: { phase: string; pct: number }[] };
+  labour: { plannedDays: number | null; actualDays: number; variance: number | null };
+  materials: { planned: number; actual: number; variance: number };
+  money: { planned: number; actual: number; variance: number };
+  programme: {
+    tasksCompletedThisWeek: string[];
+    snagsRaisedThisWeek: number;
+    snagsResolvedThisWeek: number;
+    daysReportedThisWeek: number;
+  };
+  outstandingWork: { phase: string; name: string; status: TaskStatus; completionPct: number }[];
+}
+
+/** GET/POST /projects/:id/weekly-progress — a finalised, frozen weekly snapshot. */
+export interface WeeklyProgressReport {
+  id: string;
+  weekEnding: string;
+  data: WeeklyProgressData;
+  pdfUrl: string | null;
+  generatedBy: { id: string; name: string };
+  generatedAt: string;
 }
 
 // Unified cross-site feed item from GET /reports (super admin).

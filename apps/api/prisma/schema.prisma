@@ -267,6 +267,7 @@ model User {
   vatFilings              VatFiling[]
   incomeTaxInstalments    IncomeTaxInstalment[]
   incomeTaxReturns        IncomeTaxReturn[]
+  weeklyProgressReports   WeeklyProgressReport[]
 }
 
 model RefreshToken {
@@ -323,6 +324,7 @@ model Project {
   documents         Document[]
   dailyReports      DailyReport[]
   weeklyReports     WeeklyReport[]
+  weeklyProgressReports WeeklyProgressReport[]
   toolsHere         Tool[]
   toolTransfersFrom ToolTransfer[]              @relation("ToolTransferFrom")
   toolTransfersTo   ToolTransfer[]              @relation("ToolTransferTo")
@@ -344,6 +346,10 @@ model BudgetLine {
   project   Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   category  BudgetCategory
   allocated Decimal        @db.Decimal(14, 2)
+  // Only meaningful on the LABOUR row — the planned man-days side of the
+  // weekly Planned vs Actual labour row. Actual man-days is derived from
+  // AttendanceRecord (one row = one worker on one day), never stored.
+  plannedLabourDays Decimal? @db.Decimal(10, 2)
   updatedAt DateTime       @updatedAt
 
   @@unique([projectId, category])
@@ -791,6 +797,13 @@ model Task {
   updatedAt     DateTime   @updatedAt
   createdAt     DateTime   @default(now())
 
+  // Optional physical quantity — "500 m² of painting" — for the weekly
+  // Planned vs Actual report. Left null on tasks where a quantity doesn't
+  // make sense (e.g. "Priming"); completionPct already covers those.
+  plannedQuantity Decimal? @db.Decimal(14, 2)
+  actualQuantity  Decimal? @db.Decimal(14, 2)
+  unit            String? // "m²", "days", "units" — whatever the quantity is measured in
+
   photos TaskPhoto[]
 
   @@index([projectId, phase])
@@ -1094,6 +1107,25 @@ model WeeklyReport {
   // Filing twice for the same week revises the first report in place, so the
   // card has to be able to say the summary was rewritten after it was filed.
   updatedAt     DateTime @default(now()) @updatedAt
+
+  @@unique([projectId, weekEnding])
+  @@index([projectId, weekEnding])
+}
+
+// A finalised Planned-vs-Actual snapshot for one week. `data` is FROZEN at
+// generation time (same rule as VatFiling.netVatPayable) — it is a record of
+// what the variance table showed when someone filed it, not a live query
+// that would silently change if a bill landed against the project later.
+model WeeklyProgressReport {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  weekEnding    DateTime @db.Date
+  data          Json
+  pdfUrl        String?
+  generatedById String
+  generatedBy   User     @relation(fields: [generatedById], references: [id])
+  generatedAt   DateTime @default(now())
 
   @@unique([projectId, weekEnding])
   @@index([projectId, weekEnding])

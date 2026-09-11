@@ -243,12 +243,17 @@ export function TasksPanel({ projectId }: { projectId: string }) {
               e.preventDefault();
               const fd = new FormData(e.currentTarget);
               const weight = fd.get('weight');
+              const plannedQuantity = fd.get('plannedQuantity');
+              const actualQuantity = fd.get('actualQuantity');
               update.mutate({
                 id: editing.id,
                 body: {
                   status: fd.get('status'),
                   completionPct: Number(fd.get('completionPct')),
                   notes: fd.get('notes') || null,
+                  unit: fd.get('unit') || null,
+                  plannedQuantity: plannedQuantity ? Number(plannedQuantity) : null,
+                  actualQuantity: actualQuantity ? Number(actualQuantity) : null,
                   ...(weight ? { weight: Number(weight) } : {}),
                 },
               });
@@ -289,6 +294,32 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 />
               </Field>
             )}
+            <Field
+              label="Quantity (optional)"
+              hint="For the weekly Planned vs Actual report — e.g. 500 planned, 450 done, unit m². Leave blank if this task doesn't track a quantity."
+            >
+              <div className="grid grid-cols-3 gap-2">
+                <Input
+                  name="plannedQuantity"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  placeholder="Planned"
+                  defaultValue={editing.plannedQuantity ?? ''}
+                />
+                <Input
+                  name="actualQuantity"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputMode="decimal"
+                  placeholder="Actual"
+                  defaultValue={editing.actualQuantity ?? ''}
+                />
+                <Input name="unit" placeholder="Unit" defaultValue={editing.unit ?? ''} />
+              </div>
+            </Field>
             <Field label="Notes">
               <Textarea name="notes" defaultValue={editing.notes ?? ''} />
             </Field>

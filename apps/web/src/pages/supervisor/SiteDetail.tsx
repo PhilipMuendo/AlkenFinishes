@@ -3,6 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertOctagon,
+  BarChart3,
   Boxes,
   CalendarRange,
   Camera,
@@ -32,6 +33,7 @@ import { SnagsPanel } from '@/features/SnagsPanel';
 import { SafetyPanel } from '@/features/SafetyPanel';
 import { PhotosPanel } from '@/features/PhotosPanel';
 import { CommandCentrePanel } from '@/features/CommandCentrePanel';
+import { WeeklyProgressPanel } from '@/features/WeeklyProgressPanel';
 
 /**
  * Supervisor site home: large action tiles instead of dense tabs.
@@ -69,6 +71,13 @@ const ACTIONS = [
     label: 'Weekly report',
     hint: 'Summarise the week',
     icon: CalendarRange,
+    chip: CHIP,
+  },
+  {
+    id: 'weekly-progress',
+    label: 'Weekly Progress',
+    hint: 'Planned vs Actual',
+    icon: BarChart3,
     chip: CHIP,
   },
   { id: 'tools', label: 'Equipment', hint: 'What is on site right now', icon: Wrench, chip: CHIP },
@@ -183,6 +192,7 @@ export function SiteDetailPage() {
       {view === 'tasks' && <TasksPanel projectId={projectId} />}
       {view === 'report' && <ReportsPanel projectId={projectId} canSubmit />}
       {view === 'weekly' && <WeeklyReportsPanel projectId={projectId} canSubmit />}
+      {view === 'weekly-progress' && <WeeklyProgressPanel projectId={projectId} />}
       {view === 'tools' && <ToolsReadOnlyPanel />}
       {view === 'photos' && <PhotosPanel projectId={projectId} />}
       {view === 'snags' && <SnagsPanel projectId={projectId} />}
