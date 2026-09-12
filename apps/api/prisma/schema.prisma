@@ -278,6 +278,8 @@ model User {
   handoversCountersigned  HandoverChecklist[]     @relation("HandoverCountersignedBy")
   handoversCreated        HandoverChecklist[]     @relation("HandoverCreatedBy")
   handoverSigningLinks    HandoverSigningLink[]   @relation("HandoverSigningLinkCreatedBy")
+  projectCloseoutsClosed  ProjectCloseout[]       @relation("ProjectCloseoutClosedBy")
+  projectCloseoutsCreated ProjectCloseout[]       @relation("ProjectCloseoutCreatedBy")
 }
 
 model RefreshToken {
@@ -342,6 +344,7 @@ model Project {
   snags             SnagItem[]
   qualityInspections QualityInspection[]
   handoverChecklist HandoverChecklist?
+  closeout          ProjectCloseout?
   safetyIncidents   SafetyIncident[]
   overrideRequests  AttendanceOverrideRequest[]
   calendarEvents    CalendarEvent[]
@@ -1517,6 +1520,29 @@ model HandoverSigningLink {
   createdAt   DateTime          @default(now())
 
   @@index([handoverId])
+}
+
+// The final office-side gate on a project. Five of its thirteen items are
+// computed fresh every time this is read (quality approved, snags closed,
+// site handed over, final invoice issued, payments reconciled) — same
+// "never stored, always live" reasoning as HandoverChecklist's auto items.
+// The other eight are ticked by hand. `closeProject` (services/
+// projectCloseout.ts) refuses to close while anything is unchecked.
+model ProjectCloseout {
+  id            String    @id @default(cuid())
+  projectId     String    @unique
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items         Json // {label: string, checked: boolean}[] -- the eight manual items only
+  lessonsLearned String?
+  closedAt      DateTime?
+  closedById    String?
+  closedBy      User?     @relation("ProjectCloseoutClosedBy", fields: [closedById], references: [id])
+  pdfUrl        String?
+
+  createdById String
+  createdBy   User     @relation("ProjectCloseoutCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Variation {

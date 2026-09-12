@@ -28,6 +28,7 @@ import { CommandCentrePanel } from '@/features/CommandCentrePanel';
 import { WeeklyProgressPanel } from '@/features/WeeklyProgressPanel';
 import { QualityInspectionPanel } from '@/features/QualityInspectionPanel';
 import { HandoverPanel } from '@/features/HandoverPanel';
+import { ProjectCloseoutPanel } from '@/features/ProjectCloseoutPanel';
 
 /**
  * Fourteen flat tabs overflowed the bar and made everything equally important.
@@ -81,6 +82,7 @@ const GROUPS = [
       { id: 'export', label: 'Export' },
     ],
   },
+  { id: 'closeout', label: 'Close-out', tabs: [{ id: 'closeout', label: 'Close-out' }] },
 ] as const;
 
 const TAB_TO_GROUP: Map<string, string> = new Map(
@@ -284,6 +286,7 @@ export function ProjectDetailPage() {
       {tab === 'snags' && <SnagsPanel projectId={projectId} />}
       {tab === 'safety' && <SafetyPanel projectId={projectId} />}
       {tab === 'handover' && <HandoverPanel projectId={projectId} />}
+      {tab === 'closeout' && <ProjectCloseoutPanel projectId={projectId} />}
       {tab === 'export' && <BusinessReportsPanel projectId={projectId} />}
     </div>
   );

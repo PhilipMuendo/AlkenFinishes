@@ -56,6 +56,8 @@ export interface AttentionDigest {
     companyExpensesPending: { id: string; name: string; amount: number; daysOutstanding: number }[];
     quotationsAwaitingDecision: { id: string; name: string; quotationNo: string | null; daysOutstanding: number }[];
     staleLeads: { id: string; name: string; stage: string; daysStale: number }[];
+    handoverPending: { id: string; name: string; daysOutstanding: number }[];
+    closeoutPending: { id: string; name: string; daysOutstanding: number }[];
   };
 }
 
@@ -215,7 +217,8 @@ export async function attentionDigest(): Promise<AttentionDigest> {
   // Three more things sitting on someone's desk, none of them tied to a
   // single site: a signing link nobody has opened yet, a company-wide
   // expense nobody has decided on, a quotation the client hasn't answered.
-  const [staleLinks, staleCompanyExpenses, staleQuotations, staleLeadRows] = await Promise.all([
+  const [staleLinks, staleCompanyExpenses, staleQuotations, staleLeadRows, staleHandovers, closeoutReady] =
+    await Promise.all([
     prisma.contractSigningLink.findMany({
       where: {
         usedAt: null,
@@ -239,6 +242,21 @@ export async function attentionDigest(): Promise<AttentionDigest> {
         updatedAt: { lt: new Date(now - STALE_LEAD_AFTER_DAYS * DAY) },
       },
       select: { id: true, title: true, stage: true, updatedAt: true },
+    }),
+    // A handover checklist started but not yet sent/signed — same 5-day
+    // staleness window as a contract signing link.
+    prisma.handoverChecklist.findMany({
+      where: { clientSignedAt: null, createdAt: { lt: new Date(now - 5 * DAY) } },
+      include: { project: { select: { id: true, name: true } } },
+    }),
+    // Handed over and countersigned, but nobody has closed the project out yet
+    // (no ProjectCloseout row at all, or one exists but isn't closed).
+    prisma.handoverChecklist.findMany({
+      where: {
+        companySignedAt: { not: null, lt: new Date(now - 5 * DAY) },
+        OR: [{ project: { closeout: null } }, { project: { closeout: { closedAt: null } } }],
+      },
+      include: { project: { select: { id: true, name: true } } },
     }),
   ]);
   const signingLinksOutstanding: AttentionDigest['groups']['signingLinksOutstanding'] = staleLinks
@@ -273,6 +291,20 @@ export async function attentionDigest(): Promise<AttentionDigest> {
       daysStale: Math.floor((now - l.updatedAt.getTime()) / DAY),
     }))
     .sort((a, b) => b.daysStale - a.daysStale);
+  const handoverPending: AttentionDigest['groups']['handoverPending'] = staleHandovers
+    .map((h) => ({
+      id: h.project.id,
+      name: h.project.name,
+      daysOutstanding: Math.floor((now - h.createdAt.getTime()) / DAY),
+    }))
+    .sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+  const closeoutPending: AttentionDigest['groups']['closeoutPending'] = closeoutReady
+    .map((h) => ({
+      id: h.project.id,
+      name: h.project.name,
+      daysOutstanding: Math.floor((now - h.companySignedAt!.getTime()) / DAY),
+    }))
+    .sort((a, b) => b.daysOutstanding - a.daysOutstanding);
 
   // Things sitting on the owner's desk waiting for a yes/no — grouped by
   // project so "3 pending" points somewhere rather than being a bare count.
@@ -326,7 +358,9 @@ export async function attentionDigest(): Promise<AttentionDigest> {
     signingLinksOutstanding.length +
     companyExpensesPending.length +
     quotationsAwaitingDecision.length +
-    staleLeads.length;
+    staleLeads.length +
+    handoverPending.length +
+    closeoutPending.length;
 
   return {
     activeCount,
@@ -344,6 +378,8 @@ export async function attentionDigest(): Promise<AttentionDigest> {
       companyExpensesPending,
       quotationsAwaitingDecision,
       staleLeads,
+      handoverPending,
+      closeoutPending,
     },
   };
 }

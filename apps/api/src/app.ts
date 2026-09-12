@@ -45,6 +45,7 @@ import dailyReportsRouter from './modules/dailyReports';
 import weeklyReportsRouter from './modules/weeklyReports';
 import weeklyProgressRouter from './modules/weeklyProgress';
 import qualityInspectionsRouter from './modules/qualityInspections';
+import projectCloseoutRouter from './modules/projectCloseout';
 import reportsRouter from './modules/reports';
 import analyticsRouter from './modules/analytics';
 import settingsRouter from './modules/settings';
@@ -95,6 +96,7 @@ export function createApp() {
   v1.use('/projects/:projectId/weekly-progress', weeklyProgressRouter);
   v1.use('/projects/:projectId/quality-inspections', qualityInspectionsRouter);
   v1.use('/projects/:projectId/handover', handoverRouter);
+  v1.use('/projects/:projectId/closeout', projectCloseoutRouter);
   v1.use('/invoices', companyInvoicesRouter); // cross-project A/R register
   v1.use('/reports', reportsRouter);
   v1.use('/workers', workersRouter);

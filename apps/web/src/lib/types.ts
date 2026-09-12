@@ -890,6 +890,24 @@ export interface HandoverChecklist {
   updatedAt: string;
 }
 
+export interface CloseoutItem {
+  label: string;
+  checked: boolean;
+}
+
+/** GET/PUT /projects/:id/closeout */
+export interface ProjectCloseout {
+  id: string;
+  items: CloseoutItem[]; // all thirteen, auto + manual merged
+  manualItems: CloseoutItem[]; // the eight stored ones — what a PUT should send back
+  lessonsLearned: string | null;
+  complete: boolean;
+  closedAt: string | null;
+  closedBy: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // Unified cross-site feed item from GET /reports (super admin).
 export interface ReportFeedItem {
   id: string;
@@ -994,6 +1012,8 @@ export interface AttentionDigest {
       daysOutstanding: number;
     }[];
     staleLeads: { id: string; name: string; stage: string; daysStale: number }[];
+    handoverPending: { id: string; name: string; daysOutstanding: number }[];
+    closeoutPending: { id: string; name: string; daysOutstanding: number }[];
   };
 }
 

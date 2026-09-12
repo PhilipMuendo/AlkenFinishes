@@ -137,6 +137,22 @@ const SECTIONS: Section[] = [
     detail: (i) => `${STAGE_LABEL[i.stage as keyof typeof STAGE_LABEL] ?? i.stage} · ${i.daysStale}d quiet`,
     href: () => '/admin/leads',
   },
+  {
+    key: 'handoverPending',
+    label: 'Handover not yet signed',
+    hint: 'Checklist started 5+ days ago, no client signature yet',
+    icon: ClipboardCheck,
+    tone: 'blue',
+    detail: (i) => `${i.daysOutstanding}d since started`,
+  },
+  {
+    key: 'closeoutPending',
+    label: 'Ready to close out',
+    hint: 'Handed over 5+ days ago, close-out not yet run',
+    icon: CheckCircle2,
+    tone: 'blue',
+    detail: (i) => `${i.daysOutstanding}d since handover`,
+  },
 ];
 
 const STAGE_LABEL = {
