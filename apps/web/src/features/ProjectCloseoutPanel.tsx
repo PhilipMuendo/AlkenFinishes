@@ -10,8 +10,6 @@ import { Field, Textarea } from '@/components/ui/input';
 import { QueryState } from '@/components/ui/query-state';
 import { toast } from '@/components/ui/toast';
 
-const AUTO_LABELS = new Set(['Quality approved', 'Snags closed', 'Site handed over', 'Final invoice issued', 'Payments reconciled']);
-
 /**
  * The final gate. Five of the thirteen items are worked out automatically
  * from Quality Inspection, the Snag list, Handover and Invoices — the rest
@@ -80,7 +78,7 @@ export function ProjectCloseoutPanel({ projectId }: { projectId: string }) {
         </CardHeader>
         <CardContent className="space-y-1.5">
           {data.items.map((item) => {
-            const auto = AUTO_LABELS.has(item.label);
+            const auto = item.auto;
             const manualIndex = manualItems.findIndex((m) => m.label === item.label);
             const checked = auto ? item.checked : (manualItems[manualIndex]?.checked ?? false);
             return (

@@ -6,9 +6,11 @@ import { requireAuth } from '../middleware/auth';
 import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import {
+  AUTO_CLOSEOUT_ITEMS,
   CloseoutIncompleteError,
   closeProject,
   ensureProjectCloseout,
+  MANUAL_CLOSEOUT_ITEMS,
   mergedCloseoutItems,
   type CloseoutItem,
 } from '../services/projectCloseout';
@@ -20,6 +22,8 @@ import {
  */
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess, requireSuperadmin);
+
+const AUTO_LABEL_SET: ReadonlySet<string> = new Set(AUTO_CLOSEOUT_ITEMS);
 
 async function serialize(c: {
   id: string;
@@ -34,7 +38,7 @@ async function serialize(c: {
   const items = await mergedCloseoutItems(c.projectId, c.items as CloseoutItem[]);
   return {
     id: c.id,
-    items,
+    items: items.map((i) => ({ ...i, auto: AUTO_LABEL_SET.has(i.label) })),
     manualItems: c.items,
     lessonsLearned: c.lessonsLearned,
     complete: items.every((i) => i.checked),
@@ -63,9 +67,19 @@ router.put(
     const existing = await ensureProjectCloseout(req.params.projectId, req.user!.id);
     if (existing.closedAt) throw ApiError.conflict('This project is already closed.');
 
+    // The exact eight manual labels, no more, no fewer — mergedCloseoutItems
+    // depends on 'Work completed' always being present, and a silently
+    // dropped or renamed item would otherwise corrupt this row for good
+    // (every later read throws until it's fixed by hand in the database).
     const { items, lessonsLearned } = z
       .object({
-        items: z.array(z.object({ label: z.string(), checked: z.boolean() })).min(1),
+        items: z
+          .array(z.object({ label: z.enum(MANUAL_CLOSEOUT_ITEMS), checked: z.boolean() }))
+          .length(MANUAL_CLOSEOUT_ITEMS.length)
+          .refine(
+            (v) => new Set(v.map((i) => i.label)).size === MANUAL_CLOSEOUT_ITEMS.length,
+            'Each checklist item must appear exactly once',
+          ),
         lessonsLearned: z.string().trim().nullable().optional(),
       })
       .parse(req.body);

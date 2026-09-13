@@ -21,6 +21,16 @@ export const MANUAL_HANDOVER_ITEMS = [
   'Keys/access items returned where applicable',
 ] as const;
 
+// The single source of truth for which labels are computed rather than
+// ticked by hand — modules/handover.ts tags each item with this when
+// serialising a response, so the frontend never has to guess by matching
+// label text (a duplicated, driftable copy of exactly this list).
+export const AUTO_HANDOVER_ITEMS = [
+  'Final quality inspection completed',
+  'Snags closed',
+  'Handover photographs taken',
+] as const;
+
 /** Find-or-create the one HandoverChecklist row for a project. */
 export async function ensureHandoverChecklist(projectId: string, userId: string) {
   const existing = await prisma.handoverChecklist.findUnique({ where: { projectId } });
@@ -51,8 +61,8 @@ async function autoItems(projectId: string): Promise<HandoverChecklistItem[]> {
     .reduce((s, r) => s + r._count, 0);
 
   return [
-    { label: 'Final quality inspection completed', checked: total > 0 && notPassed === 0 },
-    { label: 'Snags closed', checked: openSnags === 0 },
+    { label: AUTO_HANDOVER_ITEMS[0], checked: total > 0 && notPassed === 0 },
+    { label: AUTO_HANDOVER_ITEMS[1], checked: openSnags === 0 },
   ];
 }
 
@@ -67,7 +77,7 @@ export async function mergedItems(
     quality,
     snags,
     ...manual,
-    { label: 'Handover photographs taken', checked: photoCount > 0 },
+    { label: AUTO_HANDOVER_ITEMS[2], checked: photoCount > 0 },
   ];
 }
 

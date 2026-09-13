@@ -19,6 +19,17 @@ export const MANUAL_CLOSEOUT_ITEMS = [
   'Referral requested',
 ] as const;
 
+// The single source of truth for which labels are computed rather than
+// ticked by hand — modules/projectCloseout.ts tags each item with this when
+// serialising a response, instead of the frontend guessing by label text.
+export const AUTO_CLOSEOUT_ITEMS = [
+  'Quality approved',
+  'Snags closed',
+  'Site handed over',
+  'Final invoice issued',
+  'Payments reconciled',
+] as const;
+
 export interface CloseoutItem {
   label: string;
   checked: boolean;
@@ -48,11 +59,11 @@ async function autoItems(projectId: string): Promise<CloseoutItem[]> {
   const notPassed = inspectionCounts.filter((r) => r.overallStatus !== 'PASS').reduce((s, r) => s + r._count, 0);
 
   return [
-    { label: 'Quality approved', checked: total > 0 && notPassed === 0 },
-    { label: 'Snags closed', checked: openSnags === 0 },
-    { label: 'Site handed over', checked: !!handover?.companySignedAt },
-    { label: 'Final invoice issued', checked: invoices > 0 },
-    { label: 'Payments reconciled', checked: invoices > 0 && receivables.arOutstanding === 0 },
+    { label: AUTO_CLOSEOUT_ITEMS[0], checked: total > 0 && notPassed === 0 },
+    { label: AUTO_CLOSEOUT_ITEMS[1], checked: openSnags === 0 },
+    { label: AUTO_CLOSEOUT_ITEMS[2], checked: !!handover?.companySignedAt },
+    { label: AUTO_CLOSEOUT_ITEMS[3], checked: invoices > 0 },
+    { label: AUTO_CLOSEOUT_ITEMS[4], checked: invoices > 0 && receivables.arOutstanding === 0 },
   ];
 }
 

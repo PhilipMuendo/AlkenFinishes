@@ -7,7 +7,16 @@ import { requireProjectAccess, requireSuperadmin } from '../middleware/rbac';
 import { audit } from '../middleware/audit';
 import { fileUrl, removeUploadedFile, saveDataUrlImage, signFileUrl, upload, verifyUploads } from '../middleware/upload';
 import { generateToken, hashToken } from '../services/accessLink';
-import { ensureHandoverChecklist, mergedItems, renderHandover, type HandoverChecklistItem } from '../services/handover';
+import {
+  AUTO_HANDOVER_ITEMS,
+  ensureHandoverChecklist,
+  MANUAL_HANDOVER_ITEMS,
+  mergedItems,
+  renderHandover,
+  type HandoverChecklistItem,
+} from '../services/handover';
+
+const AUTO_LABEL_SET: ReadonlySet<string> = new Set(AUTO_HANDOVER_ITEMS);
 
 const router = Router({ mergeParams: true });
 router.use(requireAuth, requireProjectAccess);
@@ -31,7 +40,7 @@ async function serialize(h: {
   const items = await mergedItems(h.projectId, h.items as HandoverChecklistItem[], h.photoUrls.length);
   return {
     id: h.id,
-    items,
+    items: items.map((i) => ({ ...i, auto: AUTO_LABEL_SET.has(i.label) })),
     manualItems: h.items,
     notes: h.notes,
     photoUrls: h.photoUrls.map((u) => signFileUrl(u)),
@@ -63,12 +72,24 @@ router.put(
       throw ApiError.conflict('The client has already signed this handover — it can no longer be edited.');
     }
 
+    // The exact six manual labels, no more, no fewer — same reasoning as
+    // projectCloseout.ts's identical check: an unvalidated label set here
+    // would let a stray or renamed item silently drift into the stored
+    // checklist instead of being rejected at the boundary.
     const { items, notes } = z
       .object({
         items: z
           .string()
           .transform((v) => JSON.parse(v) as unknown)
-          .pipe(z.array(z.object({ label: z.string(), checked: z.coerce.boolean() })).min(1)),
+          .pipe(
+            z
+              .array(z.object({ label: z.enum(MANUAL_HANDOVER_ITEMS), checked: z.coerce.boolean() }))
+              .length(MANUAL_HANDOVER_ITEMS.length)
+              .refine(
+                (v) => new Set(v.map((i) => i.label)).size === MANUAL_HANDOVER_ITEMS.length,
+                'Each checklist item must appear exactly once',
+              ),
+          ),
         notes: z.string().trim().nullable().optional(),
       })
       .parse(req.body);

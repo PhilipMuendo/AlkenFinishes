@@ -13,12 +13,6 @@ import { QueryState } from '@/components/ui/query-state';
 import { toast } from '@/components/ui/toast';
 import { SignaturePad, type SignaturePadHandle } from '@/features/SignaturePad';
 
-const AUTO_LABELS = new Set([
-  'Final quality inspection completed',
-  'Snags closed',
-  'Handover photographs taken',
-]);
-
 const MAX_PHOTOS = 10;
 
 /**
@@ -100,7 +94,7 @@ export function HandoverPanel({ projectId }: { projectId: string }) {
         </CardHeader>
         <CardContent className="space-y-1.5">
           {data.items.map((item) => {
-            const auto = AUTO_LABELS.has(item.label);
+            const auto = item.auto;
             const manualIndex = manualItems.findIndex((m) => m.label === item.label);
             const checked = auto ? item.checked : (manualItems[manualIndex]?.checked ?? false);
             return (

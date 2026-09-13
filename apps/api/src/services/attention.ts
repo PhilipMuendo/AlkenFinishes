@@ -244,9 +244,15 @@ export async function attentionDigest(): Promise<AttentionDigest> {
       select: { id: true, title: true, stage: true, updatedAt: true },
     }),
     // A handover checklist started but not yet sent/signed — same 5-day
-    // staleness window as a contract signing link.
+    // staleness window as a contract signing link. Excludes a cancelled
+    // project the same way the main project list above does — nothing ever
+    // signs or closes one, so without this filter it would flag forever.
     prisma.handoverChecklist.findMany({
-      where: { clientSignedAt: null, createdAt: { lt: new Date(now - 5 * DAY) } },
+      where: {
+        clientSignedAt: null,
+        createdAt: { lt: new Date(now - 5 * DAY) },
+        project: { status: { notIn: ['CANCELLED'] } },
+      },
       include: { project: { select: { id: true, name: true } } },
     }),
     // Handed over and countersigned, but nobody has closed the project out yet
@@ -254,6 +260,7 @@ export async function attentionDigest(): Promise<AttentionDigest> {
     prisma.handoverChecklist.findMany({
       where: {
         companySignedAt: { not: null, lt: new Date(now - 5 * DAY) },
+        project: { status: { notIn: ['CANCELLED'] } },
         OR: [{ project: { closeout: null } }, { project: { closeout: { closedAt: null } } }],
       },
       include: { project: { select: { id: true, name: true } } },

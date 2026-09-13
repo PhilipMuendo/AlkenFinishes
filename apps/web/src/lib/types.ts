@@ -873,10 +873,15 @@ export interface HandoverItem {
   checked: boolean;
 }
 
+/** A merged checklist row — `auto` comes from the API, never guessed client-side by label text. */
+export interface MergedChecklistItem extends HandoverItem {
+  auto: boolean;
+}
+
 /** GET/PUT /projects/:id/handover */
 export interface HandoverChecklist {
   id: string;
-  items: HandoverItem[]; // all nine, auto + manual merged, in display order
+  items: MergedChecklistItem[]; // all nine, auto + manual merged, in display order
   manualItems: HandoverItem[]; // the six stored ones — what a PUT should send back
   notes: string | null;
   photoUrls: string[];
@@ -898,7 +903,7 @@ export interface CloseoutItem {
 /** GET/PUT /projects/:id/closeout */
 export interface ProjectCloseout {
   id: string;
-  items: CloseoutItem[]; // all thirteen, auto + manual merged
+  items: MergedChecklistItem[]; // all thirteen, auto + manual merged
   manualItems: CloseoutItem[]; // the eight stored ones — what a PUT should send back
   lessonsLearned: string | null;
   complete: boolean;
