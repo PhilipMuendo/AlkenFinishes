@@ -39,7 +39,7 @@ Reset a password: the key icon on a row opens "Reset password" — same rule, sh
 
 Disable vs delete: the row action toggles between "Disable" and "Enable" — disabling blocks sign-in but keeps their history (assigned sites, submitted reports, audit trail) and is the recommended choice for anyone who might come back. Delete is permanent and irreversible; use it only for an account that will never be needed again.
 
-Assigned sites shows on each row (comma-joined project names) for supervisors. The Accountant role sees Receivables, Payables, Company Expenses, Tax, Payroll and a money-only view of each site, but not Sites, Team, Leads, Contracts, Equipment or Calendar.`,
+Assigned sites shows on each row (comma-joined project names) for supervisors. The Accountant role sees Receivables, Payables, Company Expenses, Tax, Payroll, the Money & tax tab of Settings (rates and payroll deductions — not Company/Documents/Attendance/Assistant/Audit log, which stay Superadmin-only), and a money-only view of each site, but not Sites, Team, Leads, Contracts, Equipment or Calendar.`,
   },
   {
     key: 'crm_pipeline',
@@ -51,14 +51,16 @@ Assigned sites shows on each row (comma-joined project names) for supervisors. T
 
 Leads (/admin/leads) is a kanban board: New → Contacted → Site visit → Quoted, each card advancing one stage at a time via a button labelled with the next stage. "Lost" is reachable from any open stage and requires a reason. A lead can only be deleted while it has no quotations against it.
 
-Quotations (/admin/quotations): "New quotation" — optionally against a lead (auto-fills client/title), pick a client, add priced line items, set a VAT rate and validity date, write terms. Lifecycle: Draft → "Send to client" → Sent → either "Client accepted" or "Client declined" (requires a reason, and this also marks the underlying lead as lost). Only a Draft can be edited or deleted. Once accepted, "Raise contract" turns it into a Contract with the Contract Sum set to the quotation's subtotal (excluding VAT) — one contract per quotation.`,
+Quotations (/admin/quotations): "New quotation" — optionally against a lead (auto-fills client/title), pick a client, add priced line items, set a VAT rate and validity date, write terms. Lifecycle: Draft → "Send to client" → Sent → either "Client accepted" or "Client declined" (requires a reason, and this also marks the underlying lead as lost). Only a Draft can be edited or deleted. Once accepted, "Raise contract" turns it into a Contract with the Contract Sum set to the quotation's subtotal (excluding VAT) — one contract per quotation.
+
+Once a quotation is Sent, "Send decision link" generates a one-time link (same mechanics as a contract signing link — 14 days, copied to clipboard, no login for the client) that lets the client accept or decline it themselves, with a reason required for a decline. It reaches the exact same accept/decline logic as the office clicking the buttons directly, so a lead updates the same way either way.`,
   },
   {
     key: 'contracts',
     title: 'Contracts & signatures',
     scope: 'office',
     description:
-      'How to issue a contract, get it signed (send an e-signature link, or record a scanned wet-ink copy), raise a variation, and convert it into a running site. NOT how quotations become contracts in the first place — see howto_crm_pipeline.',
+      'How to issue a contract, get it signed (send an e-signature link, or record a scanned wet-ink copy), raise a variation, and convert it into a running site. NOT how quotations become contracts in the first place — see howto_crm_pipeline. NOT the Handover sign-off at the END of a project, which uses the same e-signature mechanism for a different document — see howto_handover.',
     content: `Contracts (/admin/contracts, Superadmin-only): a Draft contract (either raised directly or from an accepted quotation) is made real by "Issue for signature" — this allocates a contract number and renders the PDF that goes out.
 
 Getting it signed, two ways:
@@ -73,11 +75,21 @@ Once Signed, "Open the site" converts it into a running Project. A Variation (ra
     scope: 'office',
     description:
       'How to create a new site/project, change its status or supervisor, and manage Equipment (tools) — adding, transferring between sites, retiring. NOT the money side of a site (budget, invoices, payments) — that is on the site\'s own Money tabs, not covered here.',
-    content: `Sites (/admin/sites): "New site" creates a project directly — name, client name (typed free text here, not linked to the Clients register the way a quotation-raised contract is), location, contract value, start/expected-completion dates, initial status (Planning or Active), and a supervisor. A site created this way has no contract behind it yet — "link a contract to it so claims can be raised" is the reminder shown on creation; the alternative is issuing a Contract first and using "Open the site" from there.
+    content: `Sites (/admin/sites): "New site" creates a project directly — name, a client picked by search from the Clients register (or a plain typed name if they're not in it yet), location, contract value, start/expected-completion dates, initial status (Planning or Active), and a supervisor. Picking an existing client links the site's clientId properly, the same as a quotation-raised contract does; typing a name instead just records it as text with no link. A site created this way has no contract behind it yet — "link a contract to it so claims can be raised" is the reminder shown on creation; the alternative is issuing a Contract first and using "Open the site" from there.
 
 Inside a site (ProjectDetail), the header lets you change Status (Planning/Active/On Hold/Completed/Cancelled) and Supervisor (any active user with the Supervisor role) — both save immediately, no separate submit step.
 
 Equipment (/admin/equipment): "New tool" registers an item with a quantity, unit, and current location (a site or "Central store"). "Transfer" moves it to another site and always requires a photo of the delivery as proof — the button is disabled unless the tool's status is Active. Status (Active/Maintenance/Retired) is a plain dropdown on each card, saved instantly. A History icon shows every past transfer with its proof photo.`,
+  },
+  {
+    key: 'project_closeout',
+    title: 'Project Close-out',
+    scope: 'office',
+    description:
+      "How the final Close-out gate works — which of its thirteen items are worked out automatically versus ticked by hand, and what closing a project actually does. Superadmin-only, reached from a project's own Close-out tab. NOT Handover, the client-facing sign-off that comes before it — see howto_handover.",
+    content: `Close-out (a tab on a site's own admin page, Superadmin-only) is the final gate — a project only counts as closed once all thirteen of its items are true. Five are computed automatically and can't be ticked by hand: quality approved and snags closed (the same checks Handover uses), site handed over (the office has countersigned the Handover certificate), final invoice issued, and payments reconciled (both read straight from the project's own invoices and receivables balance). The other eight — work completed, equipment returned, materials reconciled, project P&L completed, lessons learned recorded (with its own text field for what was actually learned), photos archived, testimonial requested, referral requested — are ticked by hand.
+
+"Close project" stays disabled until every one of the thirteen is checked, and refuses with the exact list of what's still outstanding if tried early. Closing is permanent — the checklist can no longer be edited afterward — and sets the project's own status to Completed, the same status field shown everywhere else in the app that a project's status appears.`,
   },
   {
     key: 'calendar',
@@ -97,13 +109,13 @@ Only manually-added events show a delete (trash) icon, and deleting one is silen
     scope: 'office',
     description:
       'What each tab in Settings controls — Company letterhead, Documents (invoicing/quotation/contract numbering and wording), Money & tax (budget thresholds, labour cost source, purchase/staff withholding tax, payroll deductions), Attendance devices, the Assistant allowance, and the Audit log. NOT this company\'s current configured rates — ask a specific lookup like tax_position or payroll_recent for those.',
-    content: `Settings (/admin/settings, Superadmin-only) is six tabs, each addressable by URL (/admin/settings/{section}):
+    content: `Settings (/admin/settings) is six tabs, each addressable by URL (/admin/settings/{section}). Superadmin sees all six; an Accountant's own Settings entry goes straight to Money & tax, the only one they can reach.
 
 Company — the legal letterhead printed on every invoice/receipt: logo, registered name, address, KRA PIN, VAT registration, and the bank/M-Pesa details shown on invoices. The logo saves the moment you pick a file; everything else needs "Save letterhead".
 
 Documents — invoice/receipt number prefixes and padding, VAT rate, default retention, payment terms, footer note; and separately, quotation/contract/site number prefixes, quotation validity window, standard quotation terms, and the conditions of contract text. Changing wording here only affects documents issued from now on — anything already issued keeps what it went out with.
 
-Money & tax — five cards: budget health thresholds (when a category shows Watch vs At risk), which cost source drives Labour actuals (attendance only / expenses only / both, to avoid double-counting), tax on purchases (input VAT rate, whether you're an appointed withholding agent, default WHT rates), tax on staff hourly payments (a separate withholding toggle for fundis, distinct from formal Payroll's PAYE), and Payroll deductions (PAYE bands, personal relief, SHIF, Housing Levy — off by default, so nothing is withheld until switched on).
+Money & tax — six cards: budget health thresholds (when a category shows Watch vs At risk), which cost source drives Labour actuals (attendance only / expenses only / both, to avoid double-counting), tax on purchases (input VAT rate, whether you're an appointed withholding agent, default WHT rates), tax on staff hourly payments (a separate withholding toggle for fundis, distinct from formal Payroll's PAYE), income tax (whether this company tracks Corporation Tax on the Tax page at all, and its rate — off by default, for a business that files Turnover Tax instead or doesn't track this in the app), and Payroll deductions (PAYE bands, personal relief, SHIF, Housing Levy — off by default, so nothing is withheld until switched on).
 
 Attendance — registering fingerprint devices (ZKTeco push terminals, Suprema via BioStar 2, or uAttend CSV import), and resolving sync issues (an unrecognised fingerprint, or a punch at the wrong site).
 
@@ -134,6 +146,8 @@ Company Expenses is reached the same way and behaves identically — the only di
 
 A supplier's balance is built entirely from expense claims with that supplier attached and a supplier's own detail view lists every bill against them with its own position. Recording a payment happens from the expense itself (see "Approving expenses") — the payables list is where you see who to pay next, not where the payment is entered.
 
+"Share statement link" on a supplier's own detail view generates a link the supplier can open themselves, with no login, to see their own balance, aging and bill list read-only. Unlike a contract or quotation link it isn't single-use — it stays valid and reopenable until it expires (30 days) or is revoked, since a statement is meant to be checked more than once.
+
 Withholding tax on a payment is suggested automatically (when the company is configured as a withholding agent in Settings) but always editable — it's calculated on the ex-VAT outstanding balance, never on a VAT-inclusive figure. A payment can be deleted only if the withheld tax on it hasn't already been remitted to KRA.`,
   },
   {
@@ -151,12 +165,16 @@ New invoices are raised from inside a specific project (its own Invoices/Money t
     title: 'Tax',
     scope: 'finance',
     description:
-      "How to use the Tax page — this company's current VAT/withholding position and outstanding certificates. NOT how the underlying PAYE/NSSF/SHIF/withholding rates are configured — that's Settings > Money & tax, covered by howto_settings. NOT general Kenyan tax rules/deadlines — that's kenya_tax_guide.",
+      "How to use the Tax page — this company's current VAT/withholding position, recording that a VAT period was actually filed/paid, outstanding certificates, and (if switched on in Settings) Corporation Tax instalments and the annual return. NOT how the underlying PAYE/NSSF/SHIF/withholding/income-tax rates are configured — that's Settings > Money & tax, covered by howto_settings. NOT general Kenyan tax rules/deadlines — that's kenya_tax_guide.",
     content: `Tax (/admin/tax, Superadmin and Accountant) shows this company's current position: output VAT charged, input VAT on approved purchase bills (only those with a valid tax invoice are reclaimable), and withholding tax due both ways — what's been withheld from suppliers/staff and what clients have withheld from this company.
+
+"Record filing" on the VAT card is separate from the live figure above it — it's where you note that a specific month's VAT was actually filed and/or paid on iTax (filed date, paid date, iTax acknowledgement number), so the page can flag a month as overdue once the 20th has passed with nothing recorded. The live VAT number keeps recomputing as bills land; a recorded filing is frozen at the moment you save it and never silently changes afterward.
 
 Outstanding withholding certificates are tracked here too — a certificate can be marked received once it arrives, and a supplier's withheld tax marked remitted once paid over to KRA (which then blocks deleting that payment, since the money is already gone and the certificate issued).
 
-This page reflects only what's actually in the books — it doesn't compute a return or file anything; it's the working figures to take to iTax, not a substitute for it.`,
+If "Track Corporation Tax on the Tax page" is switched on in Settings > Money & tax, an Income tax section appears below: the four instalment-tax payments for a tax year (each with an editable due date and estimated annual tax, defaulting to 20 April/June/September/December) and the annual return (a taxable-profit estimate seeded once from the company's own project figures, editable, plus tax due, filed/paid dates and an iTax acknowledgement number). Off by default, same as every other tax card.
+
+None of this computes a return or files anything on your behalf — it's the working figures and a record of what you told it you filed, not a substitute for iTax.`,
   },
   {
     key: 'payroll',
@@ -198,7 +216,7 @@ To browse everything already filed across every site — not just one — office
     title: 'Snags & safety',
     scope: 'site',
     description:
-      'How to raise and resolve a defect (snag), and how to log a safety incident. NOT approving expense claims or material requests — see the relevant howto_ topic for those.',
+      'How to raise and resolve a defect (snag), and how to log a safety incident. NOT approving expense claims or material requests — see the relevant howto_ topic for those. NOT the standing Quality Inspection checklist — see howto_quality_inspection.',
     content: `A defect (snag) is raised with a title, location, severity (Low/Medium/High), an optional due date, and a required photo — tap the photo to pin exactly where the defect is. It moves Open → In progress (the supervisor starts work) → Resolved (marking it resolved requires a photo of the fix) → Verified. Only the office (Superadmin) can verify a fix or reopen one — a supervisor who resolved their own defect can't be the one who signs it off, so those controls simply don't appear for them; while waiting, they just see "waiting on the office to confirm the fix." Deleting is only available before a defect reaches Verified.
 
 A safety incident is logged with when it happened, severity (Near miss / Minor / Serious), what happened, action taken, and an optional photo — there's no status or approval step, it's a straightforward log. Near misses are worth recording routinely, not just actual injuries — the pattern in near-misses is what the log is for.`,
@@ -215,6 +233,38 @@ A material request names an existing stock item (or "+ Add new material" for som
 
 Stock itself (on-hand materials) is adjusted directly with "Received"/"Used" buttons per item, each requiring a reason — every movement is logged with who did it and when.`,
   },
+  {
+    key: 'weekly_progress',
+    title: 'Weekly Progress Measurement',
+    scope: 'site',
+    description:
+      "How to use the Weekly Progress tab — the Planned vs Actual table (quantities, completion %, labour, materials, money, outstanding work) and finalising a week's snapshot. NOT the free-text weekly summary — see howto_site_reports.",
+    content: `Weekly Progress (a tab on a site, and on the site's own admin page) shows Planned vs Actual for whatever week ending date is picked — live and unsaved until you choose to finalise it.
+
+Quantities only show for tasks that have a planned quantity set — add one from the Tasks tab (e.g. "500" planned, unit "m²") on the tasks where a physical amount matters; most tasks track progress by % complete alone and don't need one. Labour compares actual man-days (one attendance record = one worker on one day) against a planned figure set once on the project's Budget tab, under the Labour line; money and materials reuse the same budget-vs-actual figures the Financials tab already shows, so they can never disagree. Completion and outstanding work come straight from the Tasks tab.
+
+"Finalise this week" freezes exactly what's showing into a permanent record with a downloadable PDF, and a history list below keeps every week that's been finalised. Finalising again for the same week replaces the earlier snapshot rather than adding a second one — unlike the live preview above it, a finalised week's figures don't quietly change later even if more expenses land against the project afterward.`,
+  },
+  {
+    key: 'quality_inspection',
+    title: 'Quality Inspection',
+    scope: 'site',
+    description:
+      'How to run a Quality Inspection against an area — starting one from the standard checklist, ticking each point pass/fail as work reaches that stage, photos and notes. NOT Snags (a specific defect found and tracked through to a fix) — see howto_snags_safety.',
+    content: `Quality Inspection (a tab on a site) is the standing checklist — surface preparation, priming, filling/skimming, sanding, first coat, second coat, finishing, edges/corners, lines and joints, colour consistency, cleanliness, protection of completed work — run against one area at a time (a room, a wall, a run of trim), not once per project. "New inspection" names the area and starts every point at Pending.
+
+Each point is ticked Pass or Fail individually as that stage of the work is actually reached — the point of "checked continuously, not only at the end" is that an inspection can sit open for days with some points passed and others still pending. An inspection's overall status is Fail if any point has failed, Pass only once every point has passed, otherwise Pending — one failed point always outweighs everything else that's passed.`,
+  },
+  {
+    key: 'handover',
+    title: 'Handover',
+    scope: 'site',
+    description:
+      "How the Handover checklist works — what's ticked automatically versus by hand, sending it for the client's e-signature, and the office's countersignature. NOT Project Close-out, the office-only gate that comes after it — see howto_project_closeout.",
+    content: `Handover (a tab on a site, one checklist per project) has nine items. Three are worked out automatically and can't be ticked by hand: "Final quality inspection completed" (every Quality Inspection on the site has passed), "Snags closed" (no open or unverified defect remains), and "Handover photographs taken" (at least one photo has been attached here). The other six — site cleaned, equipment removed, waste removed, client inspection completed, completion confirmation obtained, keys/access items returned — are ticked by a supervisor as they're actually done, alongside notes and photos.
+
+Once every one of the nine is checked, "Send for client signature" (Superadmin) becomes available — it's blocked otherwise, naming exactly which items are still outstanding. It generates a one-time link, same mechanics as a contract's: the client opens it with no login, reviews the checklist, types or draws their signature, and confirms. The office then "Countersigns" the same way, and a Handover Certificate PDF is generated carrying both signatures. Once the client has signed, the checklist itself can no longer be edited.`,
+  },
   // ---- shared ----
   {
     key: 'submitting_expenses',
@@ -222,7 +272,7 @@ Stock itself (on-hand materials) is adjusted directly with "Received"/"Used" but
     scope: 'shared',
     description:
       "How a supervisor submits their own expense claim from site, versus how the office approves/pays one. Covers both halves of the same workflow — see howto_expenses_approval for more detail on the approval/payment side.",
-    content: `A supervisor logs an expense from their site's Expenses tab: category, amount, description, date, and optionally a receipt photo — a "Scan receipt" option, where available, reads a photographed receipt and fills the form in for you to check before saving, it never saves on its own. A supervisor sees only their own submitted claims and whether each was accepted or rejected (with the reason, if rejected) — not the site's full spend history or what's owed to any supplier, which stays office-only.
+    content: `A supervisor logs an expense from their site's Expenses tab: category, amount, description, date, and optionally a receipt photo — a "Scan receipt" option, where available, reads a photographed receipt and fills the form in for you to check before saving, it never saves on its own. Scanning also checks for a possible duplicate — a same-day, same-amount expense already logged against the same supplier (or company-wide if there's no clear supplier match) — and shows it as a warning alongside the scan, naming who logged the earlier one and when; it's a heads-up to check before saving twice, not a block. A supervisor sees only their own submitted claims and whether each was accepted or rejected (with the reason, if rejected) — not the site's full spend history or what's owed to any supplier, which stays office-only.
 
 The office (Superadmin or Accountant) sees every claim on the site — or, for spend that isn't tied to any site at all, on Company Expenses — and approves, rejects or pays it; see "Approving expenses" for that side in full.`,
   },
@@ -236,6 +286,8 @@ The office (Superadmin or Accountant) sees every claim on the site — or, for s
 
 Every answer that draws on live data shows a source link at the bottom — tap it to land on the actual page the figures came from, so nothing here has to be taken on faith. What it can see depends on who's asking: a supervisor is only shown their own sites, never company-wide money or other people's pay; the office sees everything; an Accountant sees money and tax across every site but not Sites, Team, Leads, Contracts or Equipment.
 
-It shares one daily allowance with receipt-reading and report-drafting elsewhere in the app, and is deliberately the first of the three to stop once that runs low — so those two keep working even on a day the assistant has already used up its share. If it declines to answer, that's either the daily allowance being spent, or genuinely nothing in its reach that answers the question — not a fault to work around.`,
+It shares one daily allowance with receipt-reading and report-drafting elsewhere in the app, and is deliberately the first of the three to stop once that runs low — so those two keep working even on a day the assistant has already used up its share. If it declines to answer, that's either the daily allowance being spent, or genuinely nothing in its reach that answers the question — not a fault to work around.
+
+This entire manual is also available as a downloadable PDF — "Download staff handbook" in the assistant panel — filtered to whatever the person downloading it is actually allowed to see (office-only or money topics are left out for someone without that access), generated fresh each time rather than cached.`,
   },
 ];

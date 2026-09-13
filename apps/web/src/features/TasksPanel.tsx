@@ -298,7 +298,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
               label="Quantity (optional)"
               hint="For the weekly Planned vs Actual report — e.g. 500 planned, 450 done, unit m². Leave blank if this task doesn't track a quantity."
             >
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <Input
                   name="plannedQuantity"
                   type="number"

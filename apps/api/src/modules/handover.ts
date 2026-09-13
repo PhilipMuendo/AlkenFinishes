@@ -177,25 +177,31 @@ router.post(
         ? await saveDataUrlImage(data.signatureImage)
         : null;
 
-    const updated = await prisma.handoverChecklist.update({
+    // Render BEFORE persisting anything: if this throws, nothing about the
+    // handover has changed yet, so the office can simply retry rather than
+    // being permanently stuck on the "already countersigned" guard above
+    // with no PDF to show for it.
+    let pdfUrl: string;
+    try {
+      pdfUrl = await renderHandover(h.id, {
+        companySignature: { name: data.signerName, imageUrl, signedAt },
+      });
+    } catch (e) {
+      if (imageUrl) removeUploadedFile(imageUrl);
+      throw e;
+    }
+
+    if (h.pdfUrl) removeUploadedFile(h.pdfUrl);
+    const final = await prisma.handoverChecklist.update({
       where: { id: h.id },
       data: {
         companySignerName: data.signerName,
         companySignedAt: signedAt,
         companySignatureImageUrl: imageUrl,
         companySignedById: req.user!.id,
+        pdfUrl,
       },
     });
-
-    let pdfUrl: string;
-    try {
-      pdfUrl = await renderHandover(updated.id);
-    } catch (e) {
-      if (imageUrl) removeUploadedFile(imageUrl);
-      throw e;
-    }
-    if (updated.pdfUrl) removeUploadedFile(updated.pdfUrl);
-    const final = await prisma.handoverChecklist.update({ where: { id: h.id }, data: { pdfUrl } });
 
     audit(req, 'handover.countersign', 'HandoverChecklist', h.id, { signerName: data.signerName });
     res.json(await serialize(final));

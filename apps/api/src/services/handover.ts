@@ -81,7 +81,21 @@ export async function mergedItems(
   ];
 }
 
-export async function renderHandover(handoverId: string): Promise<string> {
+/**
+ * Renders the certificate for a handover. `overrides` lets a caller pass a
+ * signature that hasn't been written to the database yet — the whole point
+ * being that both the client-sign and countersign routes must render BEFORE
+ * persisting anything, so a rendering failure (a bad signature image, disk
+ * full, a pdfmake error) never leaves a "signed" record with no valid PDF, a
+ * burned single-use signing link, and no way to retry. Without an override,
+ * a side's signature is read from the row as already persisted — which is
+ * exactly right for the side that signed earlier (e.g. the client's, when
+ * countersigning) and never for the side about to be persisted right now.
+ */
+export async function renderHandover(
+  handoverId: string,
+  overrides?: { clientSignature?: CapturedSignature; companySignature?: CapturedSignature },
+): Promise<string> {
   const h = await prisma.handoverChecklist.findUniqueOrThrow({
     where: { id: handoverId },
     include: { project: { select: { name: true, clientName: true } } },
@@ -90,21 +104,25 @@ export async function renderHandover(handoverId: string): Promise<string> {
   const items = await mergedItems(h.projectId, h.items as unknown as HandoverChecklistItem[], h.photoUrls.length);
   const company = await getCompanyProfile();
 
-  const clientSignature: CapturedSignature | undefined = h.clientSignerName
-    ? {
-        name: h.clientSignerName,
-        imageUrl: h.clientSignatureImageUrl,
-        signedAt: h.clientSignedAt ?? new Date(),
-        ip: h.clientSignatureIp ?? undefined,
-      }
-    : undefined;
-  const companySignature: CapturedSignature | undefined = h.companySignerName
-    ? {
-        name: h.companySignerName,
-        imageUrl: h.companySignatureImageUrl,
-        signedAt: h.companySignedAt ?? new Date(),
-      }
-    : undefined;
+  const clientSignature: CapturedSignature | undefined =
+    overrides?.clientSignature ??
+    (h.clientSignerName
+      ? {
+          name: h.clientSignerName,
+          imageUrl: h.clientSignatureImageUrl,
+          signedAt: h.clientSignedAt ?? new Date(),
+          ip: h.clientSignatureIp ?? undefined,
+        }
+      : undefined);
+  const companySignature: CapturedSignature | undefined =
+    overrides?.companySignature ??
+    (h.companySignerName
+      ? {
+          name: h.companySignerName,
+          imageUrl: h.companySignatureImageUrl,
+          signedAt: h.companySignedAt ?? new Date(),
+        }
+      : undefined);
 
   return renderHandoverPdf(
     {

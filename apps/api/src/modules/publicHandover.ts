@@ -77,7 +77,21 @@ router.post(
         ? await saveDataUrlImage(data.signatureImage)
         : null;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    // Render BEFORE writing anything: the signing link is single-use, so
+    // committing usedAt/clientSignedAt before the PDF exists would burn the
+    // client's only link on a rendering failure, with no way to retry short
+    // of the office issuing a brand-new one.
+    let pdfUrl: string;
+    try {
+      pdfUrl = await renderHandover(handover.id, {
+        clientSignature: { name: data.signerName, imageUrl, signedAt, ip },
+      });
+    } catch (e) {
+      if (imageUrl) removeUploadedFile(imageUrl);
+      throw e;
+    }
+
+    const final = await prisma.$transaction(async (tx) => {
       const h = await tx.handoverChecklist.update({
         where: { id: handover.id },
         data: {
@@ -86,22 +100,11 @@ router.post(
           clientSignatureIp: ip,
           clientSignatureUserAgent: userAgent,
           clientSignatureImageUrl: imageUrl,
+          pdfUrl,
         },
       });
       await tx.handoverSigningLink.update({ where: { id: link.id }, data: { usedAt: signedAt } });
       return h;
-    });
-
-    let pdfUrl: string;
-    try {
-      pdfUrl = await renderHandover(updated.id);
-    } catch (e) {
-      if (imageUrl) removeUploadedFile(imageUrl);
-      throw e;
-    }
-    const final = await prisma.handoverChecklist.update({
-      where: { id: updated.id },
-      data: { pdfUrl },
     });
 
     audit(req, 'handover.clientSign', 'HandoverChecklist', handover.id, {

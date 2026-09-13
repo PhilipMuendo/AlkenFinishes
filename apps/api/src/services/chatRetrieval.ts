@@ -1655,7 +1655,7 @@ export const LOOKUPS: Lookup[] = [
     name: 'company_operations',
     scope: 'office',
     description:
-      'What needs attention across every site right now: sites over budget, payments and invoices overdue, sites with no supervisor assigned, sites gone quiet or finishing soon, approvals waiting on a decision, open defects and recent safety incidents. The same list the Overview page shows.',
+      'What needs attention across every site right now: sites over budget, payments and invoices overdue, sites with no supervisor assigned, sites gone quiet or finishing soon, approvals waiting on a decision, handovers sitting unsigned, projects ready for close-out, open defects and recent safety incidents. The same list the Overview page shows.',
     run: async () => {
       const weekAgo = new Date(today().getTime() - 7 * DAY_MS);
 
@@ -1701,6 +1701,12 @@ export const LOOKUPS: Lookup[] = [
           g.pendingApprovals.length
             ? `Awaiting a decision: ${g.pendingApprovals.map((p) => `${p.name} (${p.total})`).join(', ')}.`
             : 'Nothing is awaiting approval.',
+          g.handoverPending.length
+            ? `Handover checklist started but not yet sent for signature: ${g.handoverPending.map((p) => `${p.name} (${plural(p.daysOutstanding, 'day')})`).join(', ')}.`
+            : 'No handover is sitting unsigned.',
+          g.closeoutPending.length
+            ? `Handed over but not yet closed out: ${g.closeoutPending.map((p) => `${p.name} (${plural(p.daysOutstanding, 'day')})`).join(', ')}.`
+            : 'Nothing handed over is waiting on close-out.',
         ].join('\n'),
         source: { label: 'Overview', href: '/admin' },
       };

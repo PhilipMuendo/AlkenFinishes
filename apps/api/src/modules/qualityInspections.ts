@@ -105,12 +105,29 @@ router.patch(
     const existing = await prisma.qualityInspection.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.projectId !== req.params.projectId) throw ApiError.notFound();
 
+    // Must be exactly the checklist this inspection was started with — no
+    // more, no fewer, no relabelling — or a submission could silently
+    // replace the real points with fabricated ones. Same class of gap as
+    // the handover/closeout item-label validation fixed earlier.
+    const expectedLabels = QUALITY_CHECKLISTS[existing.checklistName] ?? QUALITY_CHECKLISTS[DEFAULT_CHECKLIST_NAME];
     const { items, notes, area } = z
       .object({
         items: z
           .string()
           .transform((v) => JSON.parse(v) as unknown)
-          .pipe(z.array(itemSchema).min(1)),
+          .pipe(
+            z
+              .array(itemSchema)
+              .length(expectedLabels.length)
+              .refine(
+                (v) => new Set(v.map((i) => i.label)).size === expectedLabels.length,
+                'Each checklist item must appear exactly once',
+              )
+              .refine(
+                (v) => v.every((i) => (expectedLabels as readonly string[]).includes(i.label)),
+                'Every item must be one of this checklist’s own points',
+              ),
+          ),
         notes: z.string().trim().nullable().optional(),
         area: z.string().trim().min(1).optional(),
       })
