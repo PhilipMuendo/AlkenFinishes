@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
@@ -5,11 +6,13 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronRight,
   ClipboardCheck,
   FileSignature,
   HardHat,
   Image as ImageIcon,
   Info,
+  LineChart,
   Lightbulb,
   Package,
   Receipt,
@@ -41,14 +44,17 @@ import { cn } from '@/lib/utils';
  * answers "how is the site doing"), Site Health (what needs a decision),
  * a dense KPI grid (everything else, for quick scanning), then photos. The
  * numbered badges on each card describe this order, not array position —
- * see `next()` below.
+ * see `next()` below. They only show on a viewer's first-ever visit to this
+ * screen (tracked via localStorage) — useful once as a walkthrough, clutter
+ * forever after.
  */
 
 // ---------------------------------------------------------------------------
 // Card chrome
 // ---------------------------------------------------------------------------
 
-function NumberChip({ n }: { n: number }) {
+function NumberChip({ n }: { n?: number }) {
+  if (n == null) return null;
   return (
     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[10px] font-semibold tabular-nums text-fg-subtle">
       {n}
@@ -62,6 +68,11 @@ function NumberChip({ n }: { n: number }) {
  * an already-existing route, not a new one. The base surface classes are
  * duplicated from `Card` rather than importing it into the `Link` branch, so
  * the shared `Card` component itself stays untouched for every other caller.
+ *
+ * The footer link is deliberately neutral, not accent-colored: with a dozen
+ * of these cards on screen at once, an orange link on every single one stops
+ * meaning "important" and just becomes the color of a link. Orange is spent
+ * on the hero and gallery instead, where there's only one of each.
  */
 function Panel({
   n,
@@ -72,7 +83,7 @@ function Panel({
   children,
   className,
 }: {
-  n: number;
+  n?: number;
   title: string;
   icon: LucideIcon;
   to?: string;
@@ -89,8 +100,9 @@ function Panel({
       </div>
       <div className="flex-1">{children}</div>
       {to && (
-        <span className="mt-3 inline-flex items-center text-xs font-medium text-accent-600 transition-colors group-hover:text-accent-700">
-          {linkLabel ?? 'View'} &rarr;
+        <span className="mt-3 inline-flex items-center gap-0.5 text-xs font-medium text-fg-subtle transition-colors group-hover:text-fg">
+          {linkLabel ?? 'View'}
+          <ChevronRight size={13} />
         </span>
       )}
     </>
@@ -173,6 +185,18 @@ export function CommandCentrePanel({
     queryFn: () => api<CommandCentreData>(`/projects/${projectId}/command-centre`),
   });
 
+  // Numbered badges act as a one-time walkthrough, not a permanent fixture —
+  // shown once per browser, then never again.
+  const [firstVisit] = useState(() => {
+    try {
+      const seen = localStorage.getItem('cc_tour_seen');
+      if (!seen) localStorage.setItem('cc_tour_seen', '1');
+      return !seen;
+    } catch {
+      return false;
+    }
+  });
+
   if (isLoading || !data) {
     return (
       <div className="space-y-4">
@@ -188,6 +212,7 @@ export function CommandCentrePanel({
   }
 
   const {
+    project,
     canSeeMoney,
     programme,
     attendance,
@@ -212,9 +237,14 @@ export function CommandCentrePanel({
     pendingApprovals.expenses + pendingApprovals.materialRequests + pendingApprovals.attendanceOverrides;
 
   // Same on-screen sequence the numbered badges describe — hero, site
-  // health, the dense KPI grid, then photos.
+  // health, the dense KPI grid, then photos. Only rendered on a viewer's
+  // first-ever visit; `next()` still runs every time so the sequence stays
+  // correct, `firstVisit` just decides whether anyone sees the number.
   let n = 0;
-  const next = () => (n += 1);
+  const next = () => {
+    n += 1;
+    return firstVisit ? n : undefined;
+  };
 
   const scheduleHealth: Health =
     programme.slipDays == null ? 'NONE' : programme.slipDays > 0 ? 'RED' : 'GREEN';
@@ -223,9 +253,15 @@ export function CommandCentrePanel({
     <div className="space-y-4">
       {/* A site with no contract behind it is missing the commercial half of
           the system and otherwise gives no sign of it — you would find out
-          weeks later, at the claim screen. */}
+          weeks later, at the claim screen. Once the site is ACTIVE with real
+          spend already happening, that gap stops being an early setup
+          reminder and becomes a real exposure, so it escalates to danger. */}
       {contractLinked === false && (
-        <Notice tone="warn" icon={FileSignature} className="flex-col rounded-xl sm:flex-row sm:items-start">
+        <Notice
+          tone={project.status === 'ACTIVE' ? 'danger' : 'warn'}
+          icon={FileSignature}
+          className="flex-col rounded-xl sm:flex-row sm:items-start"
+        >
           <div className="min-w-0 flex-1">
             <p className="font-medium text-fg">This site has no contract behind it</p>
             <p className="mt-0.5 text-fg-muted">
@@ -236,7 +272,7 @@ export function CommandCentrePanel({
             {linked && (
               <Link
                 to="/admin/contracts"
-                className="mt-1.5 inline-block font-medium text-brand-700 hover:underline"
+                className="mt-1.5 inline-block font-medium underline underline-offset-2 hover:no-underline"
               >
                 Link a contract →
               </Link>
@@ -402,7 +438,7 @@ export function CommandCentrePanel({
         )}
 
         {canSeeMoney && profit && (
-          <Panel n={next()} title="Profit to date" icon={TrendingUp} to={tabHref('financials')} linkLabel="View P&L">
+          <Panel n={next()} title="Profit to date" icon={LineChart} to={tabHref('financials')} linkLabel="View P&L">
             <Big
               value={fmtMoney(profit.grossProfit)}
               sub={profit.marginPct != null ? `${profit.marginPct}% margin` : 'Margin not yet meaningful'}
@@ -545,7 +581,7 @@ function PhotosPanel({
   photos,
   to,
 }: {
-  n: number;
+  n?: number;
   photos: CommandCentreData['photos'];
   to?: string;
 }) {
@@ -570,7 +606,12 @@ function PhotosPanel({
         <Muted>No site photos uploaded yet.</Muted>
       ) : (
         <div className="space-y-2">
-          <figure className="group relative aspect-video w-full overflow-hidden rounded-lg bg-surface-sunken">
+          {/* A fixed height, not aspect-video: forcing a wide 16:9 box onto an
+              arbitrary user-uploaded photo (often a portrait shot of a snag or
+              a document) either crops away the useful part or blows the card
+              up far taller than the rest of the page. A capped height with
+              object-cover degrades much more gracefully across photo shapes. */}
+          <figure className="group relative h-56 w-full overflow-hidden rounded-lg bg-surface-sunken sm:h-72">
             <img
               src={featured.url}
               alt={featured.caption ?? `Site photo from ${fmtDate(featured.takenAt)}`}
@@ -613,13 +654,44 @@ const SEVERITY_STYLE: Record<
 };
 
 /**
+ * The schedule-slip and budget-overrun rules both fire off the same
+ * underlying story on a site that is late and overspending — showing them as
+ * two separate Site Health cards spends two of the section's slots saying a
+ * related thing twice. When both are present, this combines them into one
+ * card client-side only: the two rules stay independent and independently
+ * testable in `services/insights.ts`, this just changes how their output is
+ * grouped for display.
+ */
+function mergeRelatedInsights(insights: Insight[]): Insight[] {
+  const slip = insights.find((i) => i.id === 'schedule.slipping');
+  const budget = insights.find((i) => i.id === 'budget.spendAheadOfProgress');
+  if (!slip || !budget) return insights;
+
+  const merged: Insight = {
+    id: 'schedule.slipping+budget.spendAheadOfProgress',
+    severity: slip.severity === 'CRITICAL' || budget.severity === 'CRITICAL' ? 'CRITICAL' : 'WARNING',
+    message: `${budget.message} ${slip.message}`,
+    action: slip.action,
+    financial: true,
+  };
+  // Replace whichever of the two came first with the merged card, drop the
+  // other, and leave every other insight exactly where it was.
+  const firstId = insights.indexOf(slip) < insights.indexOf(budget) ? slip.id : budget.id;
+  return insights.flatMap((i) => {
+    if (i !== slip && i !== budget) return [i];
+    return i.id === firstId ? [merged] : [];
+  });
+}
+
+/**
  * Rule-engine output. Deliberately not styled as a chat bubble: every line is
  * a figure computed from this site's own records, and dressing it up as a
  * conversation would suggest a judgement call that nothing here is making.
  * No per-item link: an Insight carries a severity/message/action, never a
  * route — adding one here would mean guessing a destination from free text.
  */
-function InsightsPanel({ n, insights }: { n: number; insights: Insight[] }) {
+function InsightsPanel({ n, insights: rawInsights }: { n?: number; insights: Insight[] }) {
+  const insights = mergeRelatedInsights(rawInsights);
   const countTone = insights.some((i) => i.severity === 'CRITICAL')
     ? 'red'
     : insights.some((i) => i.severity === 'WARNING')
