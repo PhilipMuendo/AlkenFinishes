@@ -36,12 +36,33 @@ import { cn } from '@/lib/utils';
  * there — nothing here is a second place any of it lives. Money cards are
  * absent for a supervisor because the server never sends them, so this file
  * branches on `canSeeMoney` rather than on a zero.
+ *
+ * Visual tiers, top to bottom: the programme status (the one number that
+ * answers "how is the site doing"), Site Health (what needs a decision),
+ * a dense KPI grid (everything else, for quick scanning), then photos. The
+ * numbered badges on each card describe this order, not array position —
+ * see `next()` below.
  */
 
 // ---------------------------------------------------------------------------
 // Card chrome
 // ---------------------------------------------------------------------------
 
+function NumberChip({ n }: { n: number }) {
+  return (
+    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[10px] font-semibold tabular-nums text-fg-subtle">
+      {n}
+    </span>
+  );
+}
+
+/**
+ * A KPI card. When it has a destination, the WHOLE card is the link (not
+ * just the trailing text) and gets a hover elevation — a real affordance on
+ * an already-existing route, not a new one. The base surface classes are
+ * duplicated from `Card` rather than importing it into the `Link` branch, so
+ * the shared `Card` component itself stays untouched for every other caller.
+ */
 function Panel({
   n,
   title,
@@ -59,26 +80,36 @@ function Panel({
   children: React.ReactNode;
   className?: string;
 }) {
-  return (
-    <Card className={cn('flex flex-col p-4', className)}>
+  const body = (
+    <>
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[11px] font-semibold tabular-nums text-fg-subtle">
-          {n}
-        </span>
+        <NumberChip n={n} />
         <Icon size={15} className="shrink-0 text-brand-600" />
         <h3 className="truncate text-sm font-semibold text-fg">{title}</h3>
       </div>
       <div className="flex-1">{children}</div>
       {to && (
-        <Link
-          to={to}
-          className="mt-3 inline-flex text-xs font-medium text-brand-700 transition-colors hover:text-brand-800"
-        >
+        <span className="mt-3 inline-flex items-center text-xs font-medium text-accent-600 transition-colors group-hover:text-accent-700">
           {linkLabel ?? 'View'} &rarr;
-        </Link>
+        </span>
       )}
-    </Card>
+    </>
   );
+
+  if (to) {
+    return (
+      <Link
+        to={to}
+        className={cn(
+          'group flex flex-col rounded-xl border border-hairline bg-surface p-4 shadow-sm transition-all hover:border-hairline-strong hover:shadow-md',
+          className,
+        )}
+      >
+        {body}
+      </Link>
+    );
+  }
+  return <Card className={cn('flex flex-col p-4', className)}>{body}</Card>;
 }
 
 /** A label/value row — the shape most of these cards reduce to. */
@@ -144,10 +175,14 @@ export function CommandCentrePanel({
 
   if (isLoading || !data) {
     return (
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <Skeleton key={i} className="h-40 w-full rounded-xl" />
-        ))}
+      <div className="space-y-4">
+        <Skeleton className="h-56 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 w-full rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -170,16 +205,19 @@ export function CommandCentrePanel({
     contractLinked,
   } = data;
 
-  // `undefined` makes Panel drop its footer link entirely.
+  // `undefined` makes Panel drop its footer link/whole-card link entirely.
   const href = (path: string) => (linked ? path : undefined);
   const tabHref = (tab: string) => href(`/admin/sites/${projectId}?tab=${tab}`);
   const totalPending =
     pendingApprovals.expenses + pendingApprovals.materialRequests + pendingApprovals.attendanceOverrides;
 
-  // Cards are numbered to match the agreed layout, and keep their number even
-  // when a card is hidden — the numbering describes the design, not the array.
+  // Same on-screen sequence the numbered badges describe — hero, site
+  // health, the dense KPI grid, then photos.
   let n = 0;
   const next = () => (n += 1);
+
+  const scheduleHealth: Health =
+    programme.slipDays == null ? 'NONE' : programme.slipDays > 0 ? 'RED' : 'GREEN';
 
   return (
     <div className="space-y-4">
@@ -207,41 +245,87 @@ export function CommandCentrePanel({
         </Notice>
       )}
 
-      <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {/* 1 — Progress against programme */}
-        <Panel n={next()} title="Progress against programme" icon={TrendingUp} to={tabHref('tasks')} linkLabel="View programme">
-          <Big
-            value={`${programme.actualPct}%`}
-            sub={
-              programme.taskCount === 0
-                ? 'No tasks yet'
-                : programme.weighted
-                  ? 'Weighted by task size'
-                  : 'Every task counted equally'
-            }
-          />
-          <Progress value={programme.actualPct} className="my-2.5" />
-          <Row label="Planned" value={programme.plannedPct != null ? `${programme.plannedPct}%` : '—'} />
-          <Row label="Actual" value={`${programme.actualPct}%`} />
-          <div className="mt-2">
-            {programme.slipDays == null ? (
-              <Muted>Too early in the programme to project a finish date.</Muted>
-            ) : programme.slipDays > 0 ? (
-              <Badge tone="red">Behind by {programme.slipDays}d</Badge>
-            ) : programme.slipDays < 0 ? (
-              <Badge tone="green">Ahead by {Math.abs(programme.slipDays)}d</Badge>
-            ) : (
-              <Badge tone="green">On programme</Badge>
-            )}
-            {programme.unweightedTaskCount > 0 && (
-              <p className="mt-1.5 text-xs text-warn-fg">
-                {programme.unweightedTaskCount} of {programme.taskCount} tasks have no size set
-              </p>
-            )}
-          </div>
-        </Panel>
+      {/* Hero — the one number that answers "how is the site doing". */}
+      <Card className="overflow-hidden p-5 sm:p-6">
+        <div className="flex items-center gap-2.5">
+          <NumberChip n={next()} />
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-600">
+            <TrendingUp size={17} />
+          </span>
+          <h2 className="text-sm font-semibold text-fg">Progress against programme</h2>
+        </div>
 
-        {/* 2 — Today's attendance */}
+        <div className="mt-4">
+          <p className="flex items-baseline gap-2 text-4xl font-bold tabular-nums text-fg sm:text-5xl">
+            {programme.actualPct}%
+            <span className="text-base font-medium text-fg-muted">Complete</span>
+          </p>
+          <p className="mt-1 text-xs text-fg-subtle">
+            {programme.taskCount === 0
+              ? 'No tasks yet'
+              : programme.weighted
+                ? 'Weighted by task size'
+                : 'Every task counted equally'}
+          </p>
+        </div>
+
+        <Progress value={programme.actualPct} health={scheduleHealth} className="mt-4 h-3" />
+
+        <div className="mt-4 grid max-w-xs grid-cols-2 gap-4">
+          <div>
+            <p className="text-xs text-fg-subtle">Planned</p>
+            <p className="text-lg font-semibold tabular-nums text-fg">
+              {programme.plannedPct != null ? `${programme.plannedPct}%` : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-fg-subtle">Actual</p>
+            <p className="text-lg font-semibold tabular-nums text-fg">{programme.actualPct}%</p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          {programme.slipDays == null ? (
+            <Muted>Too early in the programme to project a finish date.</Muted>
+          ) : programme.slipDays > 0 ? (
+            <div className="flex items-center gap-2 rounded-lg bg-danger-surface px-3 py-2 ring-1 ring-inset ring-red-600/20">
+              <AlertTriangle size={16} className="shrink-0 text-danger-fg" />
+              <p className="text-sm font-semibold text-danger-fg">
+                {programme.slipDays} {programme.slipDays === 1 ? 'day' : 'days'} behind schedule
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 rounded-lg bg-good-surface px-3 py-2 ring-1 ring-inset ring-emerald-600/20">
+              <CheckCircle2 size={16} className="shrink-0 text-good-fg" />
+              <p className="text-sm font-semibold text-good-fg">
+                {programme.slipDays < 0
+                  ? `Ahead by ${Math.abs(programme.slipDays)} ${Math.abs(programme.slipDays) === 1 ? 'day' : 'days'}`
+                  : 'On programme'}
+              </p>
+            </div>
+          )}
+          {programme.unweightedTaskCount > 0 && (
+            <p className="mt-2 text-xs text-warn-fg">
+              {programme.unweightedTaskCount} of {programme.taskCount} tasks have no size set
+            </p>
+          )}
+        </div>
+
+        {tabHref('tasks') && (
+          <Link
+            to={tabHref('tasks')!}
+            className="mt-4 inline-flex items-center text-sm font-medium text-accent-600 transition-colors hover:text-accent-700"
+          >
+            View programme &rarr;
+          </Link>
+        )}
+      </Card>
+
+      {/* Site health — what needs a decision, right where it can't be missed. */}
+      <InsightsPanel n={next()} insights={insights} />
+
+      {/* Everything else, dense and scannable. */}
+      <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         <Panel n={next()} title="Today's attendance" icon={HardHat} to={tabHref('attendance')} linkLabel="View attendance">
           <div className="grid grid-cols-4 gap-1.5 text-center">
             {[
@@ -273,7 +357,6 @@ export function CommandCentrePanel({
           <p className="mt-2 text-[11px] text-fg-subtle">Day starts {attendance.dayStart}</p>
         </Panel>
 
-        {/* 3 — Materials consumed vs budget (money) */}
         {canSeeMoney && (
           <Panel n={next()} title="Materials vs budget" icon={Package} to={tabHref('stock')} linkLabel="View materials">
             {materials && materials.allocated > 0 ? (
@@ -297,7 +380,6 @@ export function CommandCentrePanel({
           </Panel>
         )}
 
-        {/* 4 — Budget spent vs remaining (money) */}
         {canSeeMoney && financials && (
           <Panel n={next()} title="Budget spent vs remaining" icon={Wallet} to={tabHref('budget')} linkLabel="View budget">
             <Big
@@ -319,7 +401,6 @@ export function CommandCentrePanel({
           </Panel>
         )}
 
-        {/* 5 — Profit to date (money) */}
         {canSeeMoney && profit && (
           <Panel n={next()} title="Profit to date" icon={TrendingUp} to={tabHref('financials')} linkLabel="View P&L">
             <Big
@@ -338,7 +419,6 @@ export function CommandCentrePanel({
           </Panel>
         )}
 
-        {/* 6 — Outstanding invoices (money) */}
         {canSeeMoney && invoices && (
           <Panel n={next()} title="Outstanding invoices" icon={Receipt} to={tabHref('invoices')} linkLabel="View invoices">
             <Big
@@ -360,30 +440,6 @@ export function CommandCentrePanel({
           </Panel>
         )}
 
-        {/* 7 — Daily photos */}
-        <Panel n={next()} title="Site photos" icon={ImageIcon} to={tabHref('documents')} linkLabel="View all photos">
-          {photos.length === 0 ? (
-            <Muted>No site photos uploaded yet.</Muted>
-          ) : (
-            <div className="grid grid-cols-2 gap-1.5">
-              {photos.slice(0, 4).map((p) => (
-                <figure key={p.id} className="relative overflow-hidden rounded-lg bg-surface-sunken">
-                  <img
-                    src={p.url}
-                    alt={p.caption ?? `Site photo from ${fmtDate(p.takenAt)}`}
-                    loading="lazy"
-                    className="h-20 w-full object-cover"
-                  />
-                  <figcaption className="absolute inset-x-0 bottom-0 bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                    {fmtDate(p.takenAt)}
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        {/* 8 — Open defects */}
         <Panel n={next()} title="Open defects" icon={AlertOctagon} to={tabHref('snags')} linkLabel="View defects">
           <Big
             value={snags.open}
@@ -406,7 +462,6 @@ export function CommandCentrePanel({
           )}
         </Panel>
 
-        {/* 9 — Equipment status */}
         <Panel n={next()} title="Equipment status" icon={Wrench} to={href('/admin/equipment')} linkLabel="View equipment">
           {equipment.total === 0 ? (
             <Muted>No equipment is assigned to this site.</Muted>
@@ -432,7 +487,6 @@ export function CommandCentrePanel({
           )}
         </Panel>
 
-        {/* 10 — Safety */}
         <Panel n={next()} title="Safety" icon={ShieldAlert} to={tabHref('safety')} linkLabel="View safety log">
           <Big
             value={safety.total}
@@ -453,7 +507,6 @@ export function CommandCentrePanel({
           </div>
         </Panel>
 
-        {/* 11 — Awaiting a decision */}
         <Panel n={next()} title="Awaiting a decision" icon={ClipboardCheck} to={tabHref('expenses')} linkLabel="View approvals">
           <Big value={totalPending} sub={totalPending === 0 ? 'Nothing pending' : 'Items on your desk'} />
           <div className="mt-2.5">
@@ -463,7 +516,6 @@ export function CommandCentrePanel({
           </div>
         </Panel>
 
-        {/* 12 — Next 14 days */}
         <Panel n={next()} title="Next 14 days" icon={CalendarClock} to={href('/admin/calendar')} linkLabel="View calendar">
           {upcomingEvents.length === 0 ? (
             <Muted>Nothing on the calendar.</Muted>
@@ -480,57 +532,138 @@ export function CommandCentrePanel({
         </Panel>
       </div>
 
-      {/* 13 — Insights, full width: it reads across every card above it. */}
-      <InsightsPanel n={next()} insights={insights} />
+      {/* Photos, promoted: the most recent shot large, the rest as a strip. */}
+      <PhotosPanel n={next()} photos={photos} to={tabHref('documents')} />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
+function PhotosPanel({
+  n,
+  photos,
+  to,
+}: {
+  n: number;
+  photos: CommandCentreData['photos'];
+  to?: string;
+}) {
+  const [featured, ...rest] = photos;
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-3 flex items-center gap-2">
+        <NumberChip n={n} />
+        <ImageIcon size={15} className="shrink-0 text-brand-600" />
+        <h3 className="text-sm font-semibold text-fg">Site photos</h3>
+        {to && (
+          <Link
+            to={to}
+            className="ml-auto text-xs font-medium text-accent-600 transition-colors hover:text-accent-700"
+          >
+            View gallery &rarr;
+          </Link>
+        )}
+      </div>
+
+      {!featured ? (
+        <Muted>No site photos uploaded yet.</Muted>
+      ) : (
+        <div className="space-y-2">
+          <figure className="group relative aspect-video w-full overflow-hidden rounded-lg bg-surface-sunken">
+            <img
+              src={featured.url}
+              alt={featured.caption ?? `Site photo from ${fmtDate(featured.takenAt)}`}
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/0 to-black/0" />
+            <figcaption className="absolute inset-x-0 bottom-0 px-3 py-2 text-xs font-medium text-white">
+              {fmtDate(featured.takenAt)}
+            </figcaption>
+          </figure>
+          {rest.length > 0 && (
+            <div className="grid grid-cols-3 gap-1.5">
+              {rest.slice(0, 3).map((p) => (
+                <figure key={p.id} className="relative aspect-square overflow-hidden rounded-lg bg-surface-sunken">
+                  <img
+                    src={p.url}
+                    alt={p.caption ?? `Site photo from ${fmtDate(p.takenAt)}`}
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                </figure>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 const SEVERITY_STYLE: Record<
   InsightSeverity,
-  { icon: LucideIcon; chip: string; text: string; label: string }
+  { icon: LucideIcon; chip: string; text: string }
 > = {
-  CRITICAL: { icon: AlertOctagon, chip: 'bg-danger-surface text-danger-fg', text: 'text-danger-fg', label: 'Act now' },
-  WARNING: { icon: AlertTriangle, chip: 'bg-warn-surface text-warn-fg', text: 'text-warn-fg', label: 'Watch' },
-  INFO: { icon: Info, chip: 'bg-brand-50 text-brand-600', text: 'text-fg', label: 'Note' },
-  GOOD: { icon: CheckCircle2, chip: 'bg-good-surface text-good-fg', text: 'text-fg', label: 'On track' },
+  CRITICAL: { icon: AlertOctagon, chip: 'bg-danger-surface text-danger-fg', text: 'text-danger-fg' },
+  WARNING: { icon: AlertTriangle, chip: 'bg-warn-surface text-warn-fg', text: 'text-warn-fg' },
+  INFO: { icon: Info, chip: 'bg-brand-50 text-brand-600', text: 'text-fg' },
+  GOOD: { icon: CheckCircle2, chip: 'bg-good-surface text-good-fg', text: 'text-fg' },
 };
 
 /**
  * Rule-engine output. Deliberately not styled as a chat bubble: every line is
  * a figure computed from this site's own records, and dressing it up as a
  * conversation would suggest a judgement call that nothing here is making.
+ * No per-item link: an Insight carries a severity/message/action, never a
+ * route — adding one here would mean guessing a destination from free text.
  */
 function InsightsPanel({ n, insights }: { n: number; insights: Insight[] }) {
+  const countTone = insights.some((i) => i.severity === 'CRITICAL')
+    ? 'red'
+    : insights.some((i) => i.severity === 'WARNING')
+      ? 'yellow'
+      : 'blue';
+
   return (
-    <Card className="p-4">
+    <Card className="p-4 sm:p-5">
       <div className="mb-3 flex items-center gap-2">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-[11px] font-semibold tabular-nums text-fg-subtle">
-          {n}
+        <NumberChip n={n} />
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-600">
+          <Lightbulb size={15} />
         </span>
-        <Lightbulb size={15} className="shrink-0 text-brand-600" />
-        <h3 className="text-sm font-semibold text-fg">Recommendations</h3>
-        <Badge tone="blue" className="ml-auto">
-          From this site&rsquo;s own figures
-        </Badge>
+        <h3 className="text-sm font-semibold text-fg">Site health</h3>
+        {insights.length > 0 ? (
+          <Badge tone={countTone} className="ml-auto">
+            {insights.length} {insights.length === 1 ? 'item' : 'items'}
+          </Badge>
+        ) : (
+          <Badge tone="green" className="ml-auto">
+            All clear
+          </Badge>
+        )}
       </div>
 
       {insights.length === 0 ? (
-        <Muted>Nothing to flag — every rule this engine checks came back clean.</Muted>
+        <div className="flex items-center gap-2.5 rounded-lg bg-good-surface p-3 ring-1 ring-inset ring-emerald-600/20">
+          <CheckCircle2 size={18} className="shrink-0 text-good-fg" />
+          <p className="text-sm font-medium text-good-fg">
+            Nothing to flag — every check on this site came back clean.
+          </p>
+        </div>
       ) : (
-        <ul className="grid gap-2 lg:grid-cols-2">
+        <ul className="grid gap-2 sm:grid-cols-2">
           {insights.map((i) => {
             const s = SEVERITY_STYLE[i.severity];
             const Icon = s.icon;
             return (
-              <li key={i.id} className="flex gap-2.5 rounded-lg border border-hairline p-2.5">
-                <span className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', s.chip)}>
-                  <Icon size={15} />
+              <li key={i.id} className="flex gap-3 rounded-lg border border-hairline p-3">
+                <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', s.chip)}>
+                  <Icon size={16} />
                 </span>
                 <div className="min-w-0">
-                  <p className={cn('text-sm font-medium', s.text)}>{i.message}</p>
+                  <p className={cn('text-sm font-semibold', s.text)}>{i.message}</p>
                   {i.action && <p className="mt-0.5 text-xs text-fg-muted">{i.action}</p>}
                 </div>
               </li>

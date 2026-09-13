@@ -51,6 +51,18 @@ import { HandoverPanel } from '@/features/HandoverPanel';
  */
 const CHIP = 'bg-surface-sunken text-fg-muted';
 
+/**
+ * The 14 tiles above, grouped so the grid reads as sections instead of one
+ * undifferentiated wall — same tiles, same routes, same `setView` behaviour,
+ * just organised. Every id here must exist in `ACTIONS` below.
+ */
+const GROUPS: { title: string; ids: ActionId[] }[] = [
+  { title: 'Daily operations', ids: ['fundis', 'attendance', 'tasks', 'report', 'photos'] },
+  { title: 'Site management', ids: ['stock', 'expenses', 'tools', 'quality'] },
+  { title: 'Reporting', ids: ['weekly', 'weekly-progress', 'handover'] },
+  { title: 'Issues & safety', ids: ['snags', 'safety'] },
+];
+
 const ACTIONS = [
   { id: 'fundis', label: 'Fundis', hint: 'Add and manage fundis', icon: HardHat, chip: CHIP },
   {
@@ -169,13 +181,15 @@ export function SiteDetailPage() {
             <ChevronLeft size={16} /> My Sites
           </Link>
         )}
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold tracking-tight text-fg">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="truncate text-xl font-semibold tracking-tight text-fg">
             {view ? ACTIONS.find((a) => a.id === view)?.label : project.name}
           </h1>
           {!view && <StatusBadge status={project.status} />}
         </div>
-        {!view && <p className="mt-0.5 text-sm text-fg-muted">{project.location}</p>}
+        {!view && (
+          <p className="mt-0.5 text-sm text-fg-muted">{project.location} · Site overview</p>
+        )}
       </div>
 
       {/* The same control room the office sees, minus the money — the server
@@ -184,21 +198,33 @@ export function SiteDetailPage() {
       {!view && <CommandCentrePanel projectId={projectId} linked={false} />}
 
       {!view && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {ACTIONS.map(({ id, label, hint, icon: Icon, chip }) => (
-            <button
-              key={id}
-              onClick={() => setView(id)}
-              className="flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left shadow-sm transition-all active:scale-[0.98] active:bg-surface-sunken"
-            >
-              <span className={cn('flex h-11 w-11 items-center justify-center rounded-xl', chip)}>
-                <Icon size={22} />
-              </span>
-              <span>
-                <span className="block text-sm font-semibold text-fg">{label}</span>
-                <span className="block text-xs text-fg-subtle">{hint}</span>
-              </span>
-            </button>
+        <div className="space-y-5">
+          {GROUPS.map((group) => (
+            <div key={group.title}>
+              <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+                {group.title}
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {group.ids.map((id) => {
+                  const { label, hint, icon: Icon, chip } = ACTIONS.find((a) => a.id === id)!;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setView(id)}
+                      className="flex min-h-[112px] flex-col items-start gap-3 rounded-2xl border border-hairline bg-surface p-4 text-left shadow-sm transition-all hover:border-hairline-strong hover:shadow-md active:scale-[0.98] active:bg-surface-sunken"
+                    >
+                      <span className={cn('flex h-11 w-11 items-center justify-center rounded-xl', chip)}>
+                        <Icon size={22} />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-semibold text-fg">{label}</span>
+                        <span className="block text-xs text-fg-subtle">{hint}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
       )}

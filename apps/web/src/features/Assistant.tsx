@@ -242,8 +242,8 @@ export function Assistant({ office }: { office: boolean }) {
         <button
           ref={launcherRef}
           onClick={() => setOpen(true)}
-          aria-label="Ask about your sites"
-          className={`fixed right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand-600 px-4 text-sm font-medium text-white shadow-lg transition-transform hover:bg-brand-700 active:scale-95 ${
+          aria-label="Ask Site Assistant"
+          className={`fixed right-4 z-40 flex h-12 items-center gap-2 rounded-full bg-brand-600 px-4 text-sm font-medium text-white shadow-lg transition-all hover:bg-brand-700 hover:shadow-xl active:scale-95 ${
             // Clear of the supervisor's bottom navigation, which the office
             // shell does not have.
             office
@@ -251,8 +251,8 @@ export function Assistant({ office }: { office: boolean }) {
               : 'bottom-[calc(4.75rem+env(safe-area-inset-bottom))]'
           }`}
         >
-          <Sparkles size={18} />
-          <span className="hidden sm:inline">Ask</span>
+          <Sparkles size={18} className="text-accent-300" />
+          <span className="hidden sm:inline">Ask Site Assistant</span>
         </button>
       )}
 

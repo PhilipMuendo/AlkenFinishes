@@ -69,7 +69,7 @@ export function SupervisorLayout() {
       {/* A bottom bar costs ~56px of a phone screen permanently, so it has to
           carry more than a link to the page you are already on. Today is the
           one a supervisor opens most days; My Sites is for the rest. */}
-      <nav className="fixed inset-x-0 bottom-0 grid grid-cols-2 border-t border-hairline bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 border-t border-hairline bg-surface/95 backdrop-blur pb-[env(safe-area-inset-bottom)]">
         {[
           { to: '/today', label: 'Today', icon: CalendarCheck },
           { to: '/sites', label: 'My Sites', icon: Building2 },
@@ -79,13 +79,23 @@ export function SupervisorLayout() {
             to={to}
             className={({ isActive }) =>
               cn(
-                'flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors',
-                isActive ? 'text-brand-700' : 'text-fg-subtle',
+                'relative flex flex-col items-center gap-0.5 py-2.5 text-xs font-medium transition-colors',
+                isActive ? 'text-accent-600' : 'text-fg-subtle',
               )
             }
           >
-            <Icon size={22} />
-            {label}
+            {({ isActive }) => (
+              <>
+                <span
+                  className={cn(
+                    'absolute inset-x-1/2 top-0 h-0.5 w-8 -translate-x-1/2 rounded-full bg-accent-500 transition-opacity',
+                    isActive ? 'opacity-100' : 'opacity-0',
+                  )}
+                />
+                <Icon size={22} />
+                {label}
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
