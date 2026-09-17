@@ -106,7 +106,15 @@ router.get(
       Object.keys(projectFilter).length === 0
         ? {}
         : { assignments: { some: { endDate: null, project: projectFilter } } };
-    const workers = await prisma.worker.findMany({ where, include, orderBy: { name: 'asc' } });
+    // No pagination UI on the roster screens that call this, so this is a
+    // safety ceiling rather than a page size — same role this take: plays on
+    // every other list endpoint in the app.
+    const workers = await prisma.worker.findMany({
+      where,
+      include,
+      orderBy: { name: 'asc' },
+      take: 1000,
+    });
     res.json(visibleWorkers(workers, req.user!.role));
   }),
 );

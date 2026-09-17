@@ -23,7 +23,8 @@ import {
   syncInvoiceStatus,
 } from '../services/invoicing';
 import { toCents } from '../services/money';
-import { renderReceiptPdf, type PaymentForReceipt } from '../services/documents/receiptPdf';
+import type { PaymentForReceipt } from '../services/documents/receiptPdf';
+import { renderReceiptPdfAsync } from '../services/pdfWorkerRunner';
 
 /**
  * Payments are Superadmin/Accountant-only: contract sum, deposit, and payment
@@ -432,7 +433,7 @@ async function generateAndAttachReceipt(paymentId: string, userId: string) {
   try {
     const [company, config] = await Promise.all([getCompanyProfile(), getInvoicingConfig()]);
     const old = payment.receiptPdfUrl;
-    const url = await renderReceiptPdf(payment as PaymentForReceipt, company, config, balanceAfter);
+    const url = await renderReceiptPdfAsync(payment as PaymentForReceipt, company, config, balanceAfter);
     if (old) {
       removeUploadedFile(old);
       await prisma.document.deleteMany({ where: { fileUrl: old, systemGenerated: true } });

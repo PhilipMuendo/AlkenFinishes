@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { getCompanyProfile } from './invoicing';
-import { renderHandoverPdf, type CapturedSignature, type HandoverChecklistItem } from './documents/handoverPdf';
+import type { CapturedSignature, HandoverChecklistItem } from './documents/handoverPdf';
+import { renderHandoverPdfAsync } from './pdfWorkerRunner';
 
 export type { HandoverChecklistItem };
 
@@ -124,7 +125,7 @@ export async function renderHandover(
         }
       : undefined);
 
-  return renderHandoverPdf(
+  return renderHandoverPdfAsync(
     {
       projectName: h.project.name,
       clientName: h.project.clientName,

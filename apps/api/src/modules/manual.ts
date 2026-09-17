@@ -5,7 +5,7 @@ import { hasFinanceAccess } from '../middleware/rbac';
 import { signFileUrl } from '../middleware/upload';
 import { getCompanyProfile } from '../services/invoicing';
 import { MANUAL_TOPICS } from '../services/appManual';
-import { renderHandbookPdf } from '../services/documents/handbookPdf';
+import { renderHandbookPdfAsync } from '../services/pdfWorkerRunner';
 
 /**
  * The "how do I…" manual, as a downloadable PDF — the same MANUAL_TOPICS
@@ -34,7 +34,7 @@ router.get(
   '/pdf',
   asyncHandler(async (req, res) => {
     const company = await getCompanyProfile();
-    const pdfUrl = await renderHandbookPdf(company, topicsFor(req.user!.role));
+    const pdfUrl = await renderHandbookPdfAsync(company, topicsFor(req.user!.role));
     res.json({ url: signFileUrl(pdfUrl) });
   }),
 );

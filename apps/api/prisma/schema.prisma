@@ -353,6 +353,11 @@ model Project {
 
   @@index([supervisorId])
   @@index([clientId])
+  // Every company-wide dashboard/digest query (attentionDigest,
+  // companyFinancials, /analytics/company) filters on status — the one
+  // column on this model that gets a where-clause without also being one of
+  // the indexes above.
+  @@index([status])
 }
 
 model BudgetLine {

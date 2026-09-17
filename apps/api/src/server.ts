@@ -11,6 +11,15 @@ const server = app.listen(env.PORT, () => {
   logger.info(`AlkenFinishes API listening on :${env.PORT}`);
 });
 
+// Nothing previously bounded how long the server would hold a connection
+// open for a single request — a stuck client or a hung handler could pin a
+// connection (and whatever it was doing) indefinitely. requestTimeout covers
+// the whole request/response cycle; headersTimeout (kept below it, as Node
+// requires) catches a client that connects but never finishes sending
+// headers.
+server.requestTimeout = env.REQUEST_TIMEOUT_MS;
+server.headersTimeout = Math.min(env.REQUEST_TIMEOUT_MS, 60_000);
+
 // Housekeeping: prune dead refresh tokens so the table doesn't grow forever.
 async function pruneRefreshTokens() {
   const cutoff = new Date(Date.now() - 7 * 86400_000);

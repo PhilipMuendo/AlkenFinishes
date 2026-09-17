@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import type { Prisma } from '@prisma/client';
-import { dlpEnd } from './pipeline';
+import { dlpEnd } from './contractDates';
 
 /**
  * The calendar entries nobody should have to type.

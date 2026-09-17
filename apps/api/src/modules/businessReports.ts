@@ -14,7 +14,8 @@ import {
   LIVE_INVOICE_STATUSES,
 } from '../services/invoicing';
 import { printDate as fmtDate } from '../services/pdf';
-import { renderReportPdf, type ReportSection, type SummaryLine } from '../services/documents/reportPdf';
+import type { ReportSection, SummaryLine } from '../services/documents/reportPdf';
+import { renderReportPdfAsync } from '../services/pdfWorkerRunner';
 
 /**
  * The report pack: eight printable views over data that already lives
@@ -89,7 +90,7 @@ router.get(
       to,
     );
 
-    const url = await renderReportPdf({
+    const url = await renderReportPdfAsync({
       title,
       subtitle,
       company,

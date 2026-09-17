@@ -12,7 +12,8 @@ import { env } from '../config/env';
 import { nextNumber, seriesYear } from '../services/numbering';
 import { getCompanyProfile, getInvoicingConfig } from '../services/invoicing';
 import { getPipelineConfig, recalcQuotation } from '../services/pipeline';
-import { renderQuotationPdf, type QuotationWithLines } from '../services/documents/quotationPdf';
+import type { QuotationWithLines } from '../services/documents/quotationPdf';
+import { renderQuotationPdfAsync } from '../services/pdfWorkerRunner';
 import { generateToken, hashToken } from '../services/accessLink';
 
 /**
@@ -443,7 +444,7 @@ async function generateAndAttachPdf(
   opts: { replace?: boolean } = {},
 ): Promise<QuotationWithLines> {
   const [company, config] = await Promise.all([getCompanyProfile(), getInvoicingConfig()]);
-  const pdfUrl = await renderQuotationPdf(q, company, config);
+  const pdfUrl = await renderQuotationPdfAsync(q, company, config);
   if (opts.replace && q.pdfUrl) removeUploadedFile(q.pdfUrl);
   // Not filed into a project's Documents tab, unlike an invoice: at quotation
   // stage there is no project yet to file it against.

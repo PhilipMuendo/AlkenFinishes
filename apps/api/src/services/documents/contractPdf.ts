@@ -15,7 +15,8 @@ import {
 } from '../pdf';
 import type { CompanyProfile } from '../invoicing';
 import { amountInWords, kes, pctOfCents, toCents } from '../money';
-import { dlpEnd, type PipelineConfig } from '../pipeline';
+import type { PipelineConfig } from '../pipeline';
+import { dlpEnd } from '../contractDates';
 
 export type ContractForPdf = Contract & {
   client: Client;

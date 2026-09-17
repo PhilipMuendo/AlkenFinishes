@@ -25,11 +25,8 @@ import {
   nextVariationRef,
   syncProjectContractValue,
 } from '../services/pipeline';
-import {
-  renderContractPdf,
-  type CapturedClientSignature,
-  type ContractForPdf,
-} from '../services/documents/contractPdf';
+import type { CapturedClientSignature, ContractForPdf } from '../services/documents/contractPdf';
+import { renderContractPdfAsync } from '../services/pdfWorkerRunner';
 
 /**
  * Contracts — the agreement, and the spine of the "enter it once" chain.
@@ -931,7 +928,7 @@ async function generateAndAttachPdf(
     getInvoicingConfig(),
     getPipelineConfig(),
   ]);
-  const pdfUrl = await renderContractPdf(
+  const pdfUrl = await renderContractPdfAsync(
     contract,
     company,
     pipeline,
@@ -1001,7 +998,7 @@ export async function renderClientSignedContractPdf(
     getInvoicingConfig(),
     getPipelineConfig(),
   ]);
-  const pdfUrl = await renderContractPdf(
+  const pdfUrl = await renderContractPdfAsync(
     contract,
     company,
     pipeline,
@@ -1067,7 +1064,7 @@ export async function renderCountersignedContractPdf(
       }
     : undefined;
 
-  return renderContractPdf(
+  return renderContractPdfAsync(
     contract,
     company,
     pipeline,

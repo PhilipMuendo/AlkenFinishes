@@ -32,7 +32,8 @@ import {
   ClaimError,
   type ScheduleLine,
 } from '../services/claims';
-import { renderInvoicePdf, type InvoiceWithLines } from '../services/documents/invoicePdf';
+import type { InvoiceWithLines } from '../services/documents/invoicePdf';
+import { renderInvoicePdfAsync } from '../services/pdfWorkerRunner';
 
 /**
  * Invoicing is Superadmin/Accountant-only, matching payments.ts: contract
@@ -611,7 +612,7 @@ async function generateAndAttachPdf(
   opts: { replace?: boolean } = {},
 ): Promise<InvoiceWithLines> {
   const [company, config] = await Promise.all([getCompanyProfile(), getInvoicingConfig()]);
-  const pdfUrl = await renderInvoicePdf(inv, company, config);
+  const pdfUrl = await renderInvoicePdfAsync(inv, company, config);
 
   if (opts.replace && inv.pdfUrl) {
     removeUploadedFile(inv.pdfUrl);

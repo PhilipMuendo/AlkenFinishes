@@ -194,11 +194,19 @@ export function money(n: number): string {
   return n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function printDate(d: Date): string {
+/**
+ * `d` may arrive as a string rather than a real Date: every PDF builder runs
+ * inside a worker thread (see workers/pdfWorker.ts), and its Date-typed inputs
+ * cross that boundary as JSON — `Date.prototype.toJSON` turns them into ISO
+ * strings on the way out, and nothing turns them back on the way in.
+ * `Intl.DateTimeFormat.format()` doesn't accept a string, so this re-hydrates
+ * one before formatting rather than pushing that concern onto every caller.
+ */
+export function printDate(d: Date | string | number): string {
   return new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
     timeZone: env.APP_TIMEZONE,
-  }).format(d);
+  }).format(typeof d === 'object' ? d : new Date(d));
 }

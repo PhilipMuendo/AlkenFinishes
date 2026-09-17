@@ -3,6 +3,7 @@ import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
+import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { logger } from './lib/logger';
 import { errorHandler, notFoundHandler } from './middleware/error';
@@ -52,6 +53,26 @@ import settingsRouter from './modules/settings';
 import notificationsRouter from './modules/notifications';
 import { serveUploads } from './middleware/upload';
 
+// Applied to every /api/v1 route. Generous — a single dashboard page load
+// fires several of these — but bounded, so nothing (a bug, a retry storm)
+// can fire unlimited requests at the single Node process behind this.
+const apiLimiter = rateLimit({
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  limit: env.RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// The four public routes below take no login — reached via a token in the
+// URL — so the only legitimate traffic is one person opening one link.
+// Stricter than the general limit specifically to slow down token-guessing.
+const publicLimiter = rateLimit({
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  limit: env.PUBLIC_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export function createApp() {
   const app = express();
   app.set('trust proxy', 1);
@@ -73,6 +94,7 @@ export function createApp() {
   app.use('/iclock', iclockRouter);
 
   const v1 = express.Router();
+  v1.use(apiLimiter);
   v1.use('/auth', authRouter);
   v1.use('/users', usersRouter);
   v1.use('/clients', clientsRouter);
@@ -117,10 +139,12 @@ export function createApp() {
   v1.use('/manual', manualRouter);
   // No requireAuth — a client has no login. See publicSign.ts's own docblock
   // for how it stays scoped to exactly the one contract a token names.
-  v1.use('/sign', publicSignRouter);
-  v1.use('/quote', publicQuoteRouter);
-  v1.use('/statement', publicStatementRouter);
-  v1.use('/handover', publicHandoverRouter);
+  // publicLimiter on top of the general apiLimiter above: these are the only
+  // routes an unauthenticated caller can reach at all.
+  v1.use('/sign', publicLimiter, publicSignRouter);
+  v1.use('/quote', publicLimiter, publicQuoteRouter);
+  v1.use('/statement', publicLimiter, publicStatementRouter);
+  v1.use('/handover', publicLimiter, publicHandoverRouter);
   app.use('/api/v1', v1);
 
   app.use(notFoundHandler);

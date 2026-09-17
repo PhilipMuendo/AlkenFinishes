@@ -25,6 +25,26 @@ const schema = z.object({
   APP_TIMEZONE: z.string().default('Africa/Nairobi'),
   FILE_URL_TTL_SECONDS: z.coerce.number().default(3600),
   MAX_SHIFT_HOURS: z.coerce.number().default(14),
+  // Nothing previously capped how many requests a client (or a retry-storm
+  // bug in the frontend) could fire. Generous enough that a real dashboard —
+  // which fires several requests on one page load — never trips it; tight
+  // enough that a runaway loop can't monopolise the single Node process.
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+  RATE_LIMIT_MAX: z.coerce.number().default(300),
+  // The /sign, /quote, /statement and /handover routes take no login — a
+  // client reaches them with a token in the URL — so they get their own,
+  // stricter limit: the only realistic traffic there is one person opening
+  // one link, and a tight cap makes token-guessing materially slower.
+  PUBLIC_RATE_LIMIT_MAX: z.coerce.number().default(30),
+  // Bounds how long the HTTP server will wait on a single request before
+  // closing it — a stuck or abandoned request (or a slow client) no longer
+  // holds a connection (and whatever it was doing server-side) forever.
+  REQUEST_TIMEOUT_MS: z.coerce.number().default(30_000),
+  // Ceiling on one PDF render (services/pdfWorkerRunner.ts). pdfmake's own
+  // layout pass for anything this app produces is normally well under a
+  // couple of seconds; this is a safety bound against a genuinely stuck
+  // worker thread, not a realistic render time.
+  PDF_RENDER_TIMEOUT_MS: z.coerce.number().default(30_000),
   // Reading photographed receipts. OPTIONAL: with no key the feature is simply
   // absent and every form still works by hand. Receipt images leave the
   // building when a key is set, so it is opt-in by configuration.

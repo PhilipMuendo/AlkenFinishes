@@ -32,7 +32,12 @@ router.get(
       req.user!.role === 'SUPERADMIN'
         ? {}
         : { currentProject: { supervisorId: req.user!.id } };
-    res.json(await prisma.tool.findMany({ where, include, orderBy: { name: 'asc' } }));
+    // No pagination UI on the equipment screens that call this, so this is a
+    // safety ceiling rather than a page size — same role this take: plays on
+    // every other list endpoint in the app.
+    res.json(
+      await prisma.tool.findMany({ where, include, orderBy: { name: 'asc' }, take: 1000 }),
+    );
   }),
 );
 

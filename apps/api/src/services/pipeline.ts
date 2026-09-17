@@ -2,6 +2,7 @@ import type { Prisma, Contract, Variation } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { computeInvoiceTotals } from './invoicing';
 import { fromCents, kes, pctOfCents, toCents, type MoneyLike } from './money';
+import { dlpEnd } from './contractDates';
 
 /**
  * The pre-project pipeline: Lead -> Quotation -> Contract -> Project.
@@ -188,14 +189,6 @@ export function contractPosition(
     defectsLiabilityMonths: contract.defectsLiabilityMonths,
     defectsLiabilityEnds: dlpEnd(contract.practicalCompletionDate, contract.defectsLiabilityMonths),
   };
-}
-
-/** Defects liability runs from practical completion, not from handover of site. */
-export function dlpEnd(practicalCompletion: Date | null, months: number): string | null {
-  if (!practicalCompletion) return null;
-  const d = new Date(practicalCompletion);
-  d.setMonth(d.getMonth() + months);
-  return d.toISOString().slice(0, 10);
 }
 
 /**

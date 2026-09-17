@@ -3,7 +3,8 @@ import { projectFinancials } from './finance';
 import { getCompanyProfile } from './invoicing';
 import { weightedProgress } from './progress';
 import { gatherWeek, weekBounds } from './weeklyReportDraft';
-import { renderReportPdf, type ReportSection, type SummaryLine } from './documents/reportPdf';
+import type { ReportSection, SummaryLine } from './documents/reportPdf';
+import { renderReportPdfAsync } from './pdfWorkerRunner';
 import { printDate } from './pdf';
 
 /**
@@ -225,7 +226,7 @@ export async function renderWeeklyProgressPdf(
     },
   ];
 
-  return renderReportPdf({
+  return renderReportPdfAsync({
     title: 'Weekly Progress',
     subtitle: 'Planned vs Actual',
     company,
