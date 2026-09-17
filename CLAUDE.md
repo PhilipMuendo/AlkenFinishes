@@ -45,6 +45,40 @@ not just the screens that prompted them.
   otherwise bypassed). Don't mistake a stale cached bundle for a failed
   deploy.
 
+## Backend performance rules (from the 2026-09 bottleneck audit)
+
+- **Any CPU-bound synchronous work in a route handler (PDF/report
+  generation, image processing, etc.) blocks the whole Node process** —
+  every other concurrent request stalls for its duration, not just the one
+  that triggered it. PDF rendering (pdfmake, `services/pdfWorkerRunner.ts`)
+  now runs in a short-lived `worker_threads.Worker` per call rather than
+  inline; follow the same pattern for any future CPU-heavy request-path
+  work instead of adding it inline.
+- **Arguments passed to a worker thread must cross as JSON
+  (`JSON.parse(JSON.stringify(...))`), not the default structured clone.**
+  A Prisma `Decimal` needs its `toJSON()` to run (structured clone doesn't
+  call it, and hands the worker a stripped plain object with no Decimal
+  methods left); `Date` fields become ISO strings either way. Any function
+  formatting a `Date` field that might cross a worker boundary should
+  accept `Date | string` and `new Date(d)` internally, the way
+  `printDate()` (`services/pdf.ts`) does.
+- **Before importing a module into worker-thread code, check its full
+  transitive import chain for `lib/prisma`** (or anything else with
+  process-wide side effects at module-load time) — importing even one
+  *value* (not `import type`) from a file that does `new PrismaClient()`
+  at module scope pulls a second client into every worker spawned. Keep
+  small pure helpers a worker-side module needs (e.g. `contractDates.ts`)
+  in their own prisma-free file rather than co-located with unrelated
+  prisma-touching code.
+- **Every list endpoint needs a `take:` ceiling**, even ones that feel
+  small today (a workers/equipment roster) — there is no pagination UI to
+  fall back on if one silently grows unbounded.
+- Company-wide dashboard/digest queries should batch with `groupBy` +
+  in-memory folding (the existing pattern in `attention.ts`/`finance.ts`),
+  never loop per-project doing individual queries — and any column those
+  queries filter on (e.g. `Project.status`) needs an index even if the
+  table is small today.
+
 ## Environment notes
 
 - No separate `main` branch — `claude/alken-finishes-system-1ccsg2` is the
