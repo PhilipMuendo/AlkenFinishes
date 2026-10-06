@@ -5,6 +5,8 @@ import { logger } from '../lib/logger';
 import { asyncHandler } from '../utils/http';
 import { ingestPunches, type Punch } from '../services/attendanceIngest';
 import { deviceSyncLimiter } from '../middleware/rateLimit';
+import { parseDeviceTimestamp } from '../services/punchRules';
+import { env } from '../config/env';
 
 /**
  * ZKTeco "ADMS" / push (iclock) adapter. A fingerprint terminal configured
@@ -75,8 +77,9 @@ router.post(
       // ATTLOG: PIN \t YYYY-MM-DD HH:MM:SS \t status \t verify \t ...
       const [pin, datetime] = line.split('\t');
       if (!pin || !datetime) continue;
-      const ts = new Date(`${datetime.trim().replace(' ', 'T')}Z`);
-      if (Number.isNaN(ts.getTime())) continue;
+      // The terminal stamps site-local wall-clock time, not UTC.
+      const ts = parseDeviceTimestamp(datetime, env.APP_TIMEZONE);
+      if (!ts) continue;
       punches.push({ biometricId: pin.trim(), timestamp: ts });
     }
 

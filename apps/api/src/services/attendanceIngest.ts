@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
 import { upsertNotification } from './notifications';
+import { localDayStart, resolvePunchSite } from './punchRules';
 
 /** A day beyond this is overtime, paid at OVERTIME_MULTIPLIER. */
 export const STANDARD_SHIFT_HOURS = 8;
@@ -41,9 +42,6 @@ export interface IngestSummary {
   issues: { biometricId: string; reason: string }[];
 }
 
-function dayStart(ts: Date) {
-  return new Date(Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate()));
-}
 const keyOf = (workerId: string, projectId: string, date: Date) =>
   `${workerId}:${projectId}:${date.toISOString().slice(0, 10)}`;
 
@@ -93,16 +91,13 @@ export async function ingestPunches(
       pushIssue(p.biometricId, 'unknown_worker');
       continue;
     }
-    const projectId = device.projectId ?? worker.assignments[0]?.projectId;
-    if (!projectId) {
-      pushIssue(p.biometricId, 'no_assignment', worker.id);
+    const placed = resolvePunchSite(device, worker.assignments[0]?.projectId);
+    if (!placed.ok) {
+      pushIssue(p.biometricId, placed.reason, worker.id);
       continue;
     }
-    if (device.projectId && projectId !== device.projectId) {
-      pushIssue(p.biometricId, 'wrong_site', worker.id);
-      continue;
-    }
-    const date = dayStart(p.timestamp);
+    const { projectId } = placed;
+    const date = localDayStart(p.timestamp, env.APP_TIMEZONE);
     const k = keyOf(worker.id, projectId, date);
     const g = groups.get(k);
     if (!g) {
