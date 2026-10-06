@@ -2,7 +2,7 @@ import * as XLSX from 'xlsx';
 import type { Punch } from './attendanceIngest';
 
 /**
- * Turns a uAttend (or similar closed cloud clock) CSV/Excel export into the
+ * Turns a manual (no cloud API) clock's CSV/Excel export into the
  * same Punch[] shape ingestPunches() already consumes for ZKTeco and Suprema
  * devices — one aggregation pipeline for every vendor, regardless of how the
  * punches arrived.

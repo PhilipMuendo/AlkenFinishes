@@ -58,7 +58,7 @@ function humanizeAction(action: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-type DeviceVendor = 'ZKTECO' | 'SUPREMA' | 'UATTEND';
+type DeviceVendor = 'ZKTECO' | 'SUPREMA' | 'MANUAL';
 
 interface Device {
   id: string;
@@ -201,7 +201,7 @@ export function SettingsPage() {
       if (data.vendor === 'ZKTECO') {
         setNewKey(data.apiKey);
       } else {
-        // Suprema and uAttend need no key handoff screen.
+        // Suprema and manual devices need no key handoff screen.
         setDeviceOpen(false);
         toast.success('Device registered.');
       }
@@ -408,11 +408,11 @@ export function SettingsPage() {
                     <div>
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium text-fg">{d.name}</p>
-                        <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : d.vendor === 'UATTEND' ? 'yellow' : 'slate'}>
+                        <Badge tone={d.vendor === 'SUPREMA' ? 'blue' : d.vendor === 'MANUAL' ? 'yellow' : 'slate'}>
                           {d.vendor === 'SUPREMA'
                             ? 'Suprema · BioStar 2'
-                            : d.vendor === 'UATTEND'
-                              ? 'uAttend · CSV import'
+                            : d.vendor === 'MANUAL'
+                              ? 'Manual · file import'
                               : 'ZKTeco'}
                         </Badge>
                       </div>
@@ -427,7 +427,7 @@ export function SettingsPage() {
                             <span className="font-mono">{d.biostarBaseUrl}</span> ·{' '}
                           </>
                         )}
-                        {d.vendor === 'UATTEND'
+                        {d.vendor === 'MANUAL'
                           ? <>Last import: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}</>
                           : <>Last sync: {d.lastSyncAt ? fmtDate(d.lastSyncAt) : 'never'}</>}
                       </p>
@@ -444,7 +444,7 @@ export function SettingsPage() {
                         <RefreshCw size={14} /> Sync now
                       </Button>
                     )}
-                    {d.vendor === 'UATTEND' && (
+                    {d.vendor === 'MANUAL' && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -453,7 +453,7 @@ export function SettingsPage() {
                           setImportResult(null);
                         }}
                       >
-                        <Upload size={14} /> Import CSV
+                        <Upload size={14} /> Import file
                       </Button>
                     )}
                     <Select
@@ -658,7 +658,7 @@ export function SettingsPage() {
               >
                 <option value="ZKTECO">ZKTeco / ADMS push terminal</option>
                 <option value="SUPREMA">Suprema (BioLite Net, via BioStar 2)</option>
-                <option value="UATTEND">uAttend (BN6500 and similar — CSV import)</option>
+                <option value="MANUAL">Manual device (no cloud API — import its exported report)</option>
               </Select>
             </Field>
             <Field label="Device name">
@@ -669,18 +669,18 @@ export function SettingsPage() {
               <Field label="Serial number (printed on the device)">
                 <Input name="serialNumber" placeholder="e.g. ZK9988" />
               </Field>
-            ) : deviceVendor === 'UATTEND' ? (
+            ) : deviceVendor === 'MANUAL' ? (
               <>
                 <p className="rounded-lg bg-brand-50 p-3 text-xs text-brand-800">
-                  A uAttend clock only ever talks to uAttend&rsquo;s own cloud — it can&rsquo;t push
-                  to this app or be polled. Registering it here just creates a place to import
-                  its punches into: export a report from the uAttend web portal (Punch Report or
-                  Timecard Report, CSV) and use &ldquo;Import CSV&rdquo; on this device whenever
-                  there&rsquo;s new data. The report&rsquo;s Employee ID column must match the same
+                  A manual device has no cloud API — it can&rsquo;t push to this app or be polled.
+                  Registering it here just creates a place to import its punches into: export the
+                  report from the terminal (on most, Menu &rarr; Attendance &rarr; Download All
+                  Report, saved to a USB stick) and use &ldquo;Import file&rdquo; on this device
+                  whenever there&rsquo;s new data. The ID in the report must match the same
                   Biometric ID already set on each fundi in AlkenFinishes.
                 </p>
-                <Field label="uAttend device serial (optional, for your own reference)">
-                  <Input name="serialNumber" placeholder="e.g. BN6500-xxxxx" />
+                <Field label="Device serial (optional, for your own reference)">
+                  <Input name="serialNumber" placeholder="e.g. the serial printed on the terminal" />
                 </Field>
               </>
             ) : (
@@ -807,8 +807,8 @@ export function SettingsPage() {
             className="space-y-3"
           >
             <p className="text-sm text-fg-muted">
-              Export a Punch Report or Timecard Report (CSV) from the uAttend portal and upload it
-              here. Rows the system can&rsquo;t place — an unrecognised Employee ID, a fundi with
+              Upload the report exported from the terminal (an &ldquo;All Report&rdquo; .xls from
+              its Attendance menu, or a CSV/Excel punch report) here. Rows the system can&rsquo;t place — an unrecognised Employee ID, a fundi with
               no current site — are listed after the import so nothing is lost silently; the same
               &ldquo;Sync issues&rdquo; list below also picks them up.
             </p>

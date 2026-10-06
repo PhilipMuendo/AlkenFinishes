@@ -458,9 +458,9 @@ adminDeviceRouter.post(
       .object({
         name: z.string().min(1),
         projectId: z.string().nullable().optional(),
-        vendor: z.enum(['ZKTECO', 'SUPREMA', 'UATTEND']).default('ZKTECO'),
+        vendor: z.enum(['ZKTECO', 'SUPREMA', 'MANUAL']).default('ZKTECO'),
         // ZKTeco/ADMS push devices identify by serial number; also used to
-        // note a uAttend device's own serial for reference (not for auth).
+        // note a manual device's own serial for reference (not for auth).
         serialNumber: z.string().trim().min(1).optional(),
       })
       .and(biostarFieldsSchema)
@@ -546,7 +546,7 @@ adminDeviceRouter.post(
   }),
 );
 
-// ---- CSV import: for a device that can't push or be polled (uAttend) ----
+// ---- File import: for a device that can't push or be polled (MANUAL) ----
 
 // In-memory only: the file is parsed and discarded, never persisted or
 // linked, the same as the worker bulk-import in modules/workers.ts.
@@ -568,7 +568,7 @@ const importUpload = multer({
 });
 
 /**
- * Punches from a uAttend (or similar cloud-only) clock's exported report.
+ * Punches from a manual (no cloud API) clock's exported report.
  * Goes through the exact same ingestPunches() pipeline ZKTeco and Suprema
  * punches do — first-in/last-out aggregation, sync-issue recording, the lot —
  * so a manually-imported punch behaves identically to a device-pushed one,
@@ -580,8 +580,8 @@ adminDeviceRouter.post(
   asyncHandler(async (req, res) => {
     const device = await prisma.attendanceDevice.findUnique({ where: { id: req.params.id } });
     if (!device) throw ApiError.notFound();
-    if (device.vendor !== 'UATTEND') {
-      throw ApiError.badRequest('Only a uAttend-vendor device accepts a CSV import — the other vendors sync automatically');
+    if (device.vendor !== 'MANUAL') {
+      throw ApiError.badRequest('Only a manual device accepts a file import — the other vendors sync automatically');
     }
     if (!req.file) throw ApiError.badRequest('file is required');
 

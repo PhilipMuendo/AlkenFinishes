@@ -12,7 +12,7 @@ Monorepo (npm workspaces) with two deployable services behind Nginx:
                                               │
       ZKTeco terminals ──push──▶ /iclock, /attendance/device-sync (API key)
       Suprema terminals ◀──poll── BioStar 2 REST API, every 2 min
-      uAttend clocks    ──CSV──▶ /devices/:id/import, on demand (no live link)
+      Manual terminals  ──file──▶ /devices/:id/import, on demand (no live link)
       Language model   ◀──────── optional, opt-in by configuration
 ```
 
@@ -443,7 +443,7 @@ Three integrations exist because the vendors have fundamentally different
 connection models — push, poll, and (for a closed cloud appliance) neither —
 and that shape is reflected in the code (`modules/iclock.ts` /
 `modules/attendance.ts`'s `deviceRouter` for ZKTeco, `services/biostar.ts` for
-Suprema, `services/csvImport.ts` for uAttend) rather than forced into one
+Suprema, `services/csvImport.ts` for manual devices) rather than forced into one
 interface. All three funnel into the same `services/attendanceIngest.ts` core
 (`ingestPunches`, `computeCost`), so a worker's attendance record looks
 identical regardless of which vendor produced it, and `AttendanceRecord.source`
@@ -508,33 +508,47 @@ POST {biostarBaseUrl}/api/events/search    -> events since the stored cursor
   process-wide setting — see the `undici` per-request dispatcher), off by
   default.
 
-### uAttend (CSV import — no live connection)
+### Manual devices (file import — no live connection)
 
-A uAttend clock (e.g. the BN6500) is a closed cloud appliance: it only ever
-talks to uAttend's own hosted portal over LAN/WiFi, requires a paid uAttend
-subscription, and exposes no server we can push to or poll — not a push
-protocol like ZKTeco, not a local REST API like BioStar 2. There is nothing
-for `server.ts` to schedule and no device-side credential to configure. The
-only way its punches reach AlkenFinishes is a human exporting a report from
-the uAttend web portal (Punch Report or Timecard Report, CSV) and uploading it
-under Settings → Attendance → **Import CSV**.
+A manual device (`DeviceVendor.MANUAL`) is any terminal with no cloud API: a
+generic face/fingerprint clock, or a closed appliance such as the uAttend
+BN6500 that only talks to its own paid portal. It exposes no server we can
+push to or poll — not a push protocol like ZKTeco, not a local REST API like
+BioStar 2. There is nothing for `server.ts` to schedule and no device-side
+credential to configure. The only way its punches reach AlkenFinishes is a
+human exporting a report (on the generic terminals: Menu → Attendance →
+Download All Report to USB; on uAttend: Punch/Timecard Report from the web
+portal) and uploading it under Settings → Attendance → **Import file**.
 
 ```
 POST /api/v1/devices/:id/import   (multipart, field "file")
 ```
 
 - `services/csvImport.ts` reads the file with `xlsx` (handles CSV and Excel
-  alike) and matches columns by alias rather than one fixed layout, since
-  uAttend's exact export columns aren't publicly documented and differ by
-  report type: a Punch Report is one row per punch (an Employee ID + a single
-  date/time column); a Timecard Report is one row per day (Employee ID + Date
-  + separate Time In / Time Out columns). Both shapes are turned into the same
-  `Punch[]` `ingestPunches()` already consumes for the other two vendors.
+  alike) and recognises three shapes, all turned into the same `Punch[]`
+  `ingestPunches()` already consumes for the other two vendors:
+  - **All Report workbook** (generic terminals): detected by a sheet named
+    "Attendance Logs". One block per employee — an `ID … Name …` header row, a
+    row of day numbers, a row of weekdays, then a row where each day's cell
+    holds that day's punch times newline-separated. Year/month come from the
+    `YYYY-MM-DD ~ YYYY-MM-DD` range at the top; a day number that drops below
+    the previous one means the range rolled into the next month. The workbook's
+    other sheets (Attendance summary, Abnormal, …) are the terminal's own shift
+    analysis — they say "Missed" for punches outside its shift windows — and
+    are ignored; first-in/last-out is `ingestPunches()`'s job.
+  - **Punch Report** (uAttend): one row per punch (an Employee ID + a single
+    date/time column).
+  - **Timecard Report** (uAttend): one row per day (Employee ID + Date +
+    separate Time In / Time Out columns). The two uAttend shapes are matched
+    by header alias, since uAttend's exact columns aren't publicly documented.
 - The report's **Employee ID** column must equal the worker's `biometricId`
   already stored in AlkenFinishes — the same convention as a ZKTeco PIN or a
-  BioStar 2 User ID. Enrol each worker with the same ID in the uAttend portal
-  as they already have here, and any of the three device types can log their
-  attendance interchangeably.
+  BioStar 2 User ID. Enrol each worker on the terminal with the same ID they
+  already have here, and any of the device types can log their attendance
+  interchangeably.
+- Imported times are read as the site's local time (the container's `TZ` is
+  set from `APP_TIMEZONE`), the same convention ZKTeco's push path uses via
+  `services/punchRules.ts`.
 - Imported records are tagged `source: 'IMPORT'` (vs. `'DEVICE_SYNC'` for a
   live push/poll) — `ingestPunches()` takes an optional
   `{ method, source }` override for exactly this, defaulting to
@@ -543,11 +557,11 @@ POST /api/v1/devices/:id/import   (multipart, field "file")
   is skipped and reported back per-row, distinct from a punch that parsed but
   couldn't be matched to a worker (`unknown_worker`, `no_assignment`, etc. —
   the same "Sync issues" list the other two vendors feed).
-- `AttendanceDevice.lastSyncAt` on a `UATTEND` row means "last import", not
+- `AttendanceDevice.lastSyncAt` on a `MANUAL` row means "last import", not
   "last connection" — there is no connection to have.
-- Treat a uAttend clock as a fallback, not the primary plan: a ZKTeco or
+- Treat a manual device as a fallback, not the primary plan: a ZKTeco or
   Suprema terminal needs zero recurring manual effort once registered, a
-  uAttend clock needs a CSV export every time attendance needs to be current.
+  manual one needs a file export every time attendance needs to be current.
 
 ## Frontend
 

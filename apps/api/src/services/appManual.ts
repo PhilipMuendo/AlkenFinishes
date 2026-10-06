@@ -117,7 +117,7 @@ Documents — invoice/receipt number prefixes and padding, VAT rate, default ret
 
 Money & tax — six cards: budget health thresholds (when a category shows Watch vs At risk), which cost source drives Labour actuals (attendance only / expenses only / both, to avoid double-counting), tax on purchases (input VAT rate, whether you're an appointed withholding agent, default WHT rates), tax on staff hourly payments (a separate withholding toggle for fundis, distinct from formal Payroll's PAYE), income tax (whether this company tracks Corporation Tax on the Tax page at all, and its rate — off by default, for a business that files Turnover Tax instead or doesn't track this in the app), and Payroll deductions (PAYE bands, personal relief, SHIF, Housing Levy — off by default, so nothing is withheld until switched on).
 
-Attendance — registering fingerprint devices (ZKTeco push terminals, Suprema via BioStar 2, or uAttend CSV import), and resolving sync issues (an unrecognised fingerprint, or a punch at the wrong site).
+Attendance — registering fingerprint devices (ZKTeco push terminals, Suprema via BioStar 2, or a manual device whose exported report is imported as a file), and resolving sync issues (an unrecognised fingerprint, or a punch at the wrong site).
 
 Assistant — the shared daily AI call allowance, split between the chat assistant and the work that depends on AI (receipt reading, report drafting) — the assistant is deliberately the first to be throttled once the daily budget runs low.
 
