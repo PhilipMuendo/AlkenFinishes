@@ -121,9 +121,52 @@ older than 14 days (`RETENTION_DAYS=30 ./backup.sh` to change).
 0 2 * * * cd /path/to/AlkenFinishes && ./backup.sh >> backups/backup.log 2>&1
 ```
 
-**Copy it off the server.** A backup on the same disk as the data does not
-survive that disk. `rclone`, `rsync` or `scp` the `backups/` folder to another
-machine or a storage bucket.
+### Off-site copy (encrypted)
+
+A backup on the same disk as the data does not survive that disk.
+`backup.sh` can send each run to Google Drive (or S3, Backblaze B2, another
+server — anything [rclone](https://rclone.org) supports). Files are encrypted
+with AES-256 **before they leave the server**, so the storage provider only
+ever holds scrambled data.
+
+**One-time setup on the server:**
+
+```bash
+sudo apt install -y rclone gnupg        # or: curl https://rclone.org/install.sh | sudo bash
+rclone config                           # n) new remote -> name: gdrive -> storage: drive
+                                        # scope: "drive.file" is enough (only files rclone creates)
+                                        # headless server: answer "n" to auto config and follow the
+                                        # prompt to authorise from your laptop (rclone authorize "drive")
+rclone lsd gdrive:                      # proves it works
+```
+
+Then in `.env` on the server:
+
+```
+RCLONE_REMOTE=gdrive:AlkenBackups
+BACKUP_PASSPHRASE=<a long random passphrase>
+REMOTE_RETENTION_DAYS=30
+```
+
+Use a dedicated, company-owned Google account with 2-step verification, not a
+personal one. The next `./backup.sh` (and every cron run after) uploads
+`alken-db-<stamp>.sql.gz.gpg` and `alken-uploads-<stamp>.tar.gz.gpg`, checks the
+passphrase decrypts them, and deletes remote copies older than
+`REMOTE_RETENTION_DAYS`. It only ever touches files named `alken-*.gpg`.
+
+- The script **refuses to upload** if `BACKUP_PASSPHRASE` is empty.
+- **Keep the passphrase somewhere other than the server** (a password manager).
+  Without it the off-site backups cannot be opened — by you or anyone else.
+- Free Drive space is 15 GB shared by the whole account. Uploads (photos) are
+  what grow; raise `REMOTE_RETENTION_DAYS` only as far as the space allows.
+
+**Sending a copy to the client:** download one `.gpg` pair from Drive and send
+those. Give them the passphrase through a different channel than the files.
+They open them with [Gpg4win](https://www.gpg4win.org) (Windows) or `gpg`:
+
+```bash
+gpg --output alken-db.sql.gz --decrypt alken-db-<stamp>.sql.gz.gpg
+```
 
 **Restore** (this replaces current data — stop and think first):
 
