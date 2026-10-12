@@ -96,11 +96,73 @@ Two worth knowing about:
 The `api` container runs `prisma migrate deploy` on every boot, so a deploy
 that includes a new migration applies it automatically. Nothing to do by hand.
 
-Back up before a deploy that changes the schema:
+Back up before a deploy that changes the schema — see **Backups** below.
+
+---
+
+## Backups
+
+Two things hold your data: the Postgres database, and the `uploads` volume
+(site photos, signed contracts, handover certificates — your legal records).
+One script captures both:
 
 ```bash
-docker compose exec db pg_dump -U alken alkenfinishes > backup-$(date +%F).sql
+./backup.sh            # Linux/macOS  -> ./backups/
+.\backup.ps1           # Windows
 ```
+
+Each run writes `alken-db-<stamp>.sql.gz` and `alken-uploads-<stamp>.tar.gz`,
+checks the archives are readable before keeping them, and deletes anything
+older than 14 days (`RETENTION_DAYS=30 ./backup.sh` to change).
+
+**Schedule it** (daily at 02:00):
+
+```bash
+0 2 * * * cd /path/to/AlkenFinishes && ./backup.sh >> backups/backup.log 2>&1
+```
+
+**Copy it off the server.** A backup on the same disk as the data does not
+survive that disk. `rclone`, `rsync` or `scp` the `backups/` folder to another
+machine or a storage bucket.
+
+**Restore** (this replaces current data — stop and think first):
+
+```bash
+# database
+docker compose exec -T db sh -c 'dropdb -U "$POSTGRES_USER" --if-exists "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+gunzip -c backups/alken-db-<stamp>.sql.gz | docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
+
+# uploads
+docker compose exec -T api tar -xzf - -C /data < backups/alken-uploads-<stamp>.tar.gz
+docker compose restart api
+```
+
+Do a trial restore into a scratch environment at least once. A backup you have
+never restored is a hope, not a backup.
+
+---
+
+## HTTPS
+
+Without it, passwords and login tokens cross the network in clear text, and
+browsers will not install the app or run its offline service worker on a real
+domain. Caddy fixes this with no certificate handling by you.
+
+1. Point a DNS `A` record for your domain (e.g. `app.yourcompany.co.ke`) at the
+   server. Open ports **80 and 443** in its firewall.
+2. In `.env`, set:
+   ```
+   DOMAIN=app.yourcompany.co.ke
+   CORS_ORIGIN=https://app.yourcompany.co.ke
+   COMPOSE_FILE=docker-compose.yml:docker-compose.https.yml   # use ; on Windows
+   ```
+3. `docker compose up -d --build --force-recreate`
+
+Caddy requests the certificate on first start and renews it automatically.
+Keep the `caddy_data` volume — it holds the certificates, and Let's Encrypt
+rate-limits re-issuing. The overlay also sets `TRUST_PROXY_HOPS=2` so the API
+sees each visitor's real IP behind the two proxies; if you add another proxy
+or CDN in front, raise that number by one.
 
 ---
 

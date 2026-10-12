@@ -8,3 +8,6 @@ uploads/
 .DS_Store
 coverage/
 dev.db
+
+# Database dumps and upload archives written by backup.sh / backup.ps1
+backups/

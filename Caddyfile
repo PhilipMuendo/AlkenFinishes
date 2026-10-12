@@ -1,0 +1,15 @@
+# Used only by docker-compose.https.yml. Caddy obtains and renews the
+# certificate for DOMAIN itself and redirects http -> https automatically.
+#
+# nginx (the `web` service) already gzips and sets the security headers, so
+# this only terminates TLS and forwards. Caddy replaces any client-supplied
+# X-Forwarded-For with the real peer address, which is what lets the API
+# trust the forwarded IP (TRUST_PROXY_HOPS=2).
+{$DOMAIN} {
+	reverse_proxy web:80
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}

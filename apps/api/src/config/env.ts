@@ -25,6 +25,8 @@ const schema = z.object({
   APP_TIMEZONE: z.string().default('Africa/Nairobi'),
   FILE_URL_TTL_SECONDS: z.coerce.number().default(3600),
   MAX_SHIFT_HOURS: z.coerce.number().default(14),
+  // Number of reverse proxies in front of the API (see app.ts).
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
   // Nothing previously capped how many requests a client (or a retry-storm
   // bug in the frontend) could fire. Generous enough that a real dashboard —
   // which fires several requests on one page load — never trips it; tight

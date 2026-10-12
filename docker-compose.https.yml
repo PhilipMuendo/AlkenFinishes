@@ -1,0 +1,50 @@
+# HTTPS overlay: puts Caddy in front of the stack and gets (and renews) a
+# Let's Encrypt certificate for DOMAIN automatically.
+#
+# Enable it by adding this to .env, then recreating the stack:
+#   DOMAIN=app.yourcompany.co.ke
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.https.yml   (Windows: use ; not :)
+#   CORS_ORIGIN=https://app.yourcompany.co.ke
+#
+# Requirements: DNS for DOMAIN points at this server, and ports 80 and 443 are
+# reachable from the internet (80 is needed for the certificate challenge).
+#
+# Request path:  browser -> caddy (TLS) -> web (nginx) -> api
+services:
+  web:
+    # Caddy owns 80/443 now; nginx is reachable only on the compose network.
+    ports: !reset []
+
+  api:
+    environment:
+      # Two proxies sit in front of the API (caddy, then nginx). req.ip is
+      # what every rate limiter keys on — with the default of 1 it would be
+      # Caddy's address and the whole company would share one bucket.
+      TRUST_PROXY_HOPS: 2
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env to use docker-compose.https.yml}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account. Losing this volume means re-issuing,
+      # which is rate-limited by Let's Encrypt — keep it.
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+volumes:
+  caddy_data:
+  caddy_config:

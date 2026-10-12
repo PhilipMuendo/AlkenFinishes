@@ -53,6 +53,8 @@ import settingsRouter from './modules/settings';
 import notificationsRouter from './modules/notifications';
 import { serveUploads } from './middleware/upload';
 
+const PUBLIC_TOKEN_PATH = /^(\/api\/v1\/(?:sign|quote|statement|handover)\/)[^/?#]+/;
+
 // Applied to every /api/v1 route. Generous — a single dashboard page load
 // fires several of these — but bounded, so nothing (a bug, a retry storm)
 // can fire unlimited requests at the single Node process behind this.
@@ -75,7 +77,11 @@ const publicLimiter = rateLimit({
 
 export function createApp() {
   const app = express();
-  app.set('trust proxy', 1);
+  // How many reverse proxies sit between the internet and this process.
+  // 1 = just the bundled nginx. 2 = Caddy (docker-compose.https.yml) in front
+  // of nginx. Get this wrong and req.ip becomes a proxy's address, so every
+  // client shares one rate-limit bucket.
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   // This app is read-heavy and its readers are on Kenyan mobile data. The
   // responses are JSON — highly repetitive keys, long prose fields — which
@@ -85,7 +91,20 @@ export function createApp() {
   app.use(compression());
   app.use(cors({ origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(',') }));
   app.use(express.json({ limit: '2mb' }));
-  app.use(pinoHttp({ logger, autoLogging: env.NODE_ENV === 'production' }));
+  app.use(
+    pinoHttp({
+      logger,
+      autoLogging: env.NODE_ENV === 'production',
+      serializers: {
+        // The public client links carry their secret in the path
+        // (/sign/<token>); a token in a log line is a usable link.
+        // pino-http hands this the already-standardised request object.
+        req(req) {
+          return { ...req, url: req.url?.replace(PUBLIC_TOKEN_PATH, '$1[token]') };
+        },
+      },
+    }),
+  );
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   // Uploads are private: HMAC-signed, expiring links only.
