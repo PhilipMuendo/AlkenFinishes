@@ -129,6 +129,9 @@ server — anything [rclone](https://rclone.org) supports). Files are encrypted
 with AES-256 **before they leave the server**, so the storage provider only
 ever holds scrambled data.
 
+(Off-site upload is a feature of `backup.sh`, which is what runs on the Linux
+server. `backup.ps1` is local-only.)
+
 **One-time setup on the server:**
 
 ```bash
