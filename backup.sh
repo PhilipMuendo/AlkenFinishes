@@ -15,6 +15,9 @@
 # losing that machine. Copy the directory off the host (rclone, rsync, scp).
 set -euo pipefail
 cd "$(dirname "$0")"
+# Git Bash on Windows rewrites arguments that look like POSIX paths (/data ->
+# C:/Program Files/Git/data) before docker sees them. No-op everywhere else.
+export MSYS_NO_PATHCONV=1
 
 DEST="${1:-./backups}"
 KEEP="${RETENTION_DAYS:-14}"
